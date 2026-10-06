@@ -1,0 +1,18 @@
+# 凭据与密钥
+.token
+.oauth.json
+.api_key
+*.pem
+*.key
+# 日志与数据
+*.log
+*.json
+!requirements.json
+# 构建产物
+build/
+dist/
+*.exe
+__pycache__/
+*.pyc
+# 系统
+.DS_Store
