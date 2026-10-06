@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""YouTube 视频上传（resumable upload）
+
+网络：出站走 relay 旁路（VM:18080 -> ssh -L -> VPS:18080 -> 目标）。
+VM 默认 egress 代理会挂起带 Authorization 的请求，直连不可用。详见 relay.py。
+"""
+import json, os, sys, urllib.request, urllib.parse
+
+sys.path.insert(0, "/home/hatch/data")
+from relay import urlopen as _urlopen
+
+OAUTH_FILE = "/home/hatch/data/youtube/.oauth.json"
+BASE = "/home/hatch/data"
+
+def _load():
+    with open(OAUTH_FILE) as f:
+        return json.load(f)
+
+def _refresh(d):
+    data = urllib.parse.urlencode({
+        'client_id': d['client_id'], 'client_secret': d['client_secret'],
+        'refresh_token': d['refresh_token'], 'grant_type': 'refresh_token',
+    }).encode()
+    req = urllib.request.Request('https://oauth2.googleapis.com/token', data=data)
+    resp = json.load(_urlopen(req, timeout=20))
+    d['token'] = resp['access_token']
+    with open(OAUTH_FILE, 'w') as f:
+        json.dump(d, f)
+    os.chmod(OAUTH_FILE, 0o600)
+    return d['token']
+
+def _req(url, token, method="GET", data=None, headers=None):
+    h = {"Authorization": f"Bearer {token}"}
+    if headers:
+        h.update(headers)
+    req = urllib.request.Request(url, data=data, headers=h, method=method)
+    try:
+        return _urlopen(req, timeout=120)
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise PermissionError("expired")
+        body = e.read().decode()[:500]
+        raise RuntimeError(f"HTTP {e.code}: {body}")
+
+def upload(filepath, title, description="", tags=None, privacy="public",
+           language=None, playlist_id=None):
+    """上传视频。
+
+    language:     BCP-47 语言码（如 "en"）。会同时写入
+                  snippet.defaultLanguage 与 snippet.defaultAudioLanguage。
+                  用途：避免英文内容被错推给中文用户（频道运营在中国）。
+    playlist_id:  上传成功后，额外调 playlistItems.insert 把视频加入该播放列表。
+                  NOTE: playlist 不属于 snippet，必须单独一次 API 调用。
+    """
+    d = _load()
+    token = d["token"]
+
+    # 安全检查：文件必须在 /home/hatch/data 内
+    fp = os.path.realpath(os.path.join(BASE, filepath) if not os.path.isabs(filepath) else filepath)
+    if not fp.startswith(BASE + "/") and fp != BASE:
+        return {"error": "path escapes /home/hatch/data"}
+    if not os.path.exists(fp):
+        return {"error": f"file not found: {filepath}"}
+
+    size = os.path.getsize(fp)
+    snip = {
+        "title": title[:100],
+        "description": description[:5000],
+        "tags": tags or [],
+        "categoryId": "28",  # Science & Technology
+    }
+    if language:
+        snip["defaultLanguage"] = language
+        snip["defaultAudioLanguage"] = language
+    metadata = {
+        "snippet": snip,
+        "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
+    }
+
+    def do_upload(tok):
+        # 1. 初始化 resumable 会话
+        init_url = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status"
+        body = json.dumps(metadata).encode()
+        r = _req(init_url, tok, "POST", body,
+                 {"Content-Type": "application/json; charset=UTF-8",
+                  "X-Upload-Content-Length": str(size),
+                  "X-Upload-Content-Type": "video/mp4"})
+        session_url = r.headers.get("Location")
+        if not session_url:
+            raise RuntimeError("no upload session URL")
+        # 2. 上传文件（单块，适合 Shorts 小文件）
+        with open(fp, "rb") as f:
+            content = f.read()
+        r2 = _req(session_url, tok, "PUT", content,
+                  {"Content-Type": "video/mp4",
+                   "Content-Length": str(size),
+                   "Content-Range": f"bytes 0-{size-1}/{size}"})
+        return json.load(r2)
+
+    def add_to_playlist(tok, video_id, pl_id):
+        """把视频加入播放列表。独立 API：playlistItems.insert。"""
+        url = ("https://www.googleapis.com/youtube/v3/playlistItems"
+               "?part=snippet")
+        body = json.dumps({
+            "snippet": {
+                "playlistId": pl_id,
+                "resourceId": {"kind": "youtube#video", "videoId": video_id},
+            }
+        }).encode()
+        r = _req(url, tok, "POST", body,
+                 {"Content-Type": "application/json; charset=UTF-8"})
+        return json.load(r)
+
+    try:
+        result = do_upload(token)
+    except PermissionError:
+        token = _refresh(d)
+        result = do_upload(token)
+
+    vid = result["id"]
+    out = {"video_id": vid,
+           "url": f"https://youtu.be/{vid}",
+           "title": result["snippet"]["title"]}
+
+    if playlist_id:
+        try:
+            plr = add_to_playlist(token, vid, playlist_id)
+            out["playlist_added"] = True
+            out["playlist_id"] = playlist_id
+            out["playlist_item_id"] = plr.get("id")
+        except PermissionError:
+            try:
+                token2 = _refresh(d)
+                plr = add_to_playlist(token2, vid, playlist_id)
+                out["playlist_added"] = True
+                out["playlist_id"] = playlist_id
+                out["playlist_item_id"] = plr.get("id")
+            except Exception as e:
+                out["playlist_added"] = False
+                out["playlist_error"] = f"{type(e).__name__}: {e}"
+        except Exception as e:
+            out["playlist_added"] = False
+            out["playlist_error"] = f"{type(e).__name__}: {e}"
+
+    return out
+
+
+def update_metadata(video_id, title=None, description=None, tags=None,
+                    language=None, playlist_id=None):
+    """修补已发布视频的 metadata（videos.update）并可选加入播放列表。
+
+    用于给已发布的视频补 tags / language / playlist。
+    NOTE: videos.update 若只传部分字段，未传的 snippet 字段会被清空，
+    故本函数先 GET 现有 snippet 再合并。
+    """
+    d = _load()
+    token = d["token"]
+
+    def fetch(tok):
+        url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}"
+        return json.load(_req(url, tok, "GET"))
+
+    def push(tok, body):
+        url = "https://www.googleapis.com/youtube/v3/videos?part=snippet"
+        return json.load(_req(url, tok, "PUT", json.dumps(body).encode(),
+                              {"Content-Type": "application/json; charset=UTF-8"}))
+
+    try:
+        cur = fetch(token)
+    except PermissionError:
+        token = _refresh(d)
+        cur = fetch(token)
+
+    items = cur.get("items") or []
+    if not items:
+        return {"error": f"video not found: {video_id}"}
+    snip = dict(items[0]["snippet"])
+    if title is not None:
+        snip["title"] = title[:100]
+    if description is not None:
+        snip["description"] = description[:5000]
+    if tags is not None:
+        snip["tags"] = tags
+    if language is not None:
+        snip["defaultLanguage"] = language
+        snip["defaultAudioLanguage"] = language
+    # videos.update 要求带 categoryId
+    snip.setdefault("categoryId", "28")
+
+    try:
+        push(token, {"id": video_id, "snippet": snip})
+    except PermissionError:
+        token = _refresh(d)
+        push(token, {"id": video_id, "snippet": snip})
+
+    out = {"video_id": video_id, "updated": True,
+           "title": snip.get("title"), "tags": snip.get("tags"),
+           "language": snip.get("defaultLanguage")}
+
+    if playlist_id:
+        try:
+            url = "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet"
+            body = json.dumps({"snippet": {
+                "playlistId": playlist_id,
+                "resourceId": {"kind": "youtube#video", "videoId": video_id}}}).encode()
+            plr = json.load(_req(url, token, "POST", body,
+                                 {"Content-Type": "application/json; charset=UTF-8"}))
+            out["playlist_added"] = True
+            out["playlist_item_id"] = plr.get("id")
+        except Exception as e:
+            out["playlist_added"] = False
+            out["playlist_error"] = f"{type(e).__name__}: {e}"
+    return out
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print(json.dumps({"error": "usage: yt_upload.py <filepath> <title> [description]"}))
+        sys.exit(1)
+    fp, title = sys.argv[1], sys.argv[2]
+    desc = sys.argv[3] if len(sys.argv) > 3 else ""
+    print(json.dumps(upload(fp, title, desc), ensure_ascii=False, indent=2))
+

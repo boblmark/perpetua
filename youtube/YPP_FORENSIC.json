@@ -1,0 +1,172 @@
+{
+  "generated": "2026-10-06",
+  "purpose": "YPP 冲刺：定位历史爆发特征",
+  "feb2026_traffic_source": {
+    "RELATED_VIDEO": {
+      "minutes": 153056,
+      "views": 21031
+    },
+    "NO_LINK_OTHER": {
+      "minutes": 6282,
+      "views": 1530
+    },
+    "SUBSCRIBER": {
+      "minutes": 5840,
+      "views": 2035
+    },
+    "SHORTS": {
+      "minutes": 1885,
+      "views": 21618
+    },
+    "YT_OTHER_PAGE": {
+      "minutes": 978,
+      "views": 265
+    },
+    "YT_SEARCH": {
+      "minutes": 282,
+      "views": 730
+    },
+    "YT_CHANNEL": {
+      "minutes": 161,
+      "views": 382
+    },
+    "EXT_URL": {
+      "minutes": 58,
+      "views": 227
+    },
+    "PLAYLIST": {
+      "minutes": 36,
+      "views": 105
+    },
+    "NOTIFICATION": {
+      "minutes": 9,
+      "views": 6
+    },
+    "HASHTAGS": {
+      "minutes": 4,
+      "views": 57
+    },
+    "SOUND_PAGE": {
+      "minutes": 0,
+      "views": 14
+    }
+  },
+  "feb2026_device": {
+    "TV": {
+      "minutes": 141174,
+      "views": 18073
+    },
+    "MOBILE": {
+      "minutes": 20210,
+      "views": 23666
+    },
+    "DESKTOP": {
+      "minutes": 5030,
+      "views": 2807
+    },
+    "TABLET": {
+      "minutes": 2055,
+      "views": 3412
+    }
+  },
+  "feb2026_country_minutes": {
+    "BR": 40979,
+    "PH": 21848,
+    "MX": 12590,
+    "ID": 10659,
+    "US": 8597,
+    "IN": 5128,
+    "AR": 4709,
+    "CO": 4090,
+    "VE": 2780,
+    "DO": 2451,
+    "EC": 2023,
+    "PE": 1892,
+    "VN": 1888,
+    "DE": 1878,
+    "MY": 1781,
+    "CL": 1629,
+    "IT": 1478,
+    "NG": 1433,
+    "FR": 1283,
+    "RO": 1065
+  },
+  "feb2026_country_views": {
+    "US": 7247,
+    "BR": 5764,
+    "PH": 3866,
+    "ID": 2074,
+    "MX": 1898,
+    "IN": 1893,
+    "ZA": 1041,
+    "GB": 811,
+    "AR": 785,
+    "DE": 643,
+    "CO": 565,
+    "IT": 540,
+    "IQ": 459,
+    "VE": 440,
+    "MY": 435,
+    "KE": 410,
+    "UZ": 384,
+    "VN": 374,
+    "TR": 353,
+    "DO": 345
+  },
+  "now90_traffic_source": {
+    "YT_SEARCH": {
+      "minutes": 119,
+      "views": 1065
+    },
+    "SHORTS": {
+      "minutes": 9,
+      "views": 108
+    },
+    "EXT_URL": {
+      "minutes": 5,
+      "views": 14
+    },
+    "YT_CHANNEL": {
+      "minutes": 3,
+      "views": 41
+    },
+    "PLAYLIST": {
+      "minutes": 2,
+      "views": 19
+    },
+    "YT_OTHER_PAGE": {
+      "minutes": 1,
+      "views": 6
+    },
+    "NO_LINK_OTHER": {
+      "minutes": 0,
+      "views": 3
+    },
+    "SUBSCRIBER": {
+      "minutes": 0,
+      "views": 7
+    }
+  },
+  "now90_device": {
+    "MOBILE": 93,
+    "DESKTOP": 23,
+    "TV": 21,
+    "TABLET": 5
+  },
+  "opcK2UYwIVM": {
+    "title": "No Buttons. No Destination. Just Doors That Open to Another World.",
+    "published": "2026-02-03T09:46:02Z",
+    "duration": "PT4M37S",
+    "categoryId": "24",
+    "statistics": {
+      "viewCount": "85",
+      "likeCount": "1",
+      "dislikeCount": "0",
+      "favoriteCount": "0",
+      "commentCount": "0"
+    },
+    "tags_count": 25,
+    "description_len": 1102
+  },
+  "day1_videos_2026_02_21_24": "见 _feb_export.py 输出"
+}

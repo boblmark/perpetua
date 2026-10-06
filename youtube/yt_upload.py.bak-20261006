@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""YouTube 视频上传（resumable upload）"""
+import json, os, sys, urllib.request, urllib.parse
+
+OAUTH_FILE = "/home/hatch/data/youtube/.oauth.json"
+BASE = "/home/hatch/data"
+
+def _load():
+    with open(OAUTH_FILE) as f:
+        return json.load(f)
+
+def _refresh(d):
+    data = urllib.parse.urlencode({
+        'client_id': d['client_id'], 'client_secret': d['client_secret'],
+        'refresh_token': d['refresh_token'], 'grant_type': 'refresh_token',
+    }).encode()
+    req = urllib.request.Request('https://oauth2.googleapis.com/token', data=data)
+    resp = json.load(urllib.request.urlopen(req, timeout=20))
+    d['token'] = resp['access_token']
+    with open(OAUTH_FILE, 'w') as f:
+        json.dump(d, f)
+    os.chmod(OAUTH_FILE, 0o600)
+    return d['token']
+
+def _req(url, token, method="GET", data=None, headers=None):
+    h = {"Authorization": f"Bearer {token}"}
+    if headers:
+        h.update(headers)
+    req = urllib.request.Request(url, data=data, headers=h, method=method)
+    try:
+        return urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise PermissionError("expired")
+        body = e.read().decode()[:500]
+        raise RuntimeError(f"HTTP {e.code}: {body}")
+
+def upload(filepath, title, description="", tags=None, privacy="public"):
+    d = _load()
+    token = d["token"]
+
+    # 安全检查：文件必须在 /home/hatch/data 内
+    fp = os.path.realpath(os.path.join(BASE, filepath) if not os.path.isabs(filepath) else filepath)
+    if not fp.startswith(BASE + "/") and fp != BASE:
+        return {"error": "path escapes /home/hatch/data"}
+    if not os.path.exists(fp):
+        return {"error": f"file not found: {filepath}"}
+
+    size = os.path.getsize(fp)
+    metadata = {
+        "snippet": {
+            "title": title[:100],
+            "description": description[:5000],
+            "tags": tags or [],
+            "categoryId": "28",  # Science & Technology
+        },
+        "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
+    }
+
+    def do_upload(tok):
+        # 1. 初始化 resumable 会话
+        init_url = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status"
+        body = json.dumps(metadata).encode()
+        r = _req(init_url, tok, "POST", body,
+                 {"Content-Type": "application/json; charset=UTF-8",
+                  "X-Upload-Content-Length": str(size),
+                  "X-Upload-Content-Type": "video/mp4"})
+        session_url = r.headers.get("Location")
+        if not session_url:
+            raise RuntimeError("no upload session URL")
+        # 2. 上传文件（单块，适合 Shorts 小文件）
+        with open(fp, "rb") as f:
+            content = f.read()
+        r2 = _req(session_url, tok, "PUT", content,
+                  {"Content-Type": "video/mp4",
+                   "Content-Length": str(size),
+                   "Content-Range": f"bytes 0-{size-1}/{size}"})
+        return json.load(r2)
+
+    try:
+        result = do_upload(token)
+    except PermissionError:
+        token = _refresh(d)
+        result = do_upload(token)
+
+    return {"video_id": result["id"],
+            "url": f"https://youtu.be/{result['id']}",
+            "title": result["snippet"]["title"]}
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print(json.dumps({"error": "usage: yt_upload.py <filepath> <title> [description]"}))
+        sys.exit(1)
+    fp, title = sys.argv[1], sys.argv[2]
+    desc = sys.argv[3] if len(sys.argv) > 3 else ""
+    print(json.dumps(upload(fp, title, desc), ensure_ascii=False, indent=2))

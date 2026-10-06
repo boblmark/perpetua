@@ -1,0 +1,670 @@
+{
+  "version": "v2-data",
+  "trained_on": 481,
+  "base_avg_views": 1543,
+  "min_df": 8,
+  "weights": {
+    "s:title_short": 0.11598269540731998,
+    "s:karen": 0.3222576450150232,
+    "w:karen": 0.3329542755180279,
+    "s:dash_twist": 0.34022461201315846,
+    "s:hashtag_shorts": -0.33192905333943123,
+    "s:has_number": -0.14713437385262296,
+    "w:machine": -0.12383472814855523,
+    "w:cctv": 0.04784568526533217,
+    "w:footage": -1.210887113980763,
+    "s:emoji_strong": 0.18809595820367608,
+    "s:emoji_object": 0.2468637067417383,
+    "w:spot": -0.4021183135787201,
+    "w:instantkarma": 0.2252199415638616,
+    "s:question": -0.3470936990370914,
+    "w:demo": -0.427111514481064,
+    "w:checkout": 0.37502088945548007,
+    "s:exclaim": 0.06752813687309711,
+    "w:self": 0.3178657499508004,
+    "s:title_long": -0.2730817638740808,
+    "w:automobile": -0.5745395492303063,
+    "w:got": -0.0005335783968067886,
+    "w:but": -0.058145172327046524,
+    "w:she": -0.14838133559967925,
+    "w:dog": -0.05889225267999798,
+    "w:was": -0.28775447959007927,
+    "w:just": -1.0811812381017116,
+    "w:car": 0.477147682402447,
+    "w:wait": -0.12081255214652842,
+    "w:did": -0.42481743777046344,
+    "w:protocol": 0.865001762251338,
+    "w:into": -0.3458649015374764,
+    "w:funny": -0.17218559857346794,
+    "w:petchaos": -0.22250119806224067,
+    "w:cat": -0.06478472067686525,
+    "w:then": 0.09359218207611875,
+    "w:tried": -0.03432817785131359,
+    "w:roadrage": -0.23664013773769899,
+    "w:fail": 0.8138592221740302,
+    "w:her": 0.5318176617276942,
+    "w:robot": -0.3697370171308947,
+    "w:karma": 0.16947060185758822,
+    "w:instant": 0.4000702651372565,
+    "w:door": 0.3257908846237614,
+    "w:wig": -0.09804646274267625,
+    "w:coffee": -0.21452630004728324,
+    "w:when": -0.2989951290196817,
+    "w:digital": -0.6209812728830411,
+    "w:goldenretriever": -0.23956190698161084,
+    "w:security": -0.5642469135404493,
+    "w:what": -0.2586355313919686,
+    "w:trapped": -0.08033113252612711,
+    "w:kicked": 0.026053433282501537,
+    "w:smart": 0.9287215060505902,
+    "w:out": -0.4368421301810095,
+    "w:face": 0.5548716349196976,
+    "w:stole": -0.24825827309085025,
+    "w:exploded": 1.0571917623058686,
+    "w:saw": -0.18096941614707074,
+    "w:gym": 0.17161584087751702,
+    "w:own": 0.9563673338733869,
+    "w:viral": -0.10760905843161872,
+    "w:pizza": 0.5295929349111033,
+    "w:see": -0.3057296978989541,
+    "w:his": -0.03671674905998579,
+    "w:anomaly": -0.6158846262027939,
+    "w:reflection": -0.2562733555688519,
+    "w:hero": 0.3528010188304336,
+    "w:from": -0.2810130301794267,
+    "w:wrong": 0.9615636230033013,
+    "w:instantly": 0.0018373184740712034,
+    "w:water": 0.2075224078058877,
+    "w:gone": -0.16041153557211096,
+    "w:cart": -0.018607558269866153,
+    "w:had": -0.21242071948292995,
+    "w:caught": 0.3815656911219083,
+    "w:its": 0.017228430983969645,
+    "w:not": -0.19908851524025817,
+    "w:secret": -1.1710620575192943,
+    "w:camera": 0.2924255249095813,
+    "w:neighbor": 0.15690534200936135,
+    "w:forensics": -0.8061545207754053,
+    "w:revealed": -1.1746677607569982,
+    "w:gymfail": 0.22547966437838785,
+    "w:saved": -0.5326789623693235,
+    "w:parking": -0.2881325412186264,
+    "w:delivery": -0.3165840758241405,
+    "w:guy": 0.06492499676278118,
+    "w:off": -0.5818831195067888,
+    "w:office": -0.3293573040395854,
+    "w:elevator": 1.2771687244741363,
+    "w:glitch": -0.4425553538483715,
+    "w:gets": 1.104424992165442,
+    "w:crazy": -0.35515180900587673,
+    "w:uncanny": -0.3968620668221252,
+    "w:warning": -0.6534880952216646,
+    "w:horror": -0.22150238509288034,
+    "w:cam": 0.07698762652397573,
+    "w:creepy": 0.03433084561684652,
+    "w:hoa": 0.5774239956243292,
+    "w:fire": -0.6381621247434381,
+    "w:hoafail": 0.20556362935155814,
+    "w:catches": -0.6418485383553953,
+    "w:pause": -0.23025413310752896,
+    "w:subscribe": 0.15181310862778652,
+    "w:baby": -0.5389069252027765,
+    "w:case": 0.9463691887032839,
+    "w:satire": 1.2567599356201162,
+    "w:experiment": 0.08218179581342433,
+    "w:visual": 0.08218179581342433,
+    "w:doorbell": 0.2760822775306613
+  },
+  "stats": {
+    "s:title_short": {
+      "n": 107,
+      "avg_views": 1733,
+      "lift": 1.123
+    },
+    "s:karen": {
+      "n": 138,
+      "avg_views": 2130,
+      "lift": 1.38
+    },
+    "w:karen": {
+      "n": 135,
+      "avg_views": 2153,
+      "lift": 1.395
+    },
+    "s:dash_twist": {
+      "n": 129,
+      "avg_views": 2169,
+      "lift": 1.405
+    },
+    "s:hashtag_shorts": {
+      "n": 19,
+      "avg_views": 1107,
+      "lift": 0.718
+    },
+    "s:has_number": {
+      "n": 97,
+      "avg_views": 1332,
+      "lift": 0.863
+    },
+    "w:machine": {
+      "n": 15,
+      "avg_views": 1364,
+      "lift": 0.884
+    },
+    "w:cctv": {
+      "n": 15,
+      "avg_views": 1619,
+      "lift": 1.049
+    },
+    "w:footage": {
+      "n": 11,
+      "avg_views": 460,
+      "lift": 0.298
+    },
+    "s:emoji_strong": {
+      "n": 345,
+      "avg_views": 1863,
+      "lift": 1.207
+    },
+    "s:emoji_object": {
+      "n": 98,
+      "avg_views": 1976,
+      "lift": 1.28
+    },
+    "w:spot": {
+      "n": 14,
+      "avg_views": 1032,
+      "lift": 0.669
+    },
+    "w:instantkarma": {
+      "n": 66,
+      "avg_views": 1933,
+      "lift": 1.253
+    },
+    "s:question": {
+      "n": 61,
+      "avg_views": 1091,
+      "lift": 0.707
+    },
+    "w:demo": {
+      "n": 8,
+      "avg_views": 1007,
+      "lift": 0.652
+    },
+    "w:checkout": {
+      "n": 8,
+      "avg_views": 2246,
+      "lift": 1.455
+    },
+    "s:exclaim": {
+      "n": 347,
+      "avg_views": 1651,
+      "lift": 1.07
+    },
+    "w:self": {
+      "n": 8,
+      "avg_views": 2121,
+      "lift": 1.374
+    },
+    "s:title_long": {
+      "n": 66,
+      "avg_views": 1175,
+      "lift": 0.761
+    },
+    "w:automobile": {
+      "n": 21,
+      "avg_views": 869,
+      "lift": 0.563
+    },
+    "w:got": {
+      "n": 13,
+      "avg_views": 1543,
+      "lift": 0.999
+    },
+    "w:but": {
+      "n": 11,
+      "avg_views": 1456,
+      "lift": 0.944
+    },
+    "w:she": {
+      "n": 28,
+      "avg_views": 1331,
+      "lift": 0.862
+    },
+    "w:dog": {
+      "n": 53,
+      "avg_views": 1455,
+      "lift": 0.943
+    },
+    "w:was": {
+      "n": 16,
+      "avg_views": 1157,
+      "lift": 0.75
+    },
+    "w:just": {
+      "n": 20,
+      "avg_views": 524,
+      "lift": 0.339
+    },
+    "w:car": {
+      "n": 36,
+      "avg_views": 2487,
+      "lift": 1.611
+    },
+    "w:wait": {
+      "n": 11,
+      "avg_views": 1368,
+      "lift": 0.886
+    },
+    "w:did": {
+      "n": 32,
+      "avg_views": 1009,
+      "lift": 0.654
+    },
+    "w:protocol": {
+      "n": 10,
+      "avg_views": 3666,
+      "lift": 2.375
+    },
+    "w:into": {
+      "n": 21,
+      "avg_views": 1092,
+      "lift": 0.708
+    },
+    "w:funny": {
+      "n": 59,
+      "avg_views": 1299,
+      "lift": 0.842
+    },
+    "w:petchaos": {
+      "n": 29,
+      "avg_views": 1235,
+      "lift": 0.801
+    },
+    "w:cat": {
+      "n": 33,
+      "avg_views": 1447,
+      "lift": 0.937
+    },
+    "w:then": {
+      "n": 37,
+      "avg_views": 1695,
+      "lift": 1.098
+    },
+    "w:tried": {
+      "n": 25,
+      "avg_views": 1491,
+      "lift": 0.966
+    },
+    "w:roadrage": {
+      "n": 51,
+      "avg_views": 1218,
+      "lift": 0.789
+    },
+    "w:fail": {
+      "n": 24,
+      "avg_views": 3483,
+      "lift": 2.257
+    },
+    "w:her": {
+      "n": 80,
+      "avg_views": 2627,
+      "lift": 1.702
+    },
+    "w:robot": {
+      "n": 12,
+      "avg_views": 1066,
+      "lift": 0.691
+    },
+    "w:karma": {
+      "n": 57,
+      "avg_views": 1828,
+      "lift": 1.185
+    },
+    "w:instant": {
+      "n": 46,
+      "avg_views": 2303,
+      "lift": 1.492
+    },
+    "w:door": {
+      "n": 12,
+      "avg_views": 2138,
+      "lift": 1.385
+    },
+    "w:wig": {
+      "n": 9,
+      "avg_views": 1399,
+      "lift": 0.907
+    },
+    "w:coffee": {
+      "n": 8,
+      "avg_views": 1245,
+      "lift": 0.807
+    },
+    "w:when": {
+      "n": 8,
+      "avg_views": 1144,
+      "lift": 0.742
+    },
+    "w:digital": {
+      "n": 14,
+      "avg_views": 829,
+      "lift": 0.537
+    },
+    "w:goldenretriever": {
+      "n": 12,
+      "avg_views": 1215,
+      "lift": 0.787
+    },
+    "w:security": {
+      "n": 13,
+      "avg_views": 878,
+      "lift": 0.569
+    },
+    "w:what": {
+      "n": 11,
+      "avg_views": 1192,
+      "lift": 0.772
+    },
+    "w:trapped": {
+      "n": 13,
+      "avg_views": 1424,
+      "lift": 0.923
+    },
+    "w:kicked": {
+      "n": 10,
+      "avg_views": 1584,
+      "lift": 1.026
+    },
+    "w:smart": {
+      "n": 9,
+      "avg_views": 3907,
+      "lift": 2.531
+    },
+    "w:out": {
+      "n": 8,
+      "avg_views": 997,
+      "lift": 0.646
+    },
+    "w:face": {
+      "n": 10,
+      "avg_views": 2688,
+      "lift": 1.742
+    },
+    "w:stole": {
+      "n": 15,
+      "avg_views": 1204,
+      "lift": 0.78
+    },
+    "w:exploded": {
+      "n": 9,
+      "avg_views": 4442,
+      "lift": 2.878
+    },
+    "w:saw": {
+      "n": 8,
+      "avg_views": 1288,
+      "lift": 0.834
+    },
+    "w:gym": {
+      "n": 16,
+      "avg_views": 1832,
+      "lift": 1.187
+    },
+    "w:own": {
+      "n": 17,
+      "avg_views": 4016,
+      "lift": 2.602
+    },
+    "w:viral": {
+      "n": 138,
+      "avg_views": 1386,
+      "lift": 0.898
+    },
+    "w:pizza": {
+      "n": 8,
+      "avg_views": 2621,
+      "lift": 1.698
+    },
+    "w:see": {
+      "n": 11,
+      "avg_views": 1137,
+      "lift": 0.737
+    },
+    "w:his": {
+      "n": 18,
+      "avg_views": 1488,
+      "lift": 0.964
+    },
+    "w:anomaly": {
+      "n": 9,
+      "avg_views": 834,
+      "lift": 0.54
+    },
+    "w:reflection": {
+      "n": 11,
+      "avg_views": 1194,
+      "lift": 0.774
+    },
+    "w:hero": {
+      "n": 18,
+      "avg_views": 2196,
+      "lift": 1.423
+    },
+    "w:from": {
+      "n": 15,
+      "avg_views": 1165,
+      "lift": 0.755
+    },
+    "w:wrong": {
+      "n": 10,
+      "avg_views": 4037,
+      "lift": 2.616
+    },
+    "w:instantly": {
+      "n": 20,
+      "avg_views": 1546,
+      "lift": 1.002
+    },
+    "w:water": {
+      "n": 10,
+      "avg_views": 1899,
+      "lift": 1.231
+    },
+    "w:gone": {
+      "n": 8,
+      "avg_views": 1315,
+      "lift": 0.852
+    },
+    "w:cart": {
+      "n": 11,
+      "avg_views": 1515,
+      "lift": 0.982
+    },
+    "w:had": {
+      "n": 8,
+      "avg_views": 1248,
+      "lift": 0.809
+    },
+    "w:caught": {
+      "n": 27,
+      "avg_views": 2260,
+      "lift": 1.465
+    },
+    "w:its": {
+      "n": 11,
+      "avg_views": 1570,
+      "lift": 1.017
+    },
+    "w:not": {
+      "n": 8,
+      "avg_views": 1265,
+      "lift": 0.819
+    },
+    "w:secret": {
+      "n": 12,
+      "avg_views": 478,
+      "lift": 0.31
+    },
+    "w:camera": {
+      "n": 15,
+      "avg_views": 2068,
+      "lift": 1.34
+    },
+    "w:neighbor": {
+      "n": 9,
+      "avg_views": 1806,
+      "lift": 1.17
+    },
+    "w:forensics": {
+      "n": 9,
+      "avg_views": 689,
+      "lift": 0.447
+    },
+    "w:revealed": {
+      "n": 9,
+      "avg_views": 477,
+      "lift": 0.309
+    },
+    "w:gymfail": {
+      "n": 14,
+      "avg_views": 1934,
+      "lift": 1.253
+    },
+    "w:saved": {
+      "n": 10,
+      "avg_views": 906,
+      "lift": 0.587
+    },
+    "w:parking": {
+      "n": 13,
+      "avg_views": 1157,
+      "lift": 0.75
+    },
+    "w:delivery": {
+      "n": 11,
+      "avg_views": 1125,
+      "lift": 0.729
+    },
+    "w:guy": {
+      "n": 9,
+      "avg_views": 1647,
+      "lift": 1.067
+    },
+    "w:off": {
+      "n": 10,
+      "avg_views": 862,
+      "lift": 0.559
+    },
+    "w:office": {
+      "n": 11,
+      "avg_views": 1110,
+      "lift": 0.719
+    },
+    "w:elevator": {
+      "n": 9,
+      "avg_views": 5535,
+      "lift": 3.586
+    },
+    "w:glitch": {
+      "n": 27,
+      "avg_views": 991,
+      "lift": 0.642
+    },
+    "w:gets": {
+      "n": 13,
+      "avg_views": 4657,
+      "lift": 3.017
+    },
+    "w:crazy": {
+      "n": 9,
+      "avg_views": 1082,
+      "lift": 0.701
+    },
+    "w:uncanny": {
+      "n": 89,
+      "avg_views": 1038,
+      "lift": 0.672
+    },
+    "w:warning": {
+      "n": 10,
+      "avg_views": 803,
+      "lift": 0.52
+    },
+    "w:horror": {
+      "n": 46,
+      "avg_views": 1237,
+      "lift": 0.801
+    },
+    "w:cam": {
+      "n": 24,
+      "avg_views": 1667,
+      "lift": 1.08
+    },
+    "w:creepy": {
+      "n": 15,
+      "avg_views": 1597,
+      "lift": 1.035
+    },
+    "w:hoa": {
+      "n": 34,
+      "avg_views": 2749,
+      "lift": 1.781
+    },
+    "w:fire": {
+      "n": 10,
+      "avg_views": 815,
+      "lift": 0.528
+    },
+    "w:hoafail": {
+      "n": 12,
+      "avg_views": 1896,
+      "lift": 1.228
+    },
+    "w:catches": {
+      "n": 10,
+      "avg_views": 812,
+      "lift": 0.526
+    },
+    "w:pause": {
+      "n": 17,
+      "avg_views": 1226,
+      "lift": 0.794
+    },
+    "w:subscribe": {
+      "n": 26,
+      "avg_views": 1796,
+      "lift": 1.164
+    },
+    "w:baby": {
+      "n": 8,
+      "avg_views": 900,
+      "lift": 0.583
+    },
+    "w:case": {
+      "n": 9,
+      "avg_views": 3976,
+      "lift": 2.576
+    },
+    "w:satire": {
+      "n": 10,
+      "avg_views": 5423,
+      "lift": 3.514
+    },
+    "w:experiment": {
+      "n": 9,
+      "avg_views": 1676,
+      "lift": 1.086
+    },
+    "w:visual": {
+      "n": 9,
+      "avg_views": 1676,
+      "lift": 1.086
+    },
+    "w:doorbell": {
+      "n": 12,
+      "avg_views": 2034,
+      "lift": 1.318
+    }
+  }
+}

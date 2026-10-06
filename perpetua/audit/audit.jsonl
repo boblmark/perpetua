@@ -1,0 +1,4 @@
+{"ts": "2026-10-06T04:18:42Z", "action": "token_issue", "tenant_id": "default", "detail": {"role": "viewer", "note": "test-viewer"}}
+{"ts": "2026-10-06T04:19:10Z", "action": "compliance_check", "tenant_id": "default", "detail": {"title": "Karen Gets Owned by AI Cashier 😱", "pass": true, "warnings": 1}}
+{"ts": "2026-10-06T04:19:10Z", "action": "compliance_block", "tenant_id": "default", "detail": {"title": "How to scam people with crypto", "reason": "违禁词拦截: 'scam'"}}
+{"ts": "2026-10-06T12:23:40Z", "action": "compliance_check", "tenant_id": "default", "detail": {"title": "Karen Demanded Free Candy Protocol—The AI Doorbell Gave Her ", "pass": true, "warnings": 1}}

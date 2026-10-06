@@ -1,0 +1,26 @@
+{
+  "ts": "2026-10-06T04:18:58Z",
+  "healthy": true,
+  "checks": {
+    "mcp_server": {
+      "ok": true,
+      "detail": "port 8734 + process"
+    },
+    "ssh_tunnel": {
+      "ok": true,
+      "detail": "to 192.166.82.123:8734"
+    },
+    "youtube_oauth": {
+      "ok": true,
+      "detail": "ok"
+    },
+    "disk": {
+      "ok": true,
+      "detail": "105.6GB free"
+    },
+    "crons": {
+      "ok": true,
+      "detail": "all present"
+    }
+  }
+}

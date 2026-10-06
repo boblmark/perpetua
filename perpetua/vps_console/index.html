@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Perpetua by ViralLoop · 控制台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+--bg:#070a12; --surface:#0d1320; --surface2:#111a2a; --border:#202d42;
+--text:#e6edf3; --muted:#8c9bb3; --primary:#36a3ff; --purple:#8b5cf6;
+--green:#37d67a; --red:#ff6b6b; --amber:#f5b84b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--text);font-family:"IBM Plex Sans",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;min-height:100vh}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.page{max-width:1440px;margin:0 auto;padding:20px 24px 120px}
+.tenant-bar{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:16px}
+.tenant-bar .tlabel{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
+.tenant-bar select{width:100%;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;height:36px;padding:0 12px;font-size:14px;font-family:inherit}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border-radius:999px;padding:5px 12px;white-space:nowrap}
+.badge.active{color:var(--green);background:rgba(55,214,122,.11)}
+.badge.suspended{color:var(--amber);background:rgba(245,184,75,.11)}
+.badge.plan{color:var(--primary);background:rgba(54,163,255,.12)}
+.topline{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+.dot-live{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.topline h1{font-size:20px;font-weight:700}
+.topline .sub{color:var(--muted);font-size:12px;margin-top:2px}
+.topline .sub .brand{color:var(--primary)}
+.topline .actions{margin-left:auto;display:flex;gap:8px}
+.btn{background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--primary)}
+.btn.primary{background:#1f6feb;border-color:#1f6feb;color:#fff}
+.btn.primary:hover{background:#388bfd}
+.btn.active{border-color:var(--green);color:var(--green)}
+.btn.danger{color:var(--red);border-color:var(--border);background:transparent}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.context-row{display:flex;align-items:center;gap:10px;margin:10px 0 18px;font-size:12px;color:var(--muted)}
+.chip-demo{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--primary);border:1px solid rgba(54,163,255,.4);background:rgba(54,163,255,.08);border-radius:6px;padding:3px 8px}
+.chip-live{font-family:"IBM Plex Mono",monospace;font-size:11px;color:#3fb950;border:1px solid rgba(63,185,80,.4);background:rgba(63,185,80,.08);border-radius:6px;padding:3px 8px}
+.hero-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:20px;position:relative;overflow:hidden}
+.card h3{font-size:15px;font-weight:600;margin-bottom:4px}
+.card .en{font-size:11px;color:var(--muted);font-weight:400}
+.ypp-glow{position:absolute;right:-60px;bottom:-60px;width:220px;height:220px;background:radial-gradient(circle,rgba(139,92,246,.25),transparent 70%);pointer-events:none}
+.ypp-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.goal-pill{font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:4px 10px}
+.ypp-body{display:flex;gap:20px;align-items:center}
+.ring{width:128px;height:128px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;position:relative;
+background:conic-gradient(var(--primary) 0deg, var(--purple) 89.6deg, var(--border) 89.6deg 360deg)}
+.ring::before{content:"";position:absolute;inset:12px;border-radius:50%;background:var(--surface)}
+.ring .in{position:relative;text-align:center}
+.ring .pct{font-family:"IBM Plex Mono",monospace;font-size:22px;font-weight:600}
+.ring .lbl{font-size:11px;color:var(--muted)}
+.ypp-num{font-family:"IBM Plex Mono",monospace;font-size:34px;font-weight:600}
+.ypp-sub{color:var(--muted);font-size:13px;margin-top:2px}
+.ypp-bar{height:6px;border-radius:3px;background:var(--border);margin-top:14px;overflow:hidden}
+.ypp-bar i{display:block;height:100%;width:24.9%;background:linear-gradient(90deg,var(--primary),var(--purple));border-radius:3px}
+.metrics-panel{display:flex;flex-direction:column;justify-content:center;gap:0}
+.metric{display:flex;justify-content:space-between;align-items:center;padding:16px 4px;border-bottom:1px solid var(--border)}
+.metric:last-child{border-bottom:none}
+.metric .k{font-size:13px}.metric .k .en{color:var(--muted);font-size:11px;margin-left:6px}
+.metric .v{font-family:"IBM Plex Mono",monospace;font-size:24px;font-weight:600}
+.metric .v.blue{color:var(--primary)}
+.workspace-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:1100px){.workspace-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.workspace-grid{grid-template-columns:1fr}}
+table.videos{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+table.videos th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:8px 6px;border-bottom:1px solid var(--border)}
+table.videos td{padding:10px 6px;border-bottom:1px solid var(--border);vertical-align:middle}
+table.videos tr:last-child td{border-bottom:none}
+table.videos a{color:var(--text);text-decoration:none}
+table.videos a:hover{color:var(--primary)}
+.ext{color:var(--muted);font-size:11px}
+.sdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.sdot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+.sdot.warn{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.sdot.bad{background:var(--red)}
+.plan-group{margin-top:14px}
+.plan-group:first-of-type{margin-top:8px}
+.plan-ghead{display:flex;align-items:center;font-size:13px;font-weight:600;margin-bottom:4px}
+.plan-ghead .cnt{color:var(--muted);font-size:12px;font-weight:500;margin-left:6px}
+.health-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px}
+.health-row:last-child{border-bottom:none}
+.health-row .d{color:var(--muted);font-size:12px}
+.health-head{display:flex;justify-content:space-between;align-items:center}
+.health-head .cnt{color:var(--green);font-size:12px;font-weight:600}
+.plan-big{font-size:22px;font-weight:700}
+.quota-num{font-family:"IBM Plex Mono",monospace;font-size:20px;margin:8px 0}
+.quota-bar{height:8px;border-radius:4px;background:var(--border);overflow:hidden;margin:8px 0}
+.quota-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--primary),var(--purple));border-radius:4px}
+.pipeline-block{margin-bottom:16px}
+.pipeline-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.pipeline-head h3{font-size:16px}
+.live-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+.live-badge.live{color:var(--green)}.live-badge.stale{color:var(--amber)}.live-badge.offline{color:var(--muted)}
+.pipeline-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
+@media(max-width:1180px){.pipeline-grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:800px){.pipeline-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.pipeline-grid{grid-template-columns:1fr}}
+.stage-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;position:relative;transition:border-color .3s}
+.stage-card.working{border-color:var(--amber)}
+.stage-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.stage-dot{width:10px;height:10px;border-radius:50%;flex:none}
+.stage-dot.ok{background:var(--green);box-shadow:0 0 8px var(--green)}
+.stage-dot.working{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.stage-dot.error{background:var(--red)}
+.stage-dot.idle{background:var(--muted)}
+.stage-name{font-size:13px;font-weight:600}
+.stage-name .en{color:var(--muted);font-weight:400;font-size:11px;margin-left:4px}
+.ai-badge{font-size:10px;font-weight:700;color:#c4b5fd;background:rgba(139,92,246,.18);border-radius:4px;padding:2px 6px;margin-left:6px}
+.stage-count{position:absolute;top:12px;right:14px;font-family:"IBM Plex Mono",monospace;font-size:20px;font-weight:600}
+.stage-detail{font-size:12px;color:var(--muted);min-height:32px;margin:6px 0}
+.stage-foot{font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px}
+.stage-foot .ok{color:var(--green)}
+.pipeline-foot{margin-top:10px;font-size:12px;color:var(--muted);text-align:right}
+.logs-panel{margin-bottom:16px}
+.comments-panel{margin-bottom:16px}
+.comments-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
+.comments-head h3{font-size:15px;font-weight:600}
+.comments-list{display:flex;flex-direction:column;gap:10px;max-height:420px;overflow-y:auto}
+.comment-item{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.comment-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px}
+.comment-author{font-weight:600;font-size:13px;color:var(--primary)}
+.comment-time{font-size:11px;color:var(--muted)}
+.comment-text{font-size:13px;line-height:1.5;margin-bottom:6px;word-break:break-word}
+.comment-video{font-size:11px;color:var(--muted);margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.comment-actions{display:flex;gap:8px;align-items:center}
+.badge.replied{color:var(--green);background:rgba(55,214,122,.11)}
+.badge.unreplied{color:var(--amber);background:rgba(245,184,75,.11)}
+.btn.small{padding:4px 12px;font-size:12px}
+.logs-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px}
+.logs-head h3{font-size:16px}
+.log-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.log-tabs button{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.log-tabs button.active{border-color:var(--primary);color:var(--primary);background:rgba(54,163,255,.14)}
+.log-sync{font-size:12px;color:var(--muted)}
+.log-sync.syncing{color:var(--amber)}
+.log-box{background:#03070d;border:1px solid #172438;border-radius:10px;height:270px;overflow-y:auto;padding:12px;font-family:"IBM Plex Mono",monospace;font-size:10px;line-height:1.7;color:#c9d1d9}
+@media(max-width:560px){.log-box{height:240px}}
+.log-src{position:sticky;top:0;background:#03070d;padding:4px 0;color:#56b5ff;font-size:10px}
+.log-src .t{color:var(--muted);margin-left:8px}
+.log-line .lbl{color:var(--green)}
+.settings-block{margin-bottom:16px}
+.settings-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.set-row{margin-bottom:18px}
+.set-row label{font-size:13px;display:block;margin-bottom:8px}
+.set-row label .en{color:var(--muted);font-size:11px;margin-left:6px}
+.set-flex{display:flex;align-items:center;gap:12px}
+input[type=range]{flex:1;accent-color:var(--primary)}
+.set-num{width:70px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:14px;font-family:"IBM Plex Mono",monospace}
+.set-big{font-family:"IBM Plex Mono",monospace;font-size:22px;color:var(--primary);min-width:50px;text-align:right}
+.set-hint{font-size:12px;color:var(--muted);margin-top:6px}
+select.plan{background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit}
+.switch{position:relative;width:46px;height:26px;flex:none;cursor:pointer}
+.switch input{opacity:0;width:0;height:0}
+.switch .tr{position:absolute;inset:0;background:var(--border);border-radius:999px;transition:.2s}
+.switch .tr::before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.switch input:checked+.tr{background:var(--primary)}
+.switch input:checked+.tr::before{transform:translateX(20px)}
+.switch.on{outline:1px solid var(--primary);border-radius:999px}
+.toggle-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none}
+.settings-foot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap;gap:10px}
+.tm-head{display:flex;justify-content:space-between;align-items:center;margin:20px 0 10px}
+table.tm{width:100%;border-collapse:collapse;font-size:13px}
+table.tm th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:8px;border-bottom:1px solid var(--border)}
+table.tm td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+.plan-mono{font-family:"IBM Plex Mono",monospace;color:var(--primary);font-size:12px}
+.op-btn{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;margin-right:6px;font-family:inherit}
+.op-btn:hover{border-color:var(--primary)}
+.op-btn.del{color:var(--red)}
+.op-btn:disabled{opacity:.35;cursor:not-allowed}
+.term-panel{display:none;background:#020508;border:1px solid #24354c;border-radius:13px;margin-bottom:16px;overflow:hidden}
+.term-panel.open{display:block}
+.term-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #24354c}
+.term-head .t{font-weight:600}
+.term-head .wd{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted)}
+.term-head .sp{margin-left:auto;display:flex;gap:8px}
+.warn-bar{background:rgba(245,184,75,.1);border-bottom:1px solid rgba(245,184,75,.3);color:var(--amber);font-size:12px;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.term-out{padding:14px 16px;min-height:120px;max-height:min(380px,48vh);overflow-y:auto;font-family:"IBM Plex Mono",monospace;font-size:13px}
+.term-out .cmd{color:#fff;margin:8px 0 4px}
+.term-out .prompt{color:var(--green)}
+.term-out pre{color:#b3c1d3;white-space:pre-wrap;margin:0 0 4px}
+.term-out .exit-ok{color:var(--green);font-size:11px}
+.term-out .exit-bad{color:var(--red);font-size:11px}
+.term-out .running{color:var(--amber);animation:pulse 1s infinite}
+.term-in{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #24354c;align-items:center}
+.term-in .p{color:var(--green);font-family:"IBM Plex Mono",monospace}
+.term-in input{flex:1;background:#000;border:1px solid var(--border);border-radius:6px;color:var(--text);padding:10px;font-family:"IBM Plex Mono",monospace;font-size:13px}
+.term-in .run{background:var(--green);border:none;color:#04120a;font-weight:700;border-radius:6px;padding:10px 18px;cursor:pointer}
+.chat-launch{position:fixed;right:24px;bottom:24px;width:54px;height:54px;border-radius:50%;background:#1f6feb;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(31,111,235,.5);display:flex;align-items:center;justify-content:center;z-index:90}
+.chat-launch svg{width:26px;height:26px;fill:#fff}
+.chat-panel{position:fixed;right:24px;bottom:90px;width:390px;max-width:calc(100vw - 32px);height:570px;max-height:calc(100vh - 120px);background:#0b111d;border:1px solid var(--border);border-radius:15px;display:none;flex-direction:column;z-index:91;overflow:hidden}
+.chat-panel.open{display:flex}
+.chat-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border);font-weight:600}
+.chat-head .x{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
+.chat-hist{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:85%}
+.msg .who{font-size:10px;color:var(--muted);margin-bottom:3px}
+.msg .b{border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.55;white-space:pre-wrap}
+.msg.a{align-self:flex-start}.msg.a .b{background:#141e2f;border-bottom-left-radius:4px}
+.msg.u{align-self:flex-end;text-align:right}.msg.u .b{background:#087eea;color:#fff;border-bottom-right-radius:4px}
+.typing{display:flex;gap:4px;padding:10px 12px;background:#141e2f;border-radius:12px;width:fit-content}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:pulse 1s infinite}
+.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+.chat-hint{font-size:11px;color:var(--muted);padding:0 14px 8px}
+.chat-in{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border)}
+.chat-in textarea{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-family:inherit;font-size:13px;resize:none;height:42px}
+.chat-in button{background:#1f6feb;border:none;color:#fff;border-radius:8px;padding:0 16px;cursor:pointer;font-size:13px}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:100}
+.modal-bg.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:420px;max-width:calc(100vw - 40px)}
+.modal h3{margin-bottom:16px}
+.modal .f{margin-bottom:12px}
+.modal .f label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.modal .f input,.modal .f select{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:14px;font-family:inherit}
+.modal .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.toast{position:fixed;right:24px;bottom:24px;background:rgba(55,214,122,.14);border:1px solid var(--green);color:var(--green);border-radius:10px;padding:12px 18px;font-size:13px;display:none;z-index:120}
+.toast.show{display:block;animation:tin .25s}
+@keyframes tin{from{transform:translateY(10px);opacity:0}}
+.loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:60px;color:var(--muted)}
+.spinner{width:22px;height:22px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hint{color:var(--muted);font-size:12px}
+.tab-nav{display:flex;gap:8px;margin:16px 0 4px;overflow-x:auto;padding-bottom:6px}
+.tab-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:10px 18px;border-radius:10px;font-size:13px;cursor:pointer;white-space:nowrap;font-family:inherit;font-weight:600;transition:all .15s}
+.tab-btn:hover{color:var(--text);border-color:var(--primary)}
+.tab-btn.active{color:#fff;border-color:var(--primary);background:rgba(54,163,255,.14);box-shadow:0 0 12px rgba(54,163,255,.15)}
+.tab-badge{display:inline-block;min-width:18px;height:18px;line-height:18px;text-align:center;background:var(--red);color:#fff;font-size:11px;font-weight:700;border-radius:9px;padding:0 5px;margin-left:6px;vertical-align:1px}
+.tab-panel{display:none}
+.tab-panel.active{display:block;animation:tfade .2s ease}
+@keyframes tfade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.tab-panel>.card,.tab-panel>.pipeline-block,.tab-panel>.tenant-bar{margin-top:14px}
+</style>
+</head>
+<body>
+<div class="page" id="app">
+<div class="loading"><div class="spinner"></div>正在加载控制台 · Loading control plane</div>
+</div>
+<!-- chat dock -->
+<button class="chat-launch" id="chatLaunch" onclick="toggleChat()" aria-label="chat">
+<svg viewBox="0 0 24 24"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/></svg>
+</button>
+<div class="chat-panel" id="chatPanel">
+<div class="chat-head"><span>系统对话 / Perpetua command chat</span><button class="x" onclick="toggleChat()">×</button></div>
+<div class="chat-hist" id="chatHist"></div>
+<div class="chat-hint">复杂问题由 Marvis 异步处理 · Complex questions are handled asynchronously by Marvis.</div>
+<div class="chat-in">
+    <textarea id="chatIn" placeholder="输入问题… / Ask…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"></textarea>
+<button onclick="sendChat()">发送</button>
+</div>
+</div>
+<!-- add tenant modal -->
+<div class="modal-bg" id="mAdd">
+<div class="modal">
+<h3>添加租户 · Add tenant</h3>
+<div class="f"><label>租户名称 · Name</label><input id="ntName" placeholder="my-channel"></div>
+<div class="f"><label>YouTube 频道 ID</label><input id="ntCh" placeholder="UC..."></div>
+<div class="f"><label>套餐 · Plan</label><select id="ntPlan"><option>Free</option><option selected>Pro</option><option>Enterprise</option></select></div>
+<div class="btns"><button class="btn" onclick="closeModal('mAdd')">取消 · Cancel</button><button class="btn primary" onclick="addTenant()">添加 · Add</button></div>
+</div>
+</div>
+<!-- delete tenant modal -->
+<div class="modal-bg" id="mDel">
+<div class="modal">
+<h3>删除这个租户？ · Delete tenant?</h3>
+<p class="hint" style="margin-bottom:8px">此操作会从本设备移除租户配置。</p>
+<div class="btns"><button class="btn" onclick="closeModal('mDel')">取消 · Cancel</button><button class="btn danger" id="delConfirm" onclick="delTenantGo()">删除 · Delete</button></div>
+</div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+
+const LS_SNAP='perpetua-demo-dashboard-v3', LS_SET='perpetua-settings-v2', LS_TEN='perpetua-tenants-v1', LS_ACT='perpetua-active-tenant-v1', LS_WARN='perpetua-terminal-warning-ack-v1';
+const auth=()=>({});  // 免登录：不再向前端下发任何 token，MCP 调用走服务端 /api/mcp 代理
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const STAGE_META={trend:['趋势抓取','Trend',0],select:['AI 选题','Select',1],score:['爆款打分','Score',0],generate:['视频生成','Generate',1],publish:['发布','Publish',0],analyze:['数据分析','Analyze',0],optimize:['发布后优化','Optimize',0]};
+let SNAP=null, TENANTS={}, ACTIVE_TENANT=localStorage.getItem(LS_ACT)||'default', SETTINGS={};
+let ACTIVE_TAB=localStorage.getItem('perpetua-active-tab-v1')||'overview';
+const VALID_TABS=['overview','pipeline','comments','tenants','settings'];
+if(VALID_TABS.indexOf(ACTIVE_TAB)<0)ACTIVE_TAB='overview';
+function switchTab(id){
+  if(VALID_TABS.indexOf(id)<0)return;
+  ACTIVE_TAB=id;
+  try{localStorage.setItem('perpetua-active-tab-v1',id)}catch(e){}
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+id));
+  if(id==='pipeline'){renderPipeline();loadLogs()}
+  if(id==='comments'){loadComments()}
+  if(id==='overview'){renderSnapSections()}
+  if(id==='tenants'){renderTenantTable();renderSnapSections()}
+}
+let PIPE_TIMER=null, LOG_TIMER=null, SNAP_TIMER=null;
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
+async function api(path,opt={}){
+  const r=await fetch(path,{...(opt||{}),headers:{...(opt.headers||{}),...auth()}});
+  if(r.status===401){document.getElementById('app').innerHTML='<div class="loading">Token 无效，请刷新页面重试</div>';throw new Error('401');}
+  return r.json();
+}
+function loadSettings(){
+  try{SETTINGS=JSON.parse(localStorage.getItem(LS_SET))||{}}catch(e){SETTINGS={}}
+  SETTINGS=Object.assign({daily_target:2,virality_threshold:60,plan:'Pro',spike_detector:true,auto_retitle:true,ask_studio_auto:true},SETTINGS);
+}
+function saveSettings(silent){
+  localStorage.setItem(LS_SET,JSON.stringify(SETTINGS));
+  api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(SETTINGS)}).catch(()=>{});
+  if(!silent)toast('配置已保存 · Settings saved');
+}
+async function boot(){
+  loadSettings();
+  try{
+    const [snap,ten]=await Promise.all([api('/api/snapshot'),api('/api/tenants')]);
+    SNAP=snap; TENANTS=(ten&&ten.tenants)||{};
+    try{localStorage.setItem(LS_SNAP,JSON.stringify({at:Date.now(),data:snap}))}catch(e){}
+    try{localStorage.setItem(LS_TEN,JSON.stringify(TENANTS))}catch(e){}
+  }catch(e){
+    try{const c=JSON.parse(localStorage.getItem(LS_SNAP));if(c&&c.data)SNAP=c.data}catch(e2){}
+    try{TENANTS=JSON.parse(localStorage.getItem(LS_TEN))||{}}catch(e3){}
+    if(!SNAP){document.getElementById('app').innerHTML='<div class="loading">加载失败，请检查网络后刷新</div>';return}
+  }
+  if(!TENANTS[ACTIVE_TENANT])ACTIVE_TENANT=Object.keys(TENANTS)[0]||'default';
+  render();
+  startTimers();
+  loadComments();
+  loadPublishPlan();
+}
+function startTimers(){
+  clearInterval(PIPE_TIMER);clearInterval(LOG_TIMER);clearInterval(SNAP_TIMER);if(window._cmtTimer)clearInterval(window._cmtTimer);if(window._planTimer)clearInterval(window._planTimer);
+  const tickPipe=()=>renderPipeline(true);
+  const tickLog=()=>{if(window._logVisible!==false)loadLogs(true)};
+  const tickSnap=()=>api('/api/snapshot').then(s=>{SNAP=s;renderSnapSections()}).catch(()=>{});
+  const tickCmt=()=>loadComments();
+  const tickPlan=()=>loadPublishPlan();
+  PIPE_TIMER=setInterval(tickPipe,60000); LOG_TIMER=setInterval(tickLog,10000); SNAP_TIMER=setInterval(tickSnap,60000);
+  window._cmtTimer=setInterval(tickCmt,60000);
+  window._planTimer=setInterval(tickPlan,60000);
+  window._logVisible=true;
+}
+function tenantOptions(){
+  return Object.values(TENANTS).map(t=>{
+    const lbl=`${t.name||t.id} · ${t.youtube_channel_name||t.youtube_channel_id||''}`;
+    return `<option value="${esc(t.id)}" ${t.id===ACTIVE_TENANT?'selected':''}>${esc(lbl)}</option>`;
+  }).join('');
+}
+function activeTenant(){return TENANTS[ACTIVE_TENANT]||{id:'default',name:'Default Channel',plan:'Pro',status:'active',youtube_channel_name:'@karenvsai'}}
+function render(){
+  const t=activeTenant(), s=SNAP;
+  const upd=s.updatedAt?new Date(s.updatedAt):new Date();
+  const updStr=`更新于 ${upd.getMonth()+1}月${upd.getDate()}日 ${String(upd.getHours()).padStart(2,'0')}:${String(upd.getMinutes()).padStart(2,'0')}`;
+  document.getElementById('app').innerHTML=`
+  <div class="topline">
+    <span class="dot-live"></span>
+    <div><h1>${esc(s.channelName||'Mark Bobl | Karen vs AI')}</h1>
+    <div class="sub">${esc(s.channelId||'@karenvsai')} · ${s.subscriberCount||532} 订阅者 <span class="brand">Perpetua by ViralLoop</span></div></div>
+    <div class="actions">
+      <button class="btn" id="termBtn" onclick="toggleTerm()">⌁ 终端</button>
+      <button class="btn primary" onclick="refreshSnap(this)">⟳ 刷新</button>
+    </div>
+  </div>
+  <div class="term-panel" id="termPanel">
+    <div class="term-head"><span>🖥</span><span class="t">服务器终端 Server terminal</span><span class="wd">perpetua:/home/hatch/data</span>
+      <span class="sp"><button class="btn" onclick="clearTerm()">清屏 · Clear</button><button class="btn" onclick="toggleTerm()">×</button></span></div>
+    <div class="warn-bar" id="warnBar" style="display:none">⚠ 终端直连服务器，请谨慎操作 / Terminal connects directly to server, use with caution <button class="btn" onclick="ackWarn()">我已了解 · Continue</button></div>
+    <div class="term-out" id="termOut"><div class="hint">Perpetua shell ready<br>工作目录 · Working directory: /home/hatch/data</div></div>
+    <div class="term-in"><span class="p">$</span><input id="termIn" placeholder="输入 shell 命令，回车执行" autocomplete="off"><button class="run" onclick="runTerm()">运行 · Run</button></div>
+  </div>
+  <nav class="tab-nav">
+    <button class="tab-btn ${ACTIVE_TAB==='overview'?'active':''}" data-tab="overview" onclick="switchTab('overview')">📊 概览 · Overview</button>
+    <button class="tab-btn ${ACTIVE_TAB==='pipeline'?'active':''}" data-tab="pipeline" onclick="switchTab('pipeline')">⚙️ 流水线 · Pipeline</button>
+    <button class="tab-btn ${ACTIVE_TAB==='comments'?'active':''}" data-tab="comments" onclick="switchTab('comments')">💬 评论 · Comments<span class="tab-badge" id="cmtBadge" style="display:none"></span></button>
+    <button class="tab-btn ${ACTIVE_TAB==='tenants'?'active':''}" data-tab="tenants" onclick="switchTab('tenants')">👥 租户 · Tenants</button>
+    <button class="tab-btn ${ACTIVE_TAB==='settings'?'active':''}" data-tab="settings" onclick="switchTab('settings')">🔧 设置 · Settings</button>
+  </nav>
+  <section class="tab-panel ${ACTIVE_TAB==='overview'?'active':''}" id="tab-overview">
+  <div class="context-row">${s.sample?'<span class="chip-demo">演示数据 · DEMO</span>':'<span class="chip-live">真实数据 · LIVE</span>'}<span>${updStr}</span><span>每 60 秒自动刷新</span></div>
+  <div id="snapHero"></div>
+  <div class="card"><h3>发布计划 <span class="en">· Publish plan</span> <span class="hint" id="planUpd"></span></h3>
+    <div class="plan-group"><div class="plan-ghead"><span class="sdot warn"></span>待生成 · Queued <span class="cnt" id="planQueuedCnt"></span></div>
+      <table class="videos"><tbody id="planQueuedBody"><tr><td class="hint">加载中…</td></tr></tbody></table></div>
+    <div class="plan-group"><div class="plan-ghead"><span class="sdot warn"></span>待发布 · Ready <span class="cnt" id="planReadyCnt"></span></div>
+      <table class="videos"><tbody id="planReadyBody"><tr><td class="hint">加载中…</td></tr></tbody></table></div>
+    <div class="plan-group"><div class="plan-ghead"><span class="sdot ok"></span>已发布 · Published <span class="cnt" id="planPubCnt"></span></div>
+      <table class="videos"><tr><th>标题 · Title</th><th>发布时间 · Published</th><th>观看 · Views</th></tr><tbody id="planPubBody"><tr><td class="hint">加载中…</td></tr></tbody></table></div>
+  </div>
+  </section>
+  <section class="tab-panel ${ACTIVE_TAB==='pipeline'?'active':''}" id="tab-pipeline">
+  <div class="pipeline-block">
+    <div class="pipeline-head"><h3>自动化流水线 · Automation Pipeline</h3><span class="live-badge offline" id="pipeBadge"><span class="dot-live" style="background:currentColor;box-shadow:none"></span>CONNECTING</span></div>
+    <div class="pipeline-grid" id="pipeGrid"></div>
+    <div class="pipeline-foot">每 60 秒读取 MCP 实际执行记录 · MCP telemetry refreshes every 60 seconds</div>
+  </div>
+  <div class="card"><div class="health-head"><h3>系统健康 <span class="en">/ System health</span></h3><span class="cnt" id="healthCnt"></span></div><div style="margin-top:8px" id="healthCard"></div></div>
+  <div class="logs-panel card">
+    <div class="logs-head"><h3>实时日志 / Live Logs <span class="hint">· 自动刷新 10s</span></h3><span class="log-sync" id="logSync"></span></div>
+    <div class="log-tabs" id="logTabs"></div>
+    <div class="log-box" id="logBox" style="margin-top:10px"><div class="hint">加载中…</div></div>
+  </div>
+  </section>
+  <section class="tab-panel ${ACTIVE_TAB==='comments'?'active':''}" id="tab-comments">
+  <div class="comments-panel card">
+    <div class="comments-head">
+      <h3>观众评论 / Comments <span class="hint">· 自动刷新 60s</span></h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="badge active" id="commentAutoBadge">🤖 自动回复开</span>
+        <button class="btn small" onclick="loadComments()">刷新 · Refresh</button>
+      </div>
+    </div>
+    <div class="comments-list" id="commentList"><div class="hint">加载中…</div></div>
+  </div>
+  </section>
+  <section class="tab-panel ${ACTIVE_TAB==='tenants'?'active':''}" id="tab-tenants">
+  <div class="tenant-bar">
+    <div><div class="tlabel">当前租户 · TENANT</div><select id="tenantSel" onchange="switchTenant(this.value)">${tenantOptions()}</select></div>
+    <span class="badge ${t.status==='active'?'active':'suspended'}">${t.status==='active'?'ACTIVE':'SUSPENDED'}</span>
+    <span class="badge plan">${esc(t.plan||'Pro')}</span>
+  </div>
+  <div class="card" id="quotaCard"></div>
+  <div class="card">
+    <div class="tm-head"><h3 style="font-size:15px">租户管理 / Tenants</h3><button class="btn" onclick="openModal('mAdd')">＋ 添加租户 · Add tenant</button></div>
+    <div id="tmTable"></div>
+  </div>
+  </section>
+  <section class="tab-panel ${ACTIVE_TAB==='settings'?'active':''}" id="tab-settings">
+  <div class="settings-block card">
+    <div class="settings-head"><h3>配置 / Settings <span class="en">· ${esc(t.name||'')}</span></h3><span class="badge plan">${esc(SETTINGS.plan)}</span></div>
+    <div class="set-row"><label>每日生产目标 · Daily video target</label>
+      <div class="set-flex"><input type="range" min="1" max="20" value="${SETTINGS.daily_target}" oninput="setCfg('daily_target',this.value)"><input class="set-num" type="number" min="1" max="20" value="${SETTINGS.daily_target}" oninput="setCfg('daily_target',this.value)"><span class="set-big" id="cfgTargetBig">${SETTINGS.daily_target}</span></div>
+      <div class="set-hint">套餐上限：${t.quota? t.quota.videos_per_day:10} / day</div></div>
+    <div class="set-row"><label>爆款分数门槛 · Virality threshold</label>
+      <div class="set-flex"><input type="range" min="40" max="90" value="${SETTINGS.virality_threshold}" oninput="setCfg('virality_threshold',this.value)"><span class="set-big" id="cfgThrBig">${SETTINGS.virality_threshold}</span></div></div>
+    <div class="set-row"><label>套餐 · Plan</label>
+      <select class="plan" onchange="setCfg('plan',this.value)">
+        <option ${SETTINGS.plan==='Free'?'selected':''}>Free</option><option ${SETTINGS.plan==='Pro'?'selected':''}>Pro</option><option ${SETTINGS.plan==='Enterprise'?'selected':''}>Enterprise</option>
+      </select><span class="hint"> Free 3 · Pro 10 · Enterprise 50 / day</span></div>
+    ${toggleRow('spike_detector','热点爆发探测','Trend spike detector')}
+    ${toggleRow('auto_retitle','自动换标题','Auto retitle')}
+    ${toggleRow('ask_studio_auto','Ask Studio 自动问询','Ask Studio auto-ask')}
+    <div class="settings-foot"><span class="hint">设置保存在此设备 · Saved on this device</span><button class="btn primary" onclick="saveSettings()">保存配置 · Save</button></div>
+  </div>
+  </section>`;
+  if(!localStorage.getItem(LS_WARN))document.getElementById('warnBar').style.display='flex';
+  bindTermInput(); renderLogTabs(); loadLogs(); renderPipeline(); renderTenantTable(); renderSnapSections();
+}
+function heroHTML(s,pct,deg){
+  return `
+  <div class="hero-grid">
+    <div class="card"><div class="ypp-glow"></div>
+      <div class="ypp-top"><div><h3>YPP 进度</h3><div class="en">90-day Shorts views</div></div><span class="goal-pill">目标 · GOAL 3M</span></div>
+      <div class="ypp-body">
+        <div class="ring" style="background:conic-gradient(var(--primary) 0deg, var(--purple) ${deg}deg, var(--border) ${deg}deg 360deg)"><div class="in"><div class="pct">${pct.toFixed(1)}%</div><div class="lbl">已完成</div></div></div>
+        <div><div class="ypp-num">${(s.shortsViews90d/1e3).toFixed(1)}K</div><div class="ypp-sub">/ 3M 次观看</div><div class="ypp-sub">还需 ${(((s.shortsGoal||3e6)-(s.shortsViews90d||0))/1e4).toFixed(1)}万次观看解锁下一阶段</div></div>
+      </div>
+      <div class="ypp-bar"><i></i></div>
+    </div>
+    <div class="card metrics-panel">
+      <div class="metric"><div class="k">今日发布<span class="en">Videos today</span></div><div class="v blue">${s.videosToday}</div></div>
+      <div class="metric"><div class="k">近 7 日观看<span class="en">Views 7d</span></div><div class="v">${((s.views7d||0)/1e3).toFixed(1)}K</div></div>
+      <div class="metric"><div class="k">爆款率<span class="en">Virality rate</span></div><div class="v">${s.viralityRate}%</div></div>
+    </div>
+  </div>`;
+}
+function videosRowsHTML(s){
+  return (s.videos||[]).map(v=>`<tr><td><a href="https://youtube.com/watch?v=${esc(v.videoId)}" target="_blank">${esc(v.title)} <span class="ext">↗</span></a></td><td class="mono">${esc(v.publishedAt)}</td><td class="mono">${Number(v.views).toLocaleString()}</td><td>${v.status==='published'?'<span class="sdot ok"></span>已发布 · Published':'<span class="sdot warn"></span>处理中 · Processing'}</td></tr>`).join('');
+}
+function healthHTML(s,onlineN,totalN){
+  const health=(s.health||[]).map(h=>`<div class="health-row"><div>${esc(h.name)}<div class="d">${esc(h.detail)}</div></div><span class="sdot ${h.healthy?'ok':'bad'}"></span></div>`).join('');
+  return health;
+}
+function quotaHTML(s){
+  const used=s.quotaUsed||0,total=s.quotaTotal||10;
+  return `<h3>${esc(SETTINGS.plan)}</h3><div class="en">当前方案 · Current plan</div>
+      <div style="text-align:right;font-size:11px;color:var(--muted)">5/day target</div>
+      <div style="margin-top:10px;font-size:13px">套餐额度 · Plan quota</div>
+      <div class="quota-num">${used} / ${total}</div>
+      <div class="quota-bar"><i style="width:${(used/total*100).toFixed(0)}%"></i></div>
+      <div class="hint">每日 00:00 自动重置 · Resets daily</div>`;
+}
+function renderSnapSections(){
+  const s=SNAP;if(!s)return;
+  const pct=Math.min(100,((s.shortsViews90d||0)/(s.shortsGoal||3e6)*100)),deg=(pct/100*360).toFixed(1);
+  const onlineN=(s.health||[]).filter(h=>h.healthy).length,totalN=(s.health||[]).length;
+  const set=(id,html)=>{const el=document.getElementById(id);if(el)el.innerHTML=html};
+  set('snapHero',heroHTML(s,pct,deg));
+  set('videosBody',videosRowsHTML(s));
+  set('healthCard',healthHTML(s,onlineN,totalN));
+  const hc=document.getElementById('healthCnt');if(hc)hc.textContent=onlineN+'/'+totalN+' ONLINE';
+  set('quotaCard',quotaHTML(s));
+}
+function toggleRow(key,cn,en){
+  return `<div class="toggle-row"><div>${cn}<div class="en hint">${en}</div></div><label class="switch ${SETTINGS[key]?'on':''}"><input type="checkbox" ${SETTINGS[key]?'checked':''} onchange="setCfg('${key}',this.checked)"><span class="tr"></span></label></div>`;
+}
+function setCfg(k,v){SETTINGS[k]=v;if(k==='daily_target'){const e=document.getElementById('cfgTargetBig');if(e)e.textContent=v}if(k==='virality_threshold'){const e=document.getElementById('cfgThrBig');if(e)e.textContent=v}document.querySelectorAll('.switch').forEach(()=>{});saveSettings(true);renderToggles();}
+function renderToggles(){document.querySelectorAll('.toggle-row .switch input').forEach(inp=>{const k=inp.getAttribute('onchange').match(/'(\w+)'/)[1];inp.checked=!!SETTINGS[k];inp.closest('.switch').classList.toggle('on',!!SETTINGS[k])})}
+function switchTenant(id){ACTIVE_TENANT=id;localStorage.setItem(LS_ACT,id);render()}
+async function refreshSnap(btn){btn.disabled=true;try{SNAP=await api('/api/snapshot/refresh',{method:'POST'});renderSnapSections();toast('已刷新 · Refreshed')}catch(e){}btn.disabled=false}
+async function renderPipeline(silent){
+  try{
+    const d=await api('/api/pipeline?tenant_id='+encodeURIComponent(ACTIVE_TENANT));
+    const badge=document.getElementById('pipeBadge');
+    if(badge){badge.className='live-badge '+d.overall;badge.innerHTML=`<span class="dot-live" style="background:currentColor;box-shadow:none"></span>${d.overall.toUpperCase()}`}
+    document.getElementById('pipeGrid').innerHTML=d.stages.map(st=>{
+      const meta=STAGE_META[st.id]||[st.id,st.id,0];
+      const dot=st.freshness==='live'?'ok':st.freshness==='stale'?'working':'idle';
+      const ago=st.at?timeAgo(st.at):'无数据';
+      return `<div class="stage-card ${st.freshness==='stale'?'working':''}">
+        <div class="stage-top"><span class="stage-dot ${dot}"></span><span class="stage-name">${meta[0]}<span class="en">${meta[1]}</span>${meta[2]?'<span class="ai-badge">AI</span>':''}</span></div>
+        <div class="stage-count">${st.count||''}</div>
+        <div class="stage-detail">${esc(st.detail||'—')}</div>
+        <div class="stage-foot">${st.freshness==='live'?'<span class="ok">正常 · OK</span> / ':''}${esc(ago)}</div>
+      </div>`;
+    }).join('');
+  }catch(e){if(!silent){const g=document.getElementById('pipeGrid');if(g)g.innerHTML='<div class="hint">加载失败</div>'}}
+}
+function timeAgo(iso){
+  try{const t=new Date(iso).getTime(),d=Date.now()-t;if(d<0)return'刚刚';
+    const m=Math.floor(d/60000);if(m<1)return'刚刚';if(m<60)return`${m} 分钟前 · ${m}m ago`;
+    const h=Math.floor(m/60);if(h<24)return`${h} 小时前 · ${h}h ago`;return`${Math.floor(h/24)} 天前`}catch(e){return iso}
+}
+const LOG_TABS=[['all','全部 · All'],['mcp','MCP Server'],['watchdog','Watchdog'],['tunnel','SSH Tunnel'],['poller','WS Poller']];
+let curLogTab='all';
+function renderLogTabs(){
+  document.getElementById('logTabs').innerHTML=LOG_TABS.map(([id,l])=>`<button class="${id===curLogTab?'active':''}" onclick="setLogTab('${id}')">${l}</button>`).join('');
+}
+function setLogTab(id){curLogTab=id;renderLogTabs();loadLogs()}
+// ---- 观众评论 ----
+async function loadComments(){
+  const box=document.getElementById('commentList');
+  const badge=document.getElementById('cmtBadge');
+  const setBadge=n=>{if(!badge)return;if(n>0){badge.style.display='inline-block';badge.textContent=n}else{badge.style.display='none'}};
+  try{
+    const d=await api('/api/comments');
+    const list=d.comments||[];
+    setBadge(list.filter(c=>!c.replied).length);
+    if(!box)return;
+    if(!list.length){box.innerHTML='<div class="hint">暂无评论 · No comments</div>';return}
+    box.innerHTML=list.map(c=>{
+      const badge=c.replied
+        ? '<span class="badge replied">已回复 · Replied</span>'
+        : '<span class="badge unreplied">待回复 · Pending</span>';
+      const btn=c.replied?'':`<button class="btn small" onclick="replyComment('${esc(c.id)}',this)">回复 · Reply</button>`;
+      const vt=c.videoTitle?esc(c.videoTitle):('视频 · '+esc(c.videoId||''));
+      return `<div class="comment-item">
+        <div class="comment-top"><span class="comment-author">${esc(c.author||'?')}</span>
+        <span style="display:flex;gap:8px;align-items:center">${badge}<span class="comment-time">${timeAgo(c.publishedAt)}</span></span></div>
+        <div class="comment-text">${esc(c.text||'')}</div>
+        <div class="comment-video">📹 ${vt}</div>
+        <div class="comment-actions">${btn}</div>
+      </div>`;
+    }).join('');
+  }catch(e){setBadge(0);if(box)box.innerHTML='<div class="hint">加载失败 · Failed to load</div>'}
+}
+async function replyComment(cid,btn){
+  if(btn){btn.disabled=true;btn.textContent='回复中…'}
+  try{
+    const r=await api('/api/comments/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comment_id:cid})});
+    if(r.ok){toast('已回复 · Replied');loadComments()}else{toast('回复失败 · '+(r.error||'error'));if(btn){btn.disabled=false;btn.textContent='回复 · Reply'}}
+  }catch(e){toast('回复失败 · Failed');if(btn){btn.disabled=false;btn.textContent='回复 · Reply'}}
+}
+// ---- 统一发布计划 ----
+let PLAN=null;
+function _fmtPlanTime(iso){
+  if(!iso)return'—';
+  try{const d=new Date(iso);if(isNaN(d))return esc(String(iso).slice(0,16));
+    return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return'—'}
+}
+function renderPublishPlan(){
+  const p=PLAN;if(!p)return;
+  const set=(id,html)=>{const el=document.getElementById(id);if(el)el.innerHTML=html};
+  const cnt=(id,n)=>{const el=document.getElementById(id);if(el)el.textContent='('+n+')'};
+  const q=p.queued||[], r=p.ready||[], pub=p.published||[];
+  cnt('planQueuedCnt',q.length);cnt('planReadyCnt',r.length);cnt('planPubCnt',pub.length);
+  set('planQueuedBody', q.length
+    ? q.map(x=>`<tr><td>${esc(x.title)}</td><td class="mono">${_fmtPlanTime(x.created_at)}</td><td><span class="sdot warn"></span>等待生成 · Queued</td></tr>`).join('')
+    : '<tr><td class="hint">暂无待生成任务 · No queued jobs</td></tr>');
+  set('planReadyBody', r.length
+    ? r.map(x=>`<tr><td>${esc(x.title)}</td><td class="mono">${_fmtPlanTime(x.created)}</td><td><span class="sdot warn"></span>待上传 · Ready</td></tr>`).join('')
+    : '<tr><td class="hint">暂无待发布视频 · Nothing ready</td></tr>');
+  set('planPubBody', pub.length
+    ? pub.map(v=>`<tr><td><a href="https://youtube.com/watch?v=${esc(v.videoId)}" target="_blank">${esc(v.title)} <span class="ext">↗</span></a></td><td class="mono">${esc(v.publishedAt)}</td><td class="mono">${Number(v.views).toLocaleString()}</td></tr>`).join('')
+    : '<tr><td class="hint">暂无已发布数据 · No published videos</td></tr>');
+  const upd=document.getElementById('planUpd');
+  if(upd&&p.updatedAt)upd.textContent='更新于 · '+_fmtPlanTime(p.updatedAt)+(p.sample?' · 演示':'');
+}
+async function loadPublishPlan(){
+  try{PLAN=await api('/api/publish_plan');renderPublishPlan()}catch(e){}
+}
+async function loadLogs(silent){
+  const sync=document.getElementById('logSync');
+  if(sync&&!silent){sync.textContent='同步中 · Syncing';sync.classList.add('syncing')}
+  try{
+    const d=await api('/api/logs?source='+curLogTab+'&lines=120');
+    const box=document.getElementById('logBox');
+    const names={mcp:'MCP Server',watchdog:'Watchdog',tunnel:'SSH Tunnel',poller:'WS Poller'};
+    let html='';
+    for(const [sid,txt] of Object.entries(d.logs||{})){
+      const lines=String(txt||'').split('\n').filter(l=>l.trim());
+      html+=`<div class="log-src">[${names[sid]||sid}]<span class="t">${esc(d.at||'')}</span></div>`;
+      html+=lines.map(l=>`<div class="log-line"><span class="lbl">[${names[sid]||sid}]</span> ${esc(l)}</div>`).join('');
+    }
+    box.innerHTML=html||'<div class="hint">(空)</div>';
+    box.scrollTop=box.scrollHeight;
+    if(sync){sync.textContent='刷新于 '+d.at;sync.classList.remove('syncing')}
+  }catch(e){if(sync){sync.textContent='同步失败';sync.classList.remove('syncing')}}
+}
+function renderTenantTable(){
+  const el=document.getElementById('tmTable');if(!el)return;
+  const rows=Object.values(TENANTS).map(t=>{
+    const q=t.quota||{};const qv=q.videos_per_day??10;
+    return `<tr><td>${esc(t.name||t.id)}<br><span class="hint mono">${esc(t.youtube_channel_id||'')}</span></td>
+    <td class="plan-mono">${esc(t.plan||'')}</td>
+    <td><span class="badge ${t.status==='active'?'active':'suspended'}">${t.status==='active'?'ACTIVE':'SUSPENDED'}</span></td>
+    <td><span id="q-${esc(t.id)}">${qv} / 10</span> <button class="op-btn" onclick="editQuota('${esc(t.id)}')">编辑额度</button></td>
+    <td class="hint">${esc(t.created||'')}</td>
+    <td><button class="op-btn" onclick="toggleTenant('${esc(t.id)}')">${t.status==='active'?'暂停':'启用'}</button><button class="op-btn del" ${t.id==='default'?'disabled':''} onclick="askDel('${esc(t.id)}')">删除</button></td></tr>`;
+  }).join('');
+  el.innerHTML=`<table class="tm"><tr><th>租户</th><th>套餐</th><th>状态</th><th>额度</th><th>创建日期</th><th>操作</th></tr>${rows}</table>`;
+}
+function editQuota(id){
+  const el=document.getElementById('q-'+id);
+  const cur=(TENANTS[id].quota||{}).videos_per_day??10;
+  el.innerHTML=`<input class="set-num" id="qi-${id}" type="number" value="${cur}" style="width:60px"> <button class="op-btn" onclick="saveQuota('${id}')">完成</button>`;
+}
+async function saveQuota(id){
+  const v=parseInt(document.getElementById('qi-'+id).value)||10;
+  await api('/api/tenant/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,quota:v})});
+  TENANTS[id].quota={videos_per_day:v};renderTenantTable();toast('额度已更新');
+}
+async function toggleTenant(id){
+  const ns=TENANTS[id].status==='active'?'suspended':'active';
+  await api('/api/tenant/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,status:ns})});
+  TENANTS[id].status=ns;renderTenantTable();render();
+}
+let delId=null;
+function askDel(id){delId=id;openModal('mDel')}
+async function delTenantGo(){
+  await api('/api/tenant/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:delId})});
+  delete TENANTS[delId];closeModal('mDel');renderTenantTable();toast('已删除');
+}
+async function addTenant(){
+  const name=document.getElementById('ntName').value.trim(),ch=document.getElementById('ntCh').value.trim(),plan=document.getElementById('ntPlan').value;
+  if(!name){toast('请填写租户名称');return}
+  const r=await api('/api/tenant/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,channel_id:ch,plan})});
+  if(r.ok){const t=await api('/api/tenants');TENANTS=t.tenants||{};closeModal('mAdd');render();toast('租户已添加')}
+  else toast(r.error||'添加失败');
+}
+function openModal(id){document.getElementById(id).classList.add('open')}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+let termHist=[],termHi=-1,termBusy=false;
+function toggleTerm(){
+  const p=document.getElementById('termPanel'),b=document.getElementById('termBtn');
+  p.classList.toggle('open');b.classList.toggle('active');
+  if(p.classList.contains('open'))setTimeout(()=>document.getElementById('termIn').focus(),100);
+}
+function ackWarn(){localStorage.setItem(LS_WARN,'1');document.getElementById('warnBar').style.display='none'}
+function clearTerm(){document.getElementById('termOut').innerHTML=''}
+function bindTermInput(){
+  const inp=document.getElementById('termIn');if(!inp||inp._bound)return;inp._bound=true;
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter')runTerm();
+    if(e.key==='ArrowUp'){e.preventDefault();if(termHist.length){termHi=Math.max(0,termHi-1);inp.value=termHist[termHi]||''}}
+    if(e.key==='ArrowDown'){e.preventDefault();if(termHist.length){termHi=Math.min(termHist.length,termHi+1);inp.value=termHist[termHi]||''}}
+  });
+}
+function termPrint(html){const t=document.getElementById('termOut');t.insertAdjacentHTML('beforeend',html);t.scrollTop=t.scrollHeight}
+async function runTerm(){
+  if(termBusy)return;
+  const inp=document.getElementById('termIn'),cmd=inp.value.trim();
+  if(!cmd)return;
+  termHist.push(cmd);termHi=termHist.length;inp.value='';termBusy=true;
+  termPrint(`<div class="cmd"><span class="prompt">perpetua:/home/hatch/data$</span> ${esc(cmd)}</div>`);
+  termPrint(`<div class="running" id="termRun">running…</div>`);
+  try{
+    const r=await api('/api/exec',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})});
+    document.getElementById('termRun')?.remove();
+    if(r.blocked)termPrint(`<pre style="color:var(--red)">${esc(r.output)}</pre><div class="exit-bad">exit 126 · BLOCKED</div>`);
+    else{termPrint(`<pre>${esc(r.output||'(无输出)')}${r.truncated?'\n...[truncated]':''}</pre><div class="${r.exit_code===0?'exit-ok':'exit-bad'}">exit ${r.exit_code}</div>`)}
+}catch(e){document.getElementById('termRun')?.remove();termPrint(`<div class="exit-bad">请求失败</div>`)}
+termBusy=false;
+}
+let chatOpened=false;
+function toggleChat(){
+const p=document.getElementById('chatPanel');p.classList.toggle('open');
+if(p.classList.contains('open')&&!chatOpened){chatOpened=true;
+addMsg('a','Perpetua','你好，我可以查询 YPP、配额、健康状态和日志，也能执行热点检测等操作。Hi — ask about YPP, quota, system health, logs, or run an operation.');}
+}
+function addMsg(who,name,text){
+const h=document.getElementById('chatHist');
+h.insertAdjacentHTML('beforeend',`<div class="msg ${who}"><div class="who">${esc(name)}</div><div class="b">${esc(text)}</div></div>`);
+h.scrollTop=h.scrollHeight;
+}
+async function sendChat(){
+const inp=document.getElementById('chatIn'),msg=inp.value.trim();
+if(!msg)return;inp.value='';
+addMsg('u','You',msg);
+const h=document.getElementById('chatHist');
+h.insertAdjacentHTML('beforeend','<div class="typing" id="ctyp"><i></i><i></i><i></i></div>');h.scrollTop=h.scrollHeight;
+try{
+const r=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+document.getElementById('ctyp')?.remove();
+addMsg('a','Perpetua',r.reply||'(无回复)');
+}catch(e){document.getElementById('ctyp')?.remove();addMsg('a','Perpetua','请求失败，请稍后重试。')}
+}
+boot();
+</script>
+</body>
+</html>

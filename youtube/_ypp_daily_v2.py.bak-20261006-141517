@@ -1,0 +1,113 @@
+"""YPP 每日台账（v2，qualified 口径修正版）。
+
+❗核心教训（2026-10-06）：
+  v1 用 estimatedMinutesWatched 当作 YPP 进度，得出 4,023.9h —— 虚高 161 倍。
+  官方 qualified watch hours 只计「public 长视频」的观看，排除 shorts / TV autoplay。
+  Analytics API 不暴露 qualified 口径，只能人工从 Studio Eligibility 页读取。
+
+本版设计：
+  1. API 能拿的：订阅数、shorts vs videoOnDemand 拆分、流量来源、设备（作诊断用）
+  2. API 拿不到的：qualified hours / qualified shorts views —— 从环境变量或参数传入，
+     或在台账中保留 pending，由人工从 Studio 填入
+  3. 绝不把 estimatedMinutesWatched 写成 hours_365d
+
+用法：
+  python3 ypp_daily.py                              # 只写 API 可得部分，qualified 标 None
+  python3 ypp_daily.py <qualified_hours> <shorts90d>   # 人工从 Studio 读到的值
+"""
+import json
+import os
+import sys
+import urllib.parse
+from datetime import datetime, timezone, timedelta
+
+sys.path.insert(0, "/home/hatch/data")
+from youtube.yt_upload import _load, _req
+
+LEDGER = "/home/hatch/data/youtube/ypp_daily.jsonl"
+d = _load()
+tok = d["token"]
+
+
+def q(p):
+    return json.load(_req("https://youtubeanalytics.googleapis.com/v2/reports?"
+                          + urllib.parse.urlencode(p), tok))
+
+
+today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+rec = {"date": today, "schema": 2}
+
+# --- 人工传入的官方口径（唯一可信的 YPP 进度） ---
+if len(sys.argv) >= 3:
+    try:
+        rec["qualified_watch_hours_365d"] = float(sys.argv[1])
+        rec["qualified_shorts_views_90d"] = int(sys.argv[2])
+        rec["qualified_source"] = "manual(Studio Eligibility)"
+    except ValueError:
+        print("ARG_ERR: 需为 <hours> <shorts_views>")
+        raise SystemExit(2)
+else:
+    rec["qualified_watch_hours_365d"] = None
+    rec["qualified_shorts_views_90d"] = None
+    rec["qualified_source"] = "pending - 需从 Studio Eligibility 页人工读取"
+
+# --- 订阅数 ---
+try:
+    ch = json.load(_req(
+        "https://www.googleapis.com/youtube/v3/channels?part=statistics&mine=true", tok))
+    rec["subs"] = int(ch["items"][0]["statistics"]["subscriberCount"])
+except Exception as e:
+    rec["subs"] = None
+    print("subs ERR", type(e).__name__, e)
+
+# --- 近 365 天长视频真实观看（诊断用，不是 YPP 进度） ---
+diag = {}
+try:
+    r = q({"ids": "channel==MINE",
+           "startDate": (datetime.now(timezone.utc) - timedelta(days=365)).strftime("%Y-%m-%d"),
+           "endDate": today,
+           "metrics": "estimatedMinutesWatched", "dimensions": "creatorContentType"})
+    for row in r.get("rows", []):
+        diag[row[0] + "_minutes"] = int(row[1])
+    vod = diag.get("videoOnDemand_minutes", 0)
+    diag["videoOnDemand_hours_DIAGNOSTIC_ONLY"] = round(vod / 60, 1)
+    diag["NOTE"] = ("这是总观看时长，不是 qualified。含 TV autoplay，"
+                    "可能 99% 不计入 YPP。仅作趋势参考。")
+except Exception as e:
+    print("diag ERR", type(e).__name__, e)
+rec["diagnostic"] = diag
+
+# --- 流量来源 + 设备（判断是否又在蹭 TV autoplay） ---
+try:
+    r = q({"ids": "channel==MINE",
+           "startDate": (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d"),
+           "endDate": today, "metrics": "estimatedMinutesWatched",
+           "dimensions": "insightTrafficSourceType,deviceType"})
+    rows = r.get("rows", [])
+    tot = sum(x[2] for x in rows) or 1
+    tv = sum(x[2] for x in rows if x[1] == "TV")
+    rec["traffic_90d_minutes"] = {x[0] + "|" + x[1]: int(x[2]) for x in rows}
+    rec["tv_share_pct_90d"] = round(100 * tv / tot, 1)
+    rel = sum(x[2] for x in rows if x[0] == "RELATED_VIDEO")
+    rec["related_video_share_pct_90d"] = round(100 * rel / tot, 1)
+    # 警戒：TV + RELATED_VIDEO 双高 = 又在蹭不计入的流量
+    rec["autoplay_risk"] = (rec["tv_share_pct_90d"] > 50
+                            and rec["related_video_share_pct_90d"] > 50)
+except Exception as e:
+    print("traffic ERR", type(e).__name__, e)
+
+rec["ts"] = datetime.now(timezone.utc).isoformat()
+
+# --- 幂等写入 ---
+rows = []
+if os.path.exists(LEDGER):
+    rows = [json.loads(l) for l in open(LEDGER, encoding="utf-8") if l.strip()]
+rows = [x for x in rows if x.get("date") != today]
+rows.append(rec)
+rows.sort(key=lambda x: x["date"])
+with open(LEDGER, "w", encoding="utf-8") as f:
+    for x in rows:
+        f.write(json.dumps(x, ensure_ascii=False) + "\n")
+
+print(json.dumps(rec, ensure_ascii=False, indent=2))
+print("\n台账：%s，共 %d 天" % (LEDGER, len(rows)))

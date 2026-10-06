@@ -1,0 +1,9 @@
+[Unit]
+Description=jev relay keepalive (VM:18080 -> VPS:18080)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/hatch/data/mcp_server/jev_keepalive.sh
+User=root

@@ -1,0 +1,27 @@
+# security_gate — v2 prompt
+
+**Title:** 🚪 AI Security Gate DESTROYS Karen's Purse! 👜 #Shorts
+
+**Description:** 🚪 Security Gate SHUT DOWN Karen! 👜 #Shorts
+
+Karen vs AI — watch Karen get instant karma! 😂
+Caught on cam: Karen picks a fight with an AI security gate and gets shut down.
+#Shorts #AICustomerService #Comedy #TechHumor
+
+---
+
+## Prompt
+
+Vertical 9:16 short, exactly 10 seconds, 30fps. Raw CCTV / dashcam / smart-camera aesthetic: high contrast, slightly desaturated daylight, timestamp HUD overlay in the top corner (e.g. 'CAM 03 - 14:22:07'). No black bars, no watermark, no cinematic letterbox.
+
+Cast: Karen: middle-aged white woman, blonde bob or messy bun, oversized sunglasses pushed up on her head, pink tracksuit top. Perpetually outraged: wide eyes, mouth open mid-rant, finger jabbing. AI device: a AI security gate — an EVERYDAY automated friction point, not a studio prop. Anthropomorphized just enough: glowing status light and a small screen face showing deadpan text. The AI device stays perfectly calm while Karen escalates — its comedy comes from cold literal enforcement, never arguing back. One bystander frozen mid-stare, phone out, selling the 'caught on camera' realism.
+
+0-2s COLD COLLISION HOOK (conflict already in progress, zero setup): Karen tailgates through the security gate, dragging her designer purse, refusing to stop. Frame 1 shows the clash mid-action. Giant ALL-CAPS text overlay in the first second, 6 words max, stating the absurdity. Visual jolt in second 1-2 — movement in every frame, nothing static.
+
+2-7s RAPID ESCALATION: Karen pushes the security gate to its limit — the exact wrong move, louder, closer to camera, absurd demand. The security gate responds with cold literal logic: it does not argue, it ENFORCES. Deadpan 0.5s pause before it acts — the pause IS the joke.
+
+7-10s SUDDEN PHYSICAL KARMA (under 2 seconds): the AI gate FIGHTS BACK visibly: it clamps onto her designer purse, flashes a red strobe light, and repeatedly jerks backward while she refuses to let go — a comically robotic voice blares over the intercom. The purse strap finally snaps her forward into frame, defeated. The consequence must be TANGIBLE and SUDDEN — spray, lock, trap, soak, tow — never a purely verbal burn. Karen defeated: slumped, silent, soaked, or escorted past the camera.
+
+10-11s SEAMLESS LOOP MATCH: the AI chimes a reset phrase ('NEXT CUSTOMER, PLEASE.') matching the opening audio/frame. Final frame visually rhymes with frame 1 (same angle on the security gate) so replays feel infinite.
+
+Audio: punchy and continuous, comedic sting when the AI retaliates, airhorn on the karma hit. Never silent for more than 1 second. On-screen text: max 3 overlays, each 6 words or fewer, ALL CAPS, yellow/white with black stroke. Hard cuts only — no slow motion, no fade-to-black, no static text-only openings. Karen ALWAYS loses; instant karma is the brand.

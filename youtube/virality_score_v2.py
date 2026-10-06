@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+"""数据驱动的 Short 爆款打分器 v2。
+
+与 v1 的根本区别：
+- v1: 硬编码关键词表（shocking/secret/...），与播放量 r=-0.03，无效
+- v2: 权重从本频道 488 条历史视频的**实际播放量**回归得出
+
+算法：对标题做特征提取，用「特征出现时的平均播放 vs 全站均值」的
+对数比值作为该特征的贡献权重（类似朴素贝叶斯的 log-likelihood ratio），
+再归一化到 0-100。
+
+用法: python3 virality_score_v2.py '{"title": "...", "duration": 10}'
+输出: {"score":.., "grade":.., "matched":[...], "advice":[...], "version":"v2-data"}
+"""
+import json
+import math
+import re
+import statistics
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+HIST = Path("/home/hatch/data/youtube/all_videos.json")  # 2026-10-07 起用全量新鲜数据（496 条，含 duration/tags）
+HIST_FALLBACK = Path("/home/hatch/data/youtube/uploads_full.jsonl")
+MODEL = Path("/home/hatch/data/youtube/score_model_v2.json")
+
+STOP = set("""the a an and or of to in for with on at is are you your i it this that
+my we our vs shorts short ai film video ep epic cinematic must watch new""".split())
+
+
+def parse_duration_sec(d):
+    """解析 ISO8601 时长（PT11S / PT4M31S）或数字秒数。"""
+    if d is None:
+        return None
+    if isinstance(d, (int, float)):
+        return int(d)
+    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?", str(d))
+    if not m or not any(m.groups()):
+        return None
+    h, mi, s = m.groups()
+    return int(h or 0) * 3600 + int(mi or 0) * 60 + int(float(s or 0))
+
+
+def featurize(title: str, duration_sec=None):
+    """从一个标题提取特征（全部小写匹配）。
+
+    2026-10-07 校准更新（496 条视频，见 perpetua/own_data_calibration.md）：
+    - 新增 s:ai_brand（【AI Satire】品牌系列，正）/ s:ai_generic（普通 AI 提及，负 0.22x）
+    - 新增时长桶 s:dur_le11 / s:dur_12_20 / s:dur_21_60 / s:dur_gt60
+      （>20s 崩塌：21-60s 几何均值 48，>60s 仅 15）
+    - s:has_number 保留：训练数据将学出负权重（0.34x）
+    """
+    t = title.lower()
+    f = set()
+    # 1. 单词特征
+    for w in re.findall(r"[a-z0-9]{3,}", t):
+        if w not in STOP:
+            f.add("w:" + w)
+    # 2. 结构特征
+    if re.search(r"\d", title):
+        f.add("s:has_number")
+    # 2b. AI：品牌系列 vs 普通提及（2026-10-07 校准：普通 AI 0.22x，品牌系列 2205 均值）
+    if "ai satire" in t:
+        f.add("s:ai_brand")
+    elif re.search(r"\bai\b", t):
+        f.add("s:ai_generic")
+    # 2c. 时长桶（2026-10-07 校准：时长是最强负变量 -0.339）
+    ds = parse_duration_sec(duration_sec)
+    if ds is not None:
+        if ds <= 11:
+            f.add("s:dur_le11")
+        elif ds <= 20:
+            f.add("s:dur_12_20")
+        elif ds <= 60:
+            f.add("s:dur_21_60")
+        else:
+            f.add("s:dur_gt60")
+    if "?" in title or "？" in title:
+        f.add("s:question")
+    if "!" in title or "！" in title:
+        f.add("s:exclaim")
+    if any(e in title for e in "🤯😱😂💀🤣😳🚨💦⚔️"):
+        f.add("s:emoji_strong")
+    if any(e in title for e in "🔥🐶🛒🏋️🧳🚪"):
+        f.add("s:emoji_object")
+    if "—" in title or " - " in title:
+        f.add("s:dash_twist")
+    if "karen" in t:
+        f.add("s:karen")
+    if "#shorts" in t or "#short" in t:
+        f.add("s:hashtag_shorts")
+    # 3. 长度
+    if len(title) <= 60:
+        f.add("s:title_short")
+    elif len(title) >= 100:
+        f.add("s:title_long")
+    # 4. 2026-10-06 深度诊断新增：标题结构硬特征
+    EMOJI_RE = re.compile(
+        "[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF"
+        "\U0001F300-\U0001F5FF\U0001F600-\U0001F64F"
+        "\U0001F680-\U0001F6FF]",
+        flags=re.UNICODE)
+    # s:emoji_first：emoji 在标题前 3 字符（Top10 70% 规律）
+    if EMOJI_RE.search(title[:3]):
+        f.add("s:emoji_first")
+    # s:karen_before_karma：Karen 出现在报应动词之前
+    KARMA_VERBS = ["towed", "soaked", "booted", "trapped", "destroyed",
+                   "exposed", "caught", "snapped", "burned", "flooded",
+                   "locked", "sprayed", "drenched", "evicted", "hit",
+                   "broke", "crashed", "exploded"]
+    first_verb_pos = None
+    for v in KARMA_VERBS:
+        p = t.find(v)
+        if p >= 0 and (first_verb_pos is None or p < first_verb_pos):
+            first_verb_pos = p
+    karen_pos = t.find("karen")
+    if first_verb_pos is not None and karen_pos >= 0 and karen_pos < first_verb_pos:
+        # 排除 "Hit It"（报应对像是机器）
+        after = t[first_verb_pos:first_verb_pos + 15]
+        if not re.search(r"hit\s+it\b", after):
+            f.add("s:karen_before_karma")
+    # s:karma_specific：具体报应动词（vs 虚词 karma）
+    SPECIFIC_VERBS = {"towed", "soaked", "booted", "trapped", "destroyed",
+                      "exposed", "caught", "sprayed", "drenched", "evicted",
+                      "exploded", "flooded", "locked"}
+    if any(v in t for v in SPECIFIC_VERBS):
+        f.add("s:karma_specific")
+    # s:no_jargon：无内部术语（Protocol/System/Algorithm）
+    if not re.search(r"\b(protocol|system|algorithm|module|interface)\b", t):
+        f.add("s:no_jargon")
+    return f
+
+
+def _load_rows():
+    """加载训练数据：优先 all_videos.json（JSON 数组，新鲜），回退 uploads_full.jsonl。"""
+    for p in (HIST, HIST_FALLBACK):
+        if not p.exists():
+            continue
+        try:
+            txt = p.read_text(encoding="utf-8").strip()
+            if txt.startswith("["):
+                rows = json.loads(txt)
+            else:
+                rows = [json.loads(l) for l in txt.splitlines() if l.strip()]
+            # views 可能是字符串，转 int
+            norm = []
+            for r in rows:
+                try:
+                    v = int(r.get("views", 0) or 0)
+                except (ValueError, TypeError):
+                    v = 0
+                r = dict(r)
+                r["views"] = v
+                norm.append(r)
+            return norm
+        except Exception:
+            continue
+    raise SystemExit("no training data")
+
+
+def train():
+    rows = _load_rows()
+    rows = [r for r in rows if r["views"] > 0]  # 0 播放的多为噪音/未公开
+    if not rows:
+        raise SystemExit("no training data")
+
+    all_views = [r["views"] for r in rows]
+    base = statistics.mean(all_views)
+    log_base = math.log(base)
+
+    docs = [(featurize(r["title"], r.get("duration")), r["views"]) for r in rows]
+    df = defaultdict(int)
+    for f, _ in docs:
+        for k in f:
+            df[k] += 1
+
+    MIN_DF = 8  # 至少出现 8 次才纳入，避免过拟合
+    weights, stats = {}, {}
+    for k, n in df.items():
+        if n < MIN_DF:
+            continue
+        vs = [v for f, v in docs if k in f]
+        if len(vs) < MIN_DF:
+            continue
+        m = statistics.mean(vs)
+        # log-likelihood ratio：该特征出现时播放的几何均值相对基线的倍数
+        weights[k] = math.log(max(m, 1)) - log_base
+        stats[k] = {"n": n, "avg_views": round(m), "lift": round(m / base, 3)}
+
+    model = {
+        "version": "v2-data",
+        "trained_on": len(rows),
+        "base_avg_views": round(base),
+        "min_df": MIN_DF,
+        "weights": weights,
+        "stats": stats,
+    }
+    MODEL.write_text(json.dumps(model, ensure_ascii=False, indent=2), encoding="utf-8")
+    return model
+
+
+def load_model():
+    if MODEL.exists():
+        return json.loads(MODEL.read_text(encoding="utf-8"))
+    return train()
+
+
+def score_v2(title: str, duration: int = 10):
+    m = load_model()
+    w = m["weights"]
+    f = featurize(title, duration)
+    hits = [(k, w[k]) for k in f if k in w]
+    hits.sort(key=lambda x: -x[1])
+
+    if hits:
+        # 顶部 5 个特征的加权和（衰减），映射到 0-100
+        raw = sum(v * (0.85 ** i) for i, (_, v) in enumerate(hits[:5]))
+    else:
+        raw = 0.0
+    # raw 经验范围约 [-1.5, +2.5]；线性映射并夹取
+    s = 50 + raw * 22
+    s = max(1, min(99, round(s)))
+
+    grade = "S" if s >= 85 else "A" if s >= 72 else "B" if s >= 58 else "C" if s >= 42 else "D"
+
+    matched = [{"feature": k, "lift": m["stats"][k]["lift"], "n": m["stats"][k]["n"]}
+               for k, _ in hits[:8]]
+    missed = [{"feature": k, "lift": m["stats"][k]["lift"]}
+              for k in w if k not in f and w[k] > 0.25][:6]
+
+    advice = []
+    if not any(k.startswith("s:karen") for k, _ in hits):
+        advice.append("缺 #Karen 元素 —— 老视频含 Karen 1.78x 播放（2026-10-07 校准）")
+    if not any("karma" in k for k, _ in hits):
+        advice.append("缺 Instant Karma 反转母题 —— Top10% 中 karma 出现 11 次、Bottom 0 次")
+    if not any(k.startswith("s:emoji") for k, _ in hits):
+        advice.append("标题无 emoji —— 含 emoji 是最强正变量（Pearson 0.434，9.38x）")
+    # 2026-10-07 校准修正：数字标题有害（0.34x），旧建议"加数字"已删除
+    if "s:has_number" in f:
+        advice.append("标题含数字 —— 数据：数字标题仅 0.34x 播放；剧集编号式（Complaint #4）最伤")
+    if "s:ai_generic" in f:
+        advice.append("标题含普通 AI 提及（非品牌系列）—— 数据：仅 0.22x；仅【AI Satire】品牌系列豁免")
+    if "s:dur_21_60" in f or "s:dur_gt60" in f:
+        advice.append("时长 >20s —— 数据：21-60s 几何均值仅 48（vs ≤11s 的 756），>60s 仅 15")
+    if duration and not (7 <= duration <= 20):
+        advice.append(f"时长 {duration}s 偏离高效区间（9-20s 最佳）")
+    if not advice:
+        advice.append("特征命中良好")
+
+    return {"score": s, "grade": grade, "version": "v2-data",
+            "base_avg_views": m["base_avg_views"], "trained_on": m["trained_on"],
+            "matched": matched, "suggested_features": missed, "advice": advice,
+            "pass": s >= 58}
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--train":
+        mm = train()
+        print(f"trained on {mm['trained_on']} rows, {len(mm['weights'])} features, "
+              f"base_avg_views={mm['base_avg_views']}")
+        top = sorted(mm["stats"].items(), key=lambda kv: -kv[1]["lift"])[:25]
+        print("\n=== 最强正特征 ===")
+        for k, v in top:
+            print(f"  {k:28s} lift={v['lift']:6.2f}  n={v['n']:3d}  avg={v['avg_views']:,}")
+        bot = sorted(mm["stats"].items(), key=lambda kv: kv[1]["lift"])[:15]
+        print("\n=== 最强负特征 ===")
+        for k, v in bot:
+            print(f"  {k:28s} lift={v['lift']:6.2f}  n={v['n']:3d}  avg={v['avg_views']:,}")
+    else:
+        data = json.loads(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read())
+        print(json.dumps(score_v2(data.get("title", ""), int(data.get("duration", 10))),
+                         ensure_ascii=False, indent=2))

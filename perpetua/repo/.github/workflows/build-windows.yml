@@ -1,0 +1,85 @@
+name: Build Perpetua Windows
+
+# 手动触发或打 tag 自动构建
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (如 v1.0.0)'
+        required: false
+        default: 'dev'
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r deploy/requirements.txt
+          pip install nuitka zstandard
+        working-directory: ${{ github.workspace }}
+
+      # 注意：以下路径假设仓库根目录包含 mcp_server/server.py
+      # 如仓库结构不同，请调整
+      - name: Nuitka 编译 MCP 服务器
+        run: |
+          python -m nuitka `
+            --onefile `
+            --output-dir=build `
+            --output-filename=perpetua-mcp.exe `
+            --windows-console-mode=disable `
+            --assume-yes-for-downloads `
+            mcp_server/server.py
+        working-directory: ${{ github.workspace }}
+
+      - name: Nuitka 编译趋势检测
+        run: |
+          python -m nuitka `
+            --onefile `
+            --output-dir=build `
+            --output-filename=perpetua-trend.exe `
+            --assume-yes-for-downloads `
+            trend_spike_detector.py
+        working-directory: ${{ github.workspace }}
+
+      - name: 组装安装包
+        run: |
+          mkdir perpetua-windows
+          copy build\perpetua-mcp.exe perpetua-windows\
+          copy build\perpetua-trend.exe perpetua-windows\
+          copy deploy\windows\install.bat perpetua-windows\
+          copy deploy\README_BINARY.md perpetua-windows\README.md
+        working-directory: ${{ github.workspace }}
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: perpetua-windows-${{ inputs.version || github.ref_name }}
+          path: perpetua-windows/
+          retention-days: 90
+
+      - name: 创建 Release（tag 触发或手动触发）
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version || github.ref_name }}
+          name: Perpetua Windows ${{ inputs.version || github.ref_name }}
+          files: perpetua-windows/*
+          body: |
+            Perpetua Windows 编译版 ${{ inputs.version || github.ref_name }}
+            - Nuitka 编译，无 Python 源码
+            - 运行 install.bat 一键安装
+            - 构建时间：${{ github.event.head_commit.timestamp }}

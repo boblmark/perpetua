@@ -1,0 +1,55 @@
+{
+  "sample": 481,
+  "results": [
+    {
+      "label": "v2 baseline (log, no sat, keep neg)",
+      "pearson_r": 0.1228,
+      "spearman_rho": 0.2548,
+      "p90": 2138,
+      "topk": 50,
+      "topk_hits": 11,
+      "topk_hit_rate": 0.22,
+      "topk_avg_views": 1774
+    },
+    {
+      "label": "v3a log1p only",
+      "pearson_r": 0.1279,
+      "spearman_rho": 0.2756,
+      "p90": 2138,
+      "topk": 50,
+      "topk_hits": 11,
+      "topk_hit_rate": 0.22,
+      "topk_avg_views": 1774
+    },
+    {
+      "label": "v3b v3a + saturation(0.35)",
+      "pearson_r": 0.1145,
+      "spearman_rho": 0.2639,
+      "p90": 2138,
+      "topk": 50,
+      "topk_hits": 9,
+      "topk_hit_rate": 0.18,
+      "topk_avg_views": 1556
+    },
+    {
+      "label": "v3c v3a + saturation(0.20)",
+      "pearson_r": 0.1089,
+      "spearman_rho": 0.2611,
+      "p90": 2138,
+      "topk": 50,
+      "topk_hits": 9,
+      "topk_hit_rate": 0.18,
+      "topk_avg_views": 1559
+    },
+    {
+      "label": "v3d v3a + saturation(0.50)",
+      "pearson_r": 0.1179,
+      "spearman_rho": 0.2652,
+      "p90": 2138,
+      "topk": 50,
+      "topk_hits": 9,
+      "topk_hit_rate": 0.18,
+      "topk_avg_views": 1556
+    }
+  ]
+}

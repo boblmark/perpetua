@@ -1,0 +1,14 @@
+[
+  {
+    "topic": "智能收银台",
+    "hook": "Karen 吵架",
+    "reason": "purity_reject[topic]: contains CJK characters: '智能收银台'",
+    "at": "2026-10-06T12:16:49.671711+00:00"
+  },
+  {
+    "topic": "Tokyo rain neon nights",
+    "hook": "rain falls on neon street",
+    "reason": "purity_reject[hook]: must mention Karen or AI: 'rain falls on neon street'",
+    "at": "2026-10-06T12:16:49.672968+00:00"
+  }
+]

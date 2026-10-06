@@ -1,0 +1,31 @@
+{
+  "name": "cover_score_sel3",
+  "predicts": "log1p(views)",
+  "features": [
+    "salience_entropy",
+    "center_energy",
+    "warm_ratio"
+  ],
+  "coef": [
+    -0.30452,
+    0.18409,
+    0.19791
+  ],
+  "mean": [
+    0.95562,
+    0.18983,
+    0.393
+  ],
+  "std": [
+    0.0132,
+    0.04848,
+    0.30153
+  ],
+  "cv_rho": 0.1516,
+  "cv_pearson": 0.2458,
+  "cv_top50": 2.5,
+  "in_sample_rho": 0.1723,
+  "overfit_gap_rho": 0.0207,
+  "n_train": 475,
+  "note": "独立封面评分器, 不参与选题排名, 用于已定选题后的封面优化"
+}

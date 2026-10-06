@@ -1,0 +1,35 @@
+{
+  "tenants": {
+    "default": {
+      "id": "default",
+      "name": "Default Channel",
+      "youtube_channel_id": "UCaVJw-mQc51X8WWssI1vjbg",
+      "plan": "pro",
+      "quota": {
+        "videos_per_day": 10,
+        "ask_studio_per_day": 50,
+        "channels": 3
+      },
+      "created": "2026-10-06T04:18:00Z",
+      "data_dir": "/home/hatch/data/perpetua/tenants/default-channel/data",
+      "oauth_file": "/home/hatch/data/perpetua/tenants/default-channel/.oauth.json",
+      "status": "active",
+      "theme": "Karen vs AI",
+      "keywords": [
+        "karen",
+        "ai",
+        "robot",
+        "self-checkout",
+        "self checkout",
+        "chatbot",
+        "artificial intelligence",
+        "automation",
+        "customer service",
+        "drive-thru",
+        "smart home"
+      ],
+      "content_style": "Shorts comedy: Karen encounters AI, instant karma",
+      "youtube_channel_name": "@karenvsai"
+    }
+  }
+}

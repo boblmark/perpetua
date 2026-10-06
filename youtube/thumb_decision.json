@@ -1,0 +1,63 @@
+{
+  "n": 475,
+  "single_fold": {
+    "X": {
+      "label": "X",
+      "pearson_r": 0.1686,
+      "spearman_rho": 0.2992,
+      "p90": 2138,
+      "topk": 50,
+      "topk_hits": 9,
+      "topk_hit_rate": 0.18,
+      "topk_avg_views": 2862
+    },
+    "T": {
+      "label": "T",
+      "pearson_r": 0.0667,
+      "spearman_rho": 0.199,
+      "p90": 2138,
+      "topk": 50,
+      "topk_hits": 4,
+      "topk_hit_rate": 0.08,
+      "topk_avg_views": 1368
+    },
+    "TX": {
+      "label": "TX",
+      "pearson_r": 0.148,
+      "spearman_rho": 0.2896,
+      "p90": 2138,
+      "topk": 50,
+      "topk_hits": 7,
+      "topk_hit_rate": 0.14,
+      "topk_avg_views": 2643
+    }
+  },
+  "multiseed": {
+    "X": {
+      "rho_mean": 0.31738,
+      "rho_sd": 0.01654547940946072,
+      "top50_mean": 7.6,
+      "top50_sd": 1.6465452046971292
+    },
+    "T": {
+      "rho_mean": 0.19168000000000002,
+      "rho_sd": 0.017531989809107997,
+      "top50_mean": 3,
+      "top50_sd": 0.816496580927726
+    },
+    "TX": {
+      "rho_mean": 0.30804,
+      "rho_sd": 0.021572935719450778,
+      "top50_mean": 5.8,
+      "top50_sd": 1.2292725943057183
+    }
+  },
+  "sign_test": {
+    "ups": 259,
+    "downs": 216
+  },
+  "wins": {
+    "rho": 2,
+    "top50": 0
+  }
+}

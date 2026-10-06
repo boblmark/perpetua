@@ -1,0 +1,774 @@
+{
+  "ablation": [
+    {
+      "feature": "s:emoji_strong",
+      "d_rho": -0.01799999999999996,
+      "d_top50": 0,
+      "weight": 0.18798492571987335,
+      "df_ratio": 0.717
+    },
+    {
+      "feature": "s:emoji_object",
+      "d_rho": -0.011499999999999955,
+      "d_top50": 1,
+      "weight": 0.24672205059820573,
+      "df_ratio": 0.204
+    },
+    {
+      "feature": "w:own",
+      "d_rho": -0.010799999999999976,
+      "d_top50": 2,
+      "weight": 0.9559685695071289,
+      "df_ratio": 0.035
+    },
+    {
+      "feature": "w:wrong",
+      "d_rho": -0.007099999999999995,
+      "d_top50": 0,
+      "weight": 0.9611635684733804,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:gets",
+      "d_rho": -0.007099999999999995,
+      "d_top50": -1,
+      "weight": 1.1039919696658353,
+      "df_ratio": 0.027
+    },
+    {
+      "feature": "s:title_short",
+      "d_rho": -0.006399999999999961,
+      "d_top50": 0,
+      "weight": 0.1159117837505752,
+      "df_ratio": 0.222
+    },
+    {
+      "feature": "w:car",
+      "d_rho": -0.005899999999999961,
+      "d_top50": 1,
+      "weight": 0.476901952575413,
+      "df_ratio": 0.075
+    },
+    {
+      "feature": "s:exclaim",
+      "d_rho": -0.005599999999999994,
+      "d_top50": 0,
+      "weight": 0.06748585405950447,
+      "df_ratio": 0.721
+    },
+    {
+      "feature": "w:case",
+      "d_rho": -0.004999999999999949,
+      "d_top50": -1,
+      "weight": 0.945972925666287,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:instant",
+      "d_rho": -0.0042999999999999705,
+      "d_top50": 1,
+      "weight": 0.3998567385738001,
+      "df_ratio": 0.096
+    },
+    {
+      "feature": "w:caught",
+      "d_rho": -0.0033999999999999586,
+      "d_top50": 0,
+      "weight": 0.3813602722484344,
+      "df_ratio": 0.056
+    },
+    {
+      "feature": "w:her",
+      "d_rho": -0.002899999999999958,
+      "d_top50": 2,
+      "weight": 0.5315505487705474,
+      "df_ratio": 0.166
+    },
+    {
+      "feature": "s:dash_twist",
+      "d_rho": -0.0020000000000000018,
+      "d_top50": 1,
+      "weight": 0.3400378575419447,
+      "df_ratio": 0.268
+    },
+    {
+      "feature": "w:gym",
+      "d_rho": -0.0015000000000000013,
+      "d_top50": 0,
+      "weight": 0.1715137240237432,
+      "df_ratio": 0.033
+    },
+    {
+      "feature": "w:creepy",
+      "d_rho": -0.0015000000000000013,
+      "d_top50": 0,
+      "weight": 0.03430899283705546,
+      "df_ratio": 0.031
+    },
+    {
+      "feature": "w:neighbor",
+      "d_rho": -0.0012999999999999678,
+      "d_top50": 0,
+      "weight": 0.1568113084315561,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:doorbell",
+      "d_rho": -0.0012999999999999678,
+      "d_top50": 0,
+      "weight": 0.2759260522514362,
+      "df_ratio": 0.025
+    },
+    {
+      "feature": "w:door",
+      "d_rho": -0.0011999999999999789,
+      "d_top50": 0,
+      "weight": 0.3256108303786238,
+      "df_ratio": 0.025
+    },
+    {
+      "feature": "w:face",
+      "d_rho": -0.0011999999999999789,
+      "d_top50": 0,
+      "weight": 0.5545958492955361,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:guy",
+      "d_rho": -0.0007999999999999674,
+      "d_top50": 0,
+      "weight": 0.06488429157796372,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:hoafail",
+      "d_rho": -0.0005999999999999894,
+      "d_top50": 0,
+      "weight": 0.2054433059281342,
+      "df_ratio": 0.025
+    },
+    {
+      "feature": "w:camera",
+      "d_rho": -0.0005000000000000004,
+      "d_top50": 0,
+      "weight": 0.29226133411592414,
+      "df_ratio": 0.031
+    },
+    {
+      "feature": "w:then",
+      "d_rho": -0.00039999999999995595,
+      "d_top50": 0,
+      "weight": 0.09353432742049872,
+      "df_ratio": 0.077
+    },
+    {
+      "feature": "w:experiment",
+      "d_rho": -0.00039999999999995595,
+      "d_top50": 0,
+      "weight": 0.08213070834965297,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:visual",
+      "d_rho": -0.00039999999999995595,
+      "d_top50": 0,
+      "weight": 0.08213070834965297,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:subscribe",
+      "d_rho": -0.00029999999999996696,
+      "d_top50": 0,
+      "weight": 0.15172190098777794,
+      "df_ratio": 0.054
+    },
+    {
+      "feature": "w:checkout",
+      "d_rho": -0.00019999999999997797,
+      "d_top50": 0,
+      "weight": 0.37481837424441977,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:gymfail",
+      "d_rho": -9.999999999998899e-05,
+      "d_top50": 0,
+      "weight": 0.22534894377227843,
+      "df_ratio": 0.029
+    },
+    {
+      "feature": "s:hashtag_shorts",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.04
+    },
+    {
+      "feature": "s:has_number",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.202
+    },
+    {
+      "feature": "w:footage",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:machine",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.031
+    },
+    {
+      "feature": "w:spot",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.029
+    },
+    {
+      "feature": "s:question",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.127
+    },
+    {
+      "feature": "w:demo",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "s:title_long",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.137
+    },
+    {
+      "feature": "w:automobile",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.044
+    },
+    {
+      "feature": "w:got",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.027
+    },
+    {
+      "feature": "w:she",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.058
+    },
+    {
+      "feature": "w:dog",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.11
+    },
+    {
+      "feature": "w:but",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:just",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.042
+    },
+    {
+      "feature": "w:was",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.033
+    },
+    {
+      "feature": "w:did",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.067
+    },
+    {
+      "feature": "w:wait",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:petchaos",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.06
+    },
+    {
+      "feature": "w:into",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.044
+    },
+    {
+      "feature": "w:cat",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.069
+    },
+    {
+      "feature": "w:funny",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.123
+    },
+    {
+      "feature": "w:tried",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.052
+    },
+    {
+      "feature": "w:roadrage",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.106
+    },
+    {
+      "feature": "w:robot",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.025
+    },
+    {
+      "feature": "w:karma",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.1693696564028162,
+      "df_ratio": 0.119
+    },
+    {
+      "feature": "w:wig",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:coffee",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:when",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:digital",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.029
+    },
+    {
+      "feature": "w:security",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.027
+    },
+    {
+      "feature": "w:goldenretriever",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.025
+    },
+    {
+      "feature": "w:what",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:trapped",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.027
+    },
+    {
+      "feature": "w:kicked",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.02603678097606732,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:out",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:stole",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.031
+    },
+    {
+      "feature": "w:saw",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:viral",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.287
+    },
+    {
+      "feature": "w:see",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:his",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.037
+    },
+    {
+      "feature": "w:reflection",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:anomaly",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:from",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.031
+    },
+    {
+      "feature": "w:instantly",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0018361298712505913,
+      "df_ratio": 0.042
+    },
+    {
+      "feature": "w:gone",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:had",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:cart",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:its",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.017217370774343266,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:not",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:secret",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.025
+    },
+    {
+      "feature": "w:forensics",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:revealed",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:saved",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:parking",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.027
+    },
+    {
+      "feature": "w:delivery",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:off",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:office",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.023
+    },
+    {
+      "feature": "w:glitch",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.056
+    },
+    {
+      "feature": "w:crazy",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:uncanny",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.185
+    },
+    {
+      "feature": "w:warning",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:horror",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.096
+    },
+    {
+      "feature": "w:fire",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:catches",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:pause",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.035
+    },
+    {
+      "feature": "w:baby",
+      "d_rho": 0.0,
+      "d_top50": 0,
+      "weight": 0.0,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:cctv",
+      "d_rho": 0.00020000000000003348,
+      "d_top50": 0,
+      "weight": 0.04781543339865024,
+      "df_ratio": 0.031
+    },
+    {
+      "feature": "w:water",
+      "d_rho": 0.00040000000000001146,
+      "d_top50": 0,
+      "weight": 0.20740105259953268,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:hero",
+      "d_rho": 0.0005000000000000004,
+      "d_top50": 0,
+      "weight": 0.3526085046022729,
+      "df_ratio": 0.037
+    },
+    {
+      "feature": "w:self",
+      "d_rho": 0.0006000000000000449,
+      "d_top50": 0,
+      "weight": 0.3176894159192818,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:cam",
+      "d_rho": 0.0007000000000000339,
+      "d_top50": 0,
+      "weight": 0.07693964523480545,
+      "df_ratio": 0.05
+    },
+    {
+      "feature": "w:exploded",
+      "d_rho": 0.0013000000000000234,
+      "d_top50": 2,
+      "weight": 1.056769123112642,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:protocol",
+      "d_rho": 0.0017000000000000348,
+      "d_top50": -1,
+      "weight": 0.8646268127060752,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:smart",
+      "d_rho": 0.0025000000000000022,
+      "d_top50": 1,
+      "weight": 0.928329719575939,
+      "df_ratio": 0.019
+    },
+    {
+      "feature": "w:fail",
+      "d_rho": 0.003300000000000025,
+      "d_top50": 2,
+      "weight": 0.8134985839683795,
+      "df_ratio": 0.05
+    },
+    {
+      "feature": "w:hoa",
+      "d_rho": 0.0039000000000000146,
+      "d_top50": 1,
+      "weight": 0.5771399172443488,
+      "df_ratio": 0.071
+    },
+    {
+      "feature": "w:instantkarma",
+      "d_rho": 0.007100000000000051,
+      "d_top50": 0,
+      "weight": 0.22508935521867635,
+      "df_ratio": 0.137
+    },
+    {
+      "feature": "s:karen",
+      "d_rho": 0.00720000000000004,
+      "d_top50": 1,
+      "weight": 0.32207924570193835,
+      "df_ratio": 0.287
+    },
+    {
+      "feature": "w:pizza",
+      "d_rho": 0.008000000000000007,
+      "d_top50": 0,
+      "weight": 0.529326669495866,
+      "df_ratio": 0.017
+    },
+    {
+      "feature": "w:karen",
+      "d_rho": 0.008099999999999996,
+      "d_top50": 1,
+      "weight": 0.332770883899717,
+      "df_ratio": 0.281
+    },
+    {
+      "feature": "w:satire",
+      "d_rho": 0.008400000000000019,
+      "d_top50": 2,
+      "weight": 1.256296578386011,
+      "df_ratio": 0.021
+    },
+    {
+      "feature": "w:elevator",
+      "d_rho": 0.0121,
+      "d_top50": 0,
+      "weight": 1.276701642961453,
+      "df_ratio": 0.019
+    }
+  ]
+}

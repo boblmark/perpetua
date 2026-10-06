@@ -1,0 +1,22 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Perpetua by ViralLoop</title><style>body{background:#070a12;color:#8c9bb3;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.ld{text-align:center}.sp{width:26px;height:26px;border:3px solid #202d42;border-top-color:#36a3ff;border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 12px}@keyframes sp{to{transform:rotate(360deg)}}</style></head>
+<body><div class="ld" id="ld"><div class="sp"></div>正在加载控制台…</div>
+<div id="app"></div>
+<script>
+const AUTO_TOKEN="";
+const TK = AUTO_TOKEN.indexOf("__AUTO")===0 ? "" : AUTO_TOKEN;
+async function get(url, retries=8){
+  for(let i=0;i<retries;i++){
+    try{const r=await fetch(url);if(!r.ok)throw 0;return await r.text()}catch(e){await new Promise(r=>setTimeout(r,1200))}
+  }
+  throw 0;
+}
+(async()=>{
+  try{
+    const [css,js]=await Promise.all([get('/api/app.css'),get('/api/app.js')]);
+    const st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+    const sc=document.createElement('script');sc.textContent=js;document.body.appendChild(sc);
+    document.getElementById('ld').remove();
+  }catch(e){document.getElementById('ld').innerHTML='加载失败，请刷新重试'}
+})();
+</script></body></html>

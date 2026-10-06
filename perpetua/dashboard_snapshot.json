@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "sample": false,
+  "channelName": "Mark Bobl | Karen vs AI",
+  "channelId": "@karenvsai",
+  "subscriberCount": 532,
+  "videosToday": 0,
+  "views7d": 44,
+  "shortsViews90d": 108,
+  "shortsGoal": 3000000,
+  "viralityRate": 20.0,
+  "plan": "Pro",
+  "quotaUsed": 3,
+  "quotaTotal": 10,
+  "updatedAt": "2026-10-06T13:23:02Z",
+  "videos": [
+    {
+      "id": "NcmkU4lirgc",
+      "videoId": "NcmkU4lirgc",
+      "title": "Karen Demanded Free Candy Protocol—The AI Doorbell Gave Her Instant Karma Instead! 🤖",
+      "publishedAt": "2026-10-06",
+      "views": 1,
+      "status": "published"
+    },
+    {
+      "id": "CmGBybKMWH8",
+      "videoId": "CmGBybKMWH8",
+      "title": "AI 收银台照做协议 3 次后崩溃...",
+      "publishedAt": "2026-10-06",
+      "views": 0,
+      "status": "published"
+    },
+    {
+      "id": "H-GyrlAZxn0",
+      "videoId": "H-GyrlAZxn0",
+      "title": "Tokyo Rain, Neon Nights 🌃 #shorts #ai",
+      "publishedAt": "2026-10-06",
+      "views": 0,
+      "status": "published"
+    },
+    {
+      "id": "B4uKr3ALBcI",
+      "videoId": "B4uKr3ALBcI",
+      "title": "Karen Reported an AI Self-Driving Car 47 TIMES… Complaint #47 Is INSANE 😱 #Shorts",
+      "publishedAt": "2026-10-06",
+      "views": 2,
+      "status": "published"
+    },
+    {
+      "id": "WtX4sDy2sDU",
+      "videoId": "WtX4sDy2sDU",
+      "title": "This AI Checkout Tried to Overcharge Karen… Then Karma Hit It INSTANTLY 🤯 #Shorts",
+      "publishedAt": "2026-10-06",
+      "views": 1,
+      "status": "published"
+    }
+  ],
+  "health": [
+    {
+      "id": "mcp",
+      "name": "MCP 服务器",
+      "detail": "30 tools online",
+      "healthy": true
+    },
+    {
+      "id": "youtube",
+      "name": "YouTube API",
+      "detail": "Quota nominal",
+      "healthy": true
+    },
+    {
+      "id": "trend",
+      "name": "热点探测器",
+      "detail": "3 sources scanning",
+      "healthy": true
+    },
+    {
+      "id": "studio",
+      "name": "Ask Studio 队列",
+      "detail": "0 waiting",
+      "healthy": false
+    }
+  ],
+  "videoCount": 449,
+  "totalViews": 737291
+}

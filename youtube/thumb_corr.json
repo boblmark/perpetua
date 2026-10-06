@@ -1,0 +1,81 @@
+{
+  "n": 475,
+  "p90": 2138,
+  "single_feature": [
+    {
+      "feature": "salience_entropy",
+      "pearson": -0.23918516126784056,
+      "spearman": -0.14760859706974067
+    },
+    {
+      "feature": "center_energy",
+      "pearson": 0.18933117437780864,
+      "spearman": 0.10589119858469706
+    },
+    {
+      "feature": "rule_of_thirds",
+      "pearson": 0.12552980708466874,
+      "spearman": 0.10016168492713544
+    },
+    {
+      "feature": "hue_entropy",
+      "pearson": 0.12193458910037686,
+      "spearman": 0.08559201428739385
+    },
+    {
+      "feature": "lum_mean",
+      "pearson": -0.11719324398986747,
+      "spearman": 0.0285333587132388
+    },
+    {
+      "feature": "highfreq_ratio",
+      "pearson": -0.09927132309121593,
+      "spearman": -0.0078084638252369585
+    },
+    {
+      "feature": "warm_ratio",
+      "pearson": 0.09116875793047813,
+      "spearman": 0.09987392158728917
+    },
+    {
+      "feature": "edge_density",
+      "pearson": -0.08525852984932437,
+      "spearman": 0.004209518584249157
+    },
+    {
+      "feature": "sat_mean",
+      "pearson": -0.06703515485397316,
+      "spearman": -0.035310913172730794
+    },
+    {
+      "feature": "highfreq_mean",
+      "pearson": -0.0609835552941267,
+      "spearman": 0.016020804057799005
+    },
+    {
+      "feature": "sat_high_ratio",
+      "pearson": -0.06014803172270812,
+      "spearman": -0.007756621635996172
+    },
+    {
+      "feature": "dark_ratio",
+      "pearson": 0.046828934929572075,
+      "spearman": -0.032092330603127335
+    },
+    {
+      "feature": "bright_ratio",
+      "pearson": -0.04657122199407797,
+      "spearman": 0.16542864980769126
+    },
+    {
+      "feature": "dominant_band_ratio",
+      "pearson": 0.040623891186356675,
+      "spearman": -0.03156092017086649
+    },
+    {
+      "feature": "lum_std",
+      "pearson": 0.036425847887605785,
+      "spearman": 0.12827784278268273
+    }
+  ]
+}

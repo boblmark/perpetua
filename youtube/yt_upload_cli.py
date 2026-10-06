@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""yt_upload 的 JSON 入参 CLI 包装。
+
+为什么需要它：MCP 的 youtube_upload 用 subprocess argv 传参时，
+emoji / 引号 / 逗号 会被 shell 与 argv 反复转义，易出问题。
+本包装改为读一个 JSON 文件，彻底绕开转义。
+
+用法: python3 yt_upload_cli.py /path/to/args.json
+args.json 字段:
+  filepath, title, description, tags(list), language, playlist_id, synthetic(bool)
+也支持 mode="update" 走 update_metadata（补已发布视频）。
+也支持 mode="get_status" 只读核实。
+"""
+import json
+import sys
+
+sys.path.insert(0, "/home/hatch/data/youtube")
+from yt_upload import upload, update_metadata, get_status
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(json.dumps({"error": "usage: yt_upload_cli.py <args.json>"}))
+        return 1
+    with open(sys.argv[1], encoding="utf-8") as f:
+        a = json.load(f)
+
+    mode = a.get("mode", "upload")
+    if mode == "update":
+        out = update_metadata(
+            a["video_id"],
+            title=a.get("title"),
+            description=a.get("description"),
+            tags=a.get("tags"),
+            language=a.get("language") or None,
+            playlist_id=a.get("playlist_id") or None,
+            synthetic=a.get("synthetic"),
+        )
+    elif mode == "get_status":
+        out = get_status(a["video_id"])
+    else:
+        out = upload(
+            a["filepath"], a["title"],
+            description=a.get("description", ""),
+            tags=a.get("tags") or None,
+            language=a.get("language") or None,
+            playlist_id=a.get("playlist_id") or None,
+            synthetic=bool(a.get("synthetic", False)),
+        )
+    print(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

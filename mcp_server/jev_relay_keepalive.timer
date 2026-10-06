@@ -1,0 +1,11 @@
+[Unit]
+Description=Run jev relay keepalive every 5 minutes
+
+[Timer]
+OnBootSec=90
+OnUnitActiveSec=300
+AccuracySec=10s
+Unit=jev_relay_keepalive.service
+
+[Install]
+WantedBy=timers.target

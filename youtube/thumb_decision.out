@@ -1,0 +1,19 @@
+# joined=475  p90=2138
+
+=== 单分折对比（seed=0）===
+mode          rho   pearson    top50     avg
+X          0.2992    0.1686     9/50     2862
+T          0.1990    0.0667     4/50     1368
+TX         0.2896    0.1480     7/50     2643
+
+=== 多种子 CV（10 折，均值±σ）===
+  X    rho=0.3174 ± 0.0165   top50=7.6 ± 1.6
+  T    rho=0.1917 ± 0.0175   top50=3.0 ± 0.8
+  TX   rho=0.3080 ± 0.0216   top50=5.8 ± 1.2
+
+=== 配对符号检验 TX vs X ===
+  TX>X: 259   TX<X: 216   tie: 0
+  (双向都有 = 真重排序；一边倒 = 单调变换)
+  多种子胜率: rho 2/10,  top50 0/10
+
+# wrote /home/hatch/data/youtube/thumb_decision.json

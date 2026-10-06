@@ -1,0 +1,199 @@
+{
+  "n": 475,
+  "p90_threshold": 2138,
+  "single_feat_corr": [
+    {
+      "feat": "salience_entropy",
+      "pearson": -0.23918516126784056,
+      "spearman": -0.14693829853551107
+    },
+    {
+      "feat": "center_energy",
+      "pearson": 0.1893311743778086,
+      "spearman": 0.10596323731626547
+    },
+    {
+      "feat": "rule_of_thirds",
+      "pearson": 0.12552980708466874,
+      "spearman": 0.10027092753174997
+    },
+    {
+      "feat": "hue_entropy",
+      "pearson": 0.12193458910037684,
+      "spearman": 0.08563508004000096
+    },
+    {
+      "feat": "lum_mean",
+      "pearson": -0.11719324398986744,
+      "spearman": 0.028458395037393988
+    },
+    {
+      "feat": "highfreq_ratio",
+      "pearson": -0.09927132309121592,
+      "spearman": -0.007700915460659556
+    },
+    {
+      "feat": "warm_ratio",
+      "pearson": 0.09116875793047813,
+      "spearman": 0.09969045370012192
+    },
+    {
+      "feat": "edge_density",
+      "pearson": -0.08525852984932436,
+      "spearman": 0.0043546482603594415
+    },
+    {
+      "feat": "sat_mean",
+      "pearson": -0.06703515485397314,
+      "spearman": -0.03536130902155415
+    },
+    {
+      "feat": "highfreq_mean",
+      "pearson": -0.0609835552941267,
+      "spearman": 0.016007483218397147
+    },
+    {
+      "feat": "sat_high_ratio",
+      "pearson": -0.06014803172270812,
+      "spearman": -0.007532776551110322
+    },
+    {
+      "feat": "dark_ratio",
+      "pearson": 0.046828934929572075,
+      "spearman": -0.03211802834043032
+    },
+    {
+      "feat": "bright_ratio",
+      "pearson": -0.04657122199407796,
+      "spearman": 0.16333937983880786
+    },
+    {
+      "feat": "dominant_band_ratio",
+      "pearson": 0.04062389118635667,
+      "spearman": -0.03140253986699554
+    },
+    {
+      "feat": "lum_std",
+      "pearson": 0.036425847887605785,
+      "spearman": 0.12836854217425278
+    }
+  ],
+  "models": {
+    "sel3": {
+      "cv": {
+        "feats": [
+          "salience_entropy",
+          "center_energy",
+          "warm_ratio"
+        ],
+        "n": 475,
+        "k": 3,
+        "rho_mean": 0.1515983992959441,
+        "rho_std": 0.009855957787494945,
+        "pearson_mean": 0.2458005930634997,
+        "pearson_std": 0.013534164655270846,
+        "top50_mean": 2.5,
+        "top50_std": 0.9219544457292888,
+        "top50_raw": [
+          2,
+          2,
+          1,
+          3,
+          3,
+          4,
+          2,
+          2,
+          2,
+          4
+        ]
+      },
+      "in_sample": {
+        "rho": 0.17225664631988497,
+        "pearson": 0.28253313219584375
+      }
+    },
+    "top6": {
+      "cv": {
+        "feats": [
+          "salience_entropy",
+          "center_energy",
+          "rule_of_thirds",
+          "hue_entropy",
+          "lum_mean",
+          "highfreq_ratio"
+        ],
+        "n": 475,
+        "k": 6,
+        "rho_mean": 0.11057775374796128,
+        "rho_std": 0.0091886321171635,
+        "pearson_mean": 0.2607361253887802,
+        "pearson_std": 0.008245731380910316,
+        "top50_mean": 3.4,
+        "top50_std": 0.4898979485566356,
+        "top50_raw": [
+          4,
+          3,
+          3,
+          3,
+          4,
+          3,
+          4,
+          4,
+          3,
+          3
+        ]
+      },
+      "in_sample": {
+        "rho": 0.1344144685644529,
+        "pearson": 0.305471743416547
+      }
+    },
+    "full15": {
+      "cv": {
+        "feats": [
+          "lum_mean",
+          "lum_std",
+          "dark_ratio",
+          "bright_ratio",
+          "sat_mean",
+          "sat_high_ratio",
+          "hue_entropy",
+          "warm_ratio",
+          "rule_of_thirds",
+          "center_energy",
+          "salience_entropy",
+          "highfreq_mean",
+          "highfreq_ratio",
+          "edge_density",
+          "dominant_band_ratio"
+        ],
+        "n": 475,
+        "k": 15,
+        "rho_mean": 0.20288287396526722,
+        "rho_std": 0.00891364653894543,
+        "pearson_mean": 0.35079583330818426,
+        "pearson_std": 0.016630034176330237,
+        "top50_mean": 4.5,
+        "top50_std": 0.8062257748298549,
+        "top50_raw": [
+          5,
+          3,
+          5,
+          4,
+          4,
+          4,
+          5,
+          5,
+          6,
+          4
+        ]
+      },
+      "in_sample": {
+        "rho": 0.2551387477295569,
+        "pearson": 0.43453744659461957
+      }
+    }
+  },
+  "recommended": "sel3",
+  "model_file": "/home/hatch/data/youtube/cover_score_model.json"
+}
