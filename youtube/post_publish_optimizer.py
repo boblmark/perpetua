@@ -218,7 +218,7 @@ def main():
         n_ret = len(results.get("retitled", []))
         n_rep = len(results.get("replied", []))
         _sp.run(["python3", "/home/hatch/data/perpetua/pipeline.py", "default",
-                 "optimize", "ok",
+                 "postop", "ok",
                  f"换标题 {n_ret} 个，回评论 {n_rep} 条", str(n_ret + n_rep)],
                 capture_output=True, timeout=10)
     except Exception:

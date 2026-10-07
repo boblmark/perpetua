@@ -543,6 +543,51 @@ def youtube_recent(max_n: int = 10) -> str:
         return f"[error] {e}"
 
 
+def _verify_pipeline_approval(filepath: str, title: str, skip_gate: bool) -> bool:
+    """校验视频是否通过正常管线审批。返回 True=允许上传。
+    2026-10-07 新增：彻底堵住 Marvis 绕过管线直接上传。
+    规则：
+    - skip_gate=True 时仍需校验（只跳过内容门禁，不跳过审批校验）
+    - 必须在 pipeline_queue（status=approved/qc_passed）或
+      awaiting_approval（human_approved=true）中有记录
+    - 或是 URGENT 热点（urgent=true 且三道硬门禁通过）
+    """
+    import os as _os
+    basename = _os.path.basename(filepath)
+    # 1. 查 pipeline_queue
+    try:
+        q = json.load(open("/home/hatch/data/perpetua/pipeline_queue.json",
+                            encoding="utf-8"))
+        items = q if isinstance(q, list) else q.get("items", [])
+        for it in items:
+            f = str(it.get("video_file", ""))
+            if basename in f or f in filepath:
+                st = it.get("status", "")
+                # 必须走完审批
+                if st in ("approved", "qc_passed", "uploaded"):
+                    return True
+                # URGENT 豁免人工，但仍需 Ask Studio >= 85
+                if it.get("urgent") and st == "selected":
+                    score = it.get("review_score", 0)
+                    if score >= 85:
+                        return True
+    except Exception:
+        pass
+    # 2. 查 awaiting_approval（人工终审通过的）
+    try:
+        a = json.load(open("/home/hatch/data/perpetua/awaiting_approval.json",
+                            encoding="utf-8"))
+        items = a if isinstance(a, list) else a.get("items", [])
+        for it in items:
+            f = str(it.get("video_file", ""))
+            if basename in f or (f and f in filepath):
+                if it.get("human_approved"):
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 def _upload_hard_gates(title: str, description: str, tags: str):
     """2026-10-06 深度诊断后的 5 项硬门禁（全部失败直接拒绝上传）。
 
@@ -675,13 +720,23 @@ def _upload_hard_gates(title: str, description: str, tags: str):
             "当前标题首字符：%r。请把 emoji 从末尾移到开头。"
             % first_char)
 
-    # ---- Gate 4: 元数据完整 ----
+    # ---- Gate 4: 元数据完整（2026-10-07 P0-6 升级）----
+    # 旧要求"≥20 字符"形同虚设（496 条 100% <100 字）；新要求 ≥100 字 + CTA。
+    CTA_KEYWORDS = ["comment", "subscribe", "\U0001F447", "\U0001F514"]
     tag_list = [t.strip() for t in (tags or "").split(",") if t.strip()]
-    desc_len = len((description or "").strip())
-    if desc_len < 20:
+    desc = (description or "").strip()
+    desc_len = len(desc)
+    desc_low = desc.lower()
+    has_cta = any(kw.lower() in desc_low or kw in desc for kw in CTA_KEYWORDS)
+    if desc_len < 100:
         return False, (
-            "[gate4:元数据] 描述太短（%d 字符，要求 ≥20）。"
-            "三无视频（无描述/无标签）禁止上传。" % desc_len)
+            "[gate4:元数据] 描述太短（%d 字符，要求 ≥100）。"
+            "三无视频（无描述/无标签）禁止上传。"
+            "请用 build_description_template() 生成合规描述。" % desc_len)
+    if not has_cta:
+        return False, (
+            "[gate4:元数据] 描述缺少 CTA（%d 字符已达标，但无行动号召）。"
+            "描述必须含 comment / subscribe / 👇 / 🔔 之一。" % desc_len)
     if len(tag_list) < 3:
         return False, (
             "[gate4:元数据] 标签太少（%d 个，要求 ≥3）。"
@@ -754,6 +809,136 @@ def _upload_hard_gates(title: str, description: str, tags: str):
         pass  # 名单读失败不阻塞（fail-open）
 
     return True, ""
+
+
+def _upload_originality_gate(title: str, description: str, template=None):
+    """上传前原创度门禁（2026-10-07 新增，与爆款分门槛并行）。
+
+    比对新视频的视觉模板（AI 设备类型 / 笑点机制 / 钩子）与频道近期已发视频，
+    发现模板重复则拒绝，并说明撞的是哪条旧视频、重复在哪里。
+    标题关键词重叠已由 gate5b 覆盖，这里专注设备与笑点机制。
+
+    template: 可选，dict 或 str。
+        dict: {"topic": "smart parking meter", "hook": "...", "prompt": "..."}
+              或 {"device": ..., "karma_verb": ...}
+        str: 直接当作 topic/device。
+        不传时从标题推断设备类型（尽力而为）。
+
+    返回 (是否通过, 拒绝原因文本)。通过返回 (True, "")。
+    skip_gate=True 可绕过（调用方明确承担风险）。
+    """
+    import re as _re
+    import sys as _sys
+    _sys.path.insert(0, "/home/hatch/data/perpetua")
+    try:
+        from formula_dedup import check_formula, _normalize_device
+    except Exception as e:
+        return True, ""  # 模块缺失时 fail-open，不阻塞上传
+
+    topic, hook, prompt_hint = "", "", ""
+    if isinstance(template, dict):
+        topic = template.get("topic", "") or template.get("device", "")
+        hook = template.get("hook", "")
+        prompt_hint = template.get("prompt", "") or template.get("karma_verb", "")
+    elif template:
+        topic = str(template)
+    if not topic:
+        topic = _infer_device_from_title(title or "")
+
+    try:
+        dup, reason, detail = check_formula(topic, hook, prompt_hint)
+    except Exception:
+        return True, ""  # 检查异常时 fail-open
+
+    if not dup:
+        return True, ""
+
+    matched = detail.get("matched", "未知视频")
+    vtitle = detail.get("title", "")
+    if reason == "device_collision":
+        return False, (
+            "[原创度:设备撞车] 新视频的 AI 设备「%s」与近期已发视频重复：%s《%s》。"
+            "同一设备 90 天内只能用一次（防模板复读被降权）。"
+            "请换 AI 设备场景后重试；确认要发可用 skip_gate=true 强制上传。"
+            % (detail.get("device", topic), matched, vtitle))
+    if reason == "karma_verb_reuse":
+        return False, (
+            "[原创度:笑点机制重复] 新视频的高潮笑点动词「%s」在 30 天内已用过：%s《%s》。"
+            "连续用同一物理笑点会被判定为套模板。"
+            "请换笑点机制后重试；确认要发可用 skip_gate=true 强制上传。"
+            % (detail.get("verb", ""), matched, vtitle))
+    if reason == "hook_collision":
+        return False, (
+            "[原创度:钩子撞车] 新视频钩子与近期视频《%s》（%s）关键词重叠 %.0f%%。"
+            "请换开场冲突后重试；确认要发可用 skip_gate=true 强制上传。"
+            % (vtitle, matched, detail.get("overlap", 0) * 100))
+    return False, (
+        "[原创度] 与近期已发视频模板重复（%s：%s《%s》）。"
+        "确认要发可用 skip_gate=true 强制上传。"
+        % (reason, matched, vtitle))
+
+
+def _infer_device_from_title(title: str) -> str:
+    """从标题推断 AI 设备类型（上传时 template 缺失的兜底）。"""
+    import re as _re
+    t = (title or "").lower()
+    # 1. 先匹配场景池里的已知 topic
+    try:
+        with open("/home/hatch/data/perpetua/scenario_pool.json",
+                  encoding="utf-8") as f:
+            pool = json.load(f)
+        best, best_len = "", 0
+        for sc in pool:
+            topic = sc.get("topic", "")
+            norm = _re.sub(r"^(ai|smart)\s+", "", topic.lower()).strip()
+            if norm and _re.search(r"(?<![a-z])" + _re.escape(norm) + r"(?![a-z])", t):
+                if len(norm) > best_len:
+                    best, best_len = topic, len(norm)
+        if best:
+            return best
+    except Exception:
+        pass
+    # 2. 匹配系列 device_keywords
+    try:
+        with open("/home/hatch/data/perpetua/series.json",
+                  encoding="utf-8") as f:
+            cfg = json.load(f)
+        best, best_len = "", 0
+        for s in cfg.get("series", []):
+            for kw in s.get("device_keywords", []):
+                if _re.search(r"(?<![a-z])" + _re.escape(kw.lower()) + r"(?![a-z])", t):
+                    if len(kw) > best_len:
+                        best, best_len = kw, len(kw)
+        if best:
+            return best
+    except Exception:
+        pass
+    return ""
+
+
+def build_description_template(hook_line: str, choice_a: str = "Let Karen win",
+                               choice_b: str = "Let the AI handle it",
+                               choice_c: str = "Call the manager",
+                               extra_tags: str = "") -> dict:
+    """Generate Gate-4-compliant description+tags for auto_pipeline.
+
+    P0-4 template: 3-sentence story + multiple-choice comment bait + subscribe CTA.
+    Returns {"description": str, "tags": str}.
+    """
+    desc_parts = [
+        hook_line.strip(),
+        "What would YOU do?",
+        "A) %s  B) %s  C) %s" % (choice_a, choice_b, choice_c),
+        "Comment A, B or C! Subscribe for daily Karen vs AI karma!",
+        "#karen #instantkarma #shorts #aifails #funny",
+    ]
+    description = "\n".join(desc_parts)
+    base_tags = ["karen", "instantkarma", "shorts", "aifails", "funny"]
+    if extra_tags:
+        base_tags += [t.strip() for t in extra_tags.split(",") if t.strip()]
+    seen = set()
+    tags = [t for t in base_tags if not (t.lower() in seen or seen.add(t.lower()))]
+    return {"description": description, "tags": ",".join(tags)}
 
 
 def _probe_duration(filepath: str) -> float:
@@ -866,7 +1051,7 @@ def _upload_gate_check(title: str, hook: str, filepath: str = ""):
 def youtube_upload(filepath: str, title: str, description: str = "",
                    skip_gate: bool = False, tags: str = "",
                    language: str = "", playlist_id: str = "",
-                   ai_disclosure: bool = True) -> str:
+                   ai_disclosure: bool = True, template=None) -> str:
     """上传视频到 YouTube（公开）。filepath 为 /home/hatch/data 下的相对路径。
     返回 video_id 和观看链接。Shorts 竖屏视频会自动识别为 Short。
 
@@ -882,10 +1067,25 @@ def youtube_upload(filepath: str, title: str, description: str = "",
     ai_disclosure: 默认 True —— 声明含逼真「篡改或合成」(A/S) 内容，
                   写入 status.containsSyntheticMedia。AI 生成视频必须披露，
                    否则违反 YouTube 政策。确认视频为真实拍摄时传 False。
+    template:     可选，视觉模板信息，用于原创度门禁（dict 或 str）。
+                  dict 如 {"topic": "smart parking meter", "hook": "...",
+                            "prompt": "..."}；str 直接当作 topic/device。
+                  不传时从标题推断设备类型。
     """
+    # 2026-10-07 彻底修复 Marvis 绕过：上传必须有管线审批记录
+    # 校验：视频必须在 pipeline_queue 或 awaiting_approval 中有对应条目，
+    # 且 Ask Studio >= 85、QC 通过、人工终审通过（或 URGENT 豁免）
+    if not _verify_pipeline_approval(filepath, title, skip_gate):
+        return ("上传被拒：[pipeline_approval] 该视频未通过正常管线审批。"
+                "必须走：选题→Ask Studio评审(≥85)→生成→QC→人工终审→上传。"
+                "Marvis 不得直接上传，违规上传将被审计记录。")
     if not skip_gate:
         # 2026-10-06 深度诊断：5 项硬门禁（错峰/主语/emoji/元数据/纯度去重）
         ok, msg = _upload_hard_gates(title, description or "", tags or "")
+        if not ok:
+            return "上传被拒：" + msg
+        # 2026-10-07 新增：原创度门禁（模板重复拦截，与爆款分门并行）
+        ok, msg = _upload_originality_gate(title, description or "", template)
         if not ok:
             return "上传被拒：" + msg
         ok, msg = _upload_gate_check(title, description or "", filepath)

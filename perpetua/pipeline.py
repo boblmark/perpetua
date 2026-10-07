@@ -23,7 +23,7 @@ BASE = "/home/hatch/data/perpetua"
 RUNS_FILE = f"{BASE}/pipeline_runs.json"
 MAX_RUNS = 500  # 只保留最近 500 条
 
-STAGES = ["trend", "select", "score", "topic_select", "generate", "postprocess", "qc", "pending_approval", "upload", "publish", "audit", "analyze", "optimize"]
+STAGES = ["trend", "select", "review", "generate", "qc", "publish", "postop", "evolve"]
 
 STAGE_INFO = {
     "trend":            {"zh": "趋势抓取", "needs_ai": False},

@@ -1,0 +1,997 @@
+#!/usr/bin/env python3
+"""Perpetua 独立控制台后端（纯标准库，无第三方依赖）。
+1:1 复刻 Muse Dashboard artifact 的 6 个后端 action：
+  chat / exec_terminal / getdashboardsnapshot / getpipelinelogs / getpipelinestatus / refreshdashboardsnapshot
+"""
+import json
+import os
+import re
+import subprocess
+import time
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
+
+DATA = "/home/hatch/data"
+TOKEN_FILE = os.path.join(DATA, "mcp_server", ".token")
+AUDIT_LOG = os.path.join(DATA, "perpetua", "terminal_audit.log")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SNAPSHOT_FILE = os.path.join(DATA, "perpetua", "dashboard_snapshot.json")
+PIPELINE_FILE = os.path.join(DATA, "perpetua", "pipeline_runs.json")
+CHAT_REQ = os.path.join(DATA, "collab", "chat_requests.json")
+CHAT_RESP = os.path.join(DATA, "collab", "chat_responses.json")
+
+# 日志源映射（与 Muse 版一致）
+LOG_SOURCES = {
+    "mcp": os.path.join(DATA, "mcp_server", "mcp-server.out.log"),
+    "watchdog": os.path.join(DATA, "mcp_server", "watchdog.log"),
+    "tunnel": os.path.join(DATA, "mcp_server", "tunnel.out.log"),
+    "poller": os.path.join(DATA, "mcp_server", "ws-poller.out.log"),
+}
+
+# 危险命令拦截
+BLOCKED = [
+    r"\brm\s+-rf?\s+/(?:\s|$)",
+    r"\brm\s+-rf?\s+~(?:\s|$|/)",
+    r"\brm\s+-rf?\s+/home(?:\s|$)",
+    r":\(\)\s*\{\s*:\|\:&\s*\}\s*;",
+    r"\bmkfs\b",
+    r"\bdd\s+.*of=/dev/",
+    r"\b(shutdown|reboot|halt|poweroff)\b",
+]
+
+# 密钥脱敏
+REDACT_PATTERNS = [
+    (re.compile(r'(bearer\s+)[A-Za-z0-9\-._~+/]+=*', re.I), r'\1[REDACTED]'),
+    (re.compile(r'(api[_-]?key["\']?\s*[:=]\s*["\']?)[^"\'\s,}]+', re.I), r'\1[REDACTED]'),
+    (re.compile(r'(token["\']?\s*[:=]\s*["\']?)[^"\'\s,}]+', re.I), r'\1[REDACTED]'),
+    (re.compile(r'(password["\']?\s*[:=]\s*["\']?)[^"\'\s,}]+', re.I), r'\1[REDACTED]'),
+    (re.compile(r'(secret["\']?\s*[:=]\s*["\']?)[^"\'\s,}]+', re.I), r'\1[REDACTED]'),
+]
+
+# 八阶段定义（2026-10-07 基准数据架构，与 pipeline_runs.json 的 stage id 一致）
+STAGES = [
+    ("trend", "趋势输入", "Trend", False),
+    ("select", "选题生成", "Select", True),
+    ("review", "Ask Studio 评审", "Review", True),
+    ("generate", "视频生成", "Generate", True),
+    ("qc", "QC 质检", "QC", False),
+    ("publish", "终审上传", "Publish", False),
+    ("postop", "发布后运营", "PostOp", False),
+    ("evolve", "数据进化", "Evolve", True),
+]
+
+# 演示快照（与 Muse 版 dashboard_snapshots 一致，sample:true）
+SAMPLE_SNAPSHOT = {
+    "version": 2,
+    "sample": True,
+    "channelName": "Mark Bobl | Karen vs AI",
+    "channelId": "@karenvsai",
+    "subscriberCount": 532,
+    "videosToday": 3,
+    "views7d": 30600,
+    "shortsViews90d": 746214,
+    "shortsGoal": 3000000,
+    "viralityRate": 37.8,
+    "plan": "Pro",
+    "quotaUsed": 3,
+    "quotaTotal": 10,
+    "updatedAt": "2026-10-06T06:53:46.238Z",
+    "videos": [
+        {"id": "v-101", "videoId": "A7kLm9Qp2Xs", "title": "Karen vs AI 机器人笼斗", "publishedAt": "10月6日 03:42", "views": 13672, "status": "published"},
+        {"id": "v-102", "videoId": "B8nMm0Rr3Yt", "title": "Posiflex AI kiosk 实测", "publishedAt": "10月6日 01:15", "views": 8421, "status": "published"},
+        {"id": "v-103", "videoId": "C9oNn1Ss4Zu", "title": "扫地机器人叫保安", "publishedAt": "10月5日 22:30", "views": 5930, "status": "published"},
+        {"id": "v-104", "videoId": "D0pOo2Tt5Av", "title": "得来速分贝检测挑战", "publishedAt": "10月5日 19:08", "views": 2150, "status": "published"},
+        {"id": "v-105", "videoId": "E1qPp3Uu6Bw", "title": "购物车锁死事件", "publishedAt": "10月5日 16:44", "views": 890, "status": "processing"},
+    ],
+    "health": [
+        {"id": "mcp", "name": "MCP 服务器", "detail": "30 tools online", "healthy": True},
+        {"id": "youtube", "name": "YouTube API", "detail": "Quota nominal", "healthy": True},
+        {"id": "trend", "name": "热点探测器", "detail": "3 sources scanning", "healthy": True},
+        {"id": "studio", "name": "Ask Studio 队列", "detail": "0 waiting", "healthy": False},
+    ],
+}
+
+# pipeline 缓存（60 秒）
+_pipeline_cache = {"at": 0, "data": None}
+
+# 真实数据快照缓存（10 分钟，避免频繁消耗 YouTube API 配额）
+_real_snapshot_cache = {"at": 0, "data": None}
+REAL_SNAPSHOT_TTL = 600
+
+
+def _run_yt_script(args, timeout=30):
+    """调用 youtube/ 下的脚本，返回解析后的 JSON，失败返回 None。"""
+    try:
+        r = subprocess.run(
+            ["python3"] + args,
+            capture_output=True, text=True, timeout=timeout,
+            cwd="/home/hatch/data",
+        )
+        out = (r.stdout or "").strip()
+        if not out or out.startswith("[error]"):
+            return None
+        return json.loads(out)
+    except Exception:
+        return None
+
+
+def fetch_real_snapshot():
+    """从 YouTube Data API v3 + Analytics API 获取真实频道快照。
+
+    返回 dict（字段与 SAMPLE_SNAPSHOT 对齐），全部失败时返回 None。
+    带 10 分钟缓存。
+    """
+    now = time.time()
+    if _real_snapshot_cache["data"] and now - _real_snapshot_cache["at"] < REAL_SNAPSHOT_TTL:
+        return _real_snapshot_cache["data"]
+
+    snap = dict(SAMPLE_SNAPSHOT)
+    snap["sample"] = False
+    ok_any = False
+
+    # 1) 频道基础数据：订阅数、视频数、总播放
+    stats = _run_yt_script(["/home/hatch/data/youtube/yt.py", "stats"])
+    if stats:
+        snap["channelName"] = stats.get("title", snap["channelName"])
+        for key, field in (("subs", "subscriberCount"), ("videos", "videoCount"),
+                           ("views", "totalViews")):
+            try:
+                v = stats.get(key)
+                if v is not None and str(v).strip() != "":
+                    snap[field] = int(str(v).strip())
+                    ok_any = True
+            except (ValueError, TypeError):
+                pass
+        # 订阅数是核心指标，单独标记
+        if snap.get("subscriberCount"):
+            ok_any = True
+
+    # 2) 最近 5 个视频
+    recent = _run_yt_script(["/home/hatch/data/youtube/yt.py", "recent", "5"])
+    if isinstance(recent, list) and recent:
+        vids = []
+        for v in recent[:5]:
+            vids.append({
+                "id": v.get("id", ""),
+                "videoId": v.get("id", ""),
+                "title": v.get("title", ""),
+                "publishedAt": v.get("published", ""),
+                "views": int(v.get("views", 0) or 0),
+                "status": "published",
+            })
+        snap["videos"] = vids
+        ok_any = True
+
+    # 3) 90 天 Shorts 播放（YPP 指标）——经 ytq.py 走 relay
+    s90_views = None
+    try:
+        r = subprocess.run(
+            ["python3", os.path.join(BASE_DIR, "ytq.py"),
+             "views", "90", "insightTrafficSourceType"],
+            capture_output=True, text=True, timeout=40,
+            cwd="/home/hatch/data",
+        )
+        rows = json.loads((r.stdout or "[]").strip() or "[]")
+        for row in rows:
+            if row[0] == "SHORTS":
+                s90_views = int(row[1])
+                ok_any = True
+                break
+    except Exception:
+        pass
+    if s90_views is not None:
+        snap["shortsViews90d"] = s90_views
+
+    # 4) 近 7 日观看量（经 ytq.py 走 relay；失败则估算并注明）
+    views7d = None
+    views7d_note = ""
+    try:
+        r = subprocess.run(
+            ["python3", os.path.join(BASE_DIR, "ytq.py"), "views", "7"],
+            capture_output=True, text=True, timeout=40,
+            cwd="/home/hatch/data",
+        )
+        rows = json.loads((r.stdout or "[]").strip() or "[]")
+        if rows and rows[0]:
+            views7d = int(rows[0][0])
+            ok_any = True
+    except Exception:
+        pass
+    if views7d is None and isinstance(recent, list) and recent:
+        # 降级：用最近视频播放量估算
+        views7d = sum(int(v.get("views", 0) or 0) for v in recent[:5])
+        views7d_note = "estimated"
+    if views7d is not None:
+        snap["views7d"] = views7d
+        if views7d_note:
+            snap["views7d_note"] = views7d_note
+
+    # 5) 爆款率：近 30 天播放 Top10% 占比的简化版 —— 用近期视频中播放 > 均值2倍的比例
+    if isinstance(recent, list) and len(recent) >= 3:
+        vs = [int(v.get("views", 0) or 0) for v in recent]
+        avg = sum(vs) / len(vs) if vs else 1
+        hot = sum(1 for x in vs if x > avg * 2)
+        snap["viralityRate"] = round(hot / len(vs) * 100, 1)
+
+    # 6) 今日发布数（从 pipeline 真实遥测）
+    try:
+        pipe = read_json_file(PIPELINE_FILE) or {}
+        runs = pipe.get("runs", [])
+        today = time.strftime("%Y-%m-%d")
+        snap["videosToday"] = sum(
+            1 for r in runs
+            if r.get("stage") == "publish" and (r.get("at") or "").startswith(today)
+        )
+    except Exception:
+        pass
+
+    snap["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    if ok_any:
+        _real_snapshot_cache["at"] = now
+        _real_snapshot_cache["data"] = snap
+        return snap
+    return None
+
+
+# ---- 观众评论（5 分钟缓存） ----
+_real_comments_cache = {"at": 0, "data": None}
+REAL_COMMENTS_TTL = 300
+
+def fetch_real_comments(max_n=20):
+    """从 YouTube Data API 拉取频道最新评论。失败返回 None。带 5 分钟缓存。"""
+    now = time.time()
+    if _real_comments_cache["data"] is not None and now - _real_comments_cache["at"] < REAL_COMMENTS_TTL:
+        return _real_comments_cache["data"]
+    comments = _run_yt_script([os.path.join(BASE_DIR, "ytc.py"), str(max_n)], timeout=60)
+    if isinstance(comments, list):
+        _real_comments_cache["at"] = now
+        _real_comments_cache["data"] = comments
+        return comments
+    return None
+
+
+def reply_to_comment(comment_id, text):
+    """手动回复一条评论（走 relay）。返回 dict 结果，失败返回 {"error": ...}。"""
+    try:
+        r = subprocess.run(
+            ["python3", "-c",
+             "import sys, json, random; "
+             "sys.path.insert(0, '/home/hatch/data/youtube'); "
+             "from comment_sweep import do_reply; "
+             "txt = sys.argv[2] or random.choice(["
+             "'Thanks for watching! 🔥 Which part was your favorite?', "
+             "'Glad you enjoyed it! 😂 More Karen vs AI coming soon!', "
+             "'Appreciate the comment! 👀 What should the AI do next?']); "
+             "r = do_reply(sys.argv[1], txt); "
+             "print(json.dumps({'ok': True, 'reply_id': r.get('id','')}))",
+             comment_id, text or ""],
+            capture_output=True, text=True, timeout=40,
+            cwd="/home/hatch/data",
+        )
+        out = (r.stdout or "").strip()
+        if out:
+            return json.loads(out)
+        return {"error": (r.stderr or "no output")[:200]}
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
+def get_token():
+    try:
+        with open(TOKEN_FILE) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+# ---- MCP 服务端代理（token 不下发前端） ----
+# MCP 是 Streamable HTTP（JSON-RPC over POST），且要求先 initialize 建会话。
+# 会话在服务端维护，前端只调 /api/mcp*，永远接触不到真实 token。
+_mcp_proxy = {"session_id": "", "at": 0}
+_MCP_URL = "http://127.0.0.1:8734/mcp"
+
+
+def _mcp_post(payload, session_id=""):
+    """向 MCP 发一次 JSON-RPC POST，返回 (status, new_session_id, body)。"""
+    import urllib.request
+    import urllib.error
+    token = get_token()
+    if not token:
+        return 0, "", "mcp token missing"
+    req = urllib.request.Request(
+        _MCP_URL,
+        data=json.dumps(payload).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Authorization": "Bearer " + token,
+        },
+        method="POST",
+    )
+    if session_id:
+        req.add_header("Mcp-Session-Id", session_id)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, r.headers.get("Mcp-Session-Id", ""), r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except Exception:
+            body = ""
+        return e.code, "", body
+    except Exception as e:
+        return 0, "", str(e)
+
+
+def _mcp_ensure_session():
+    """建（或复用）MCP 会话，返回 session_id，失败返回 ''。"""
+    if _mcp_proxy["session_id"] and time.time() - _mcp_proxy["at"] < 600:
+        return _mcp_proxy["session_id"]
+    st, sid, _ = _mcp_post({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                   "clientInfo": {"name": "console-proxy", "version": "1.0"}},
+    })
+    if st == 200 and sid:
+        _mcp_proxy.update(session_id=sid, at=time.time())
+        return sid
+    _mcp_proxy.update(session_id="", at=0)
+    return ""
+
+
+def _mcp_rpc(method, params):
+    """调 MCP 的 JSON-RPC 方法，返回 (result, error)。"""
+    sid = _mcp_ensure_session()
+    if not sid:
+        return None, "mcp session init failed"
+    st, _, body = _mcp_post(
+        {"jsonrpc": "2.0", "id": 2, "method": method, "params": params or {}}, sid)
+    if st == 400 and "session" in body.lower():
+        # 会话过期：清掉重建并重试一次
+        _mcp_proxy.update(session_id="", at=0)
+        sid = _mcp_ensure_session()
+        if not sid:
+            return None, "mcp session re-init failed"
+        st, _, body = _mcp_post(
+            {"jsonrpc": "2.0", "id": 3, "method": method, "params": params or {}}, sid)
+    if st != 200:
+        return None, "mcp http %s: %s" % (st, body[:200])
+    for line in body.splitlines():
+        if line.startswith("data:"):
+            try:
+                d = json.loads(line[5:].strip())
+            except ValueError:
+                continue
+            if "error" in d:
+                return None, str(d["error"])[:300]
+            return d.get("result"), ""
+    return None, "mcp empty response"
+
+
+def _audit_mcp_call(method):
+    """代理调用审计：只记方法名，不记参数/token。"""
+    try:
+        with open(AUDIT_LOG, "a") as f:
+            f.write("%s [mcp-proxy] %s\n" % (
+                time.strftime("%Y-%m-%dT%H:%M:%S"), method))
+    except OSError:
+        pass
+
+
+def json_resp(handler, obj, code=200):
+    body = json.dumps(obj, ensure_ascii=False).encode()
+    handler.send_response(code)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def read_json_file(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def write_json_file(path, data):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except OSError:
+        return False
+
+
+def redact(text):
+    for pat, repl in REDACT_PATTERNS:
+        text = pat.sub(repl, text)
+    return text
+
+
+def tail_file(path, lines=100):
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 65536))
+            data = f.read().decode("utf-8", errors="replace")
+        return redact("\n".join(data.splitlines()[-lines:]))
+    except OSError:
+        return ""
+
+
+# ---- 统一发布计划（5 分钟缓存） ----
+_publish_plan_cache = {"at": 0, "data": None}
+PUBLISH_PLAN_TTL = 300
+
+def _norm_title(t):
+    """标题归一化用于去重比对：小写、去 emoji/标点/空格。"""
+    import re as _re
+    t = (t or "").lower()
+    t = _re.sub(r"[^\w\u4e00-\u9fff]", "", t)
+    return t
+
+def fetch_publish_plan():
+    """统一发布计划：待生成(queued) → 待取货/待发布(ready) → 已发布(published)。
+
+    - 待生成：perpetua/jobs/pending/ 中的 generate_video 任务
+    - 待取货：collab/inbox.json 的 pending_pickup（待 Marvis 上传）
+    - 已发布：YouTube Data API 最近视频（与 Studio 一致）
+    本地 pending 与已发布做标题去重，避免重复显示。
+    """
+    now = time.time()
+    if _publish_plan_cache["data"] and now - _publish_plan_cache["at"] < PUBLISH_PLAN_TTL:
+        return _publish_plan_cache["data"]
+
+    plan = {"queued": [], "ready": [], "published": [], "sample": False,
+            "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+    # 1) 待生成：jobs/pending/ 中的 generate_video
+    try:
+        pj = os.path.join(DATA, "perpetua", "jobs", "pending")
+        for fn in sorted(os.listdir(pj)):
+            if not fn.endswith(".json") or fn.endswith(".result.json"):
+                continue
+            d = read_json_file(os.path.join(pj, fn))
+            if not d or d.get("job_type") != "generate_video":
+                continue
+            p = d.get("payload") or {}
+            plan["queued"].append({
+                "stage": "queued",
+                "job_id": d.get("job_id", ""),
+                "title": p.get("title") or p.get("prompt", "")[:60],
+                "created_at": d.get("created_at", ""),
+                "from": d.get("from", ""),
+            })
+    except OSError:
+        pass
+
+    # 2) 待取货：inbox.json pending_pickup（待 Marvis 上传）
+    try:
+        inbox = read_json_file(os.path.join(DATA, "collab", "inbox.json")) or {}
+        for item in inbox.get("pending_pickup", []):
+            plan["ready"].append({
+                "stage": "ready",
+                "title": item.get("title", ""),
+                "file": item.get("file", ""),
+                "created": item.get("created", ""),
+                "status": item.get("status", "ready"),
+            })
+    except Exception:
+        pass
+
+    # 3) 已发布：YouTube Data API 最近视频（与 Studio 一致）
+    recent = _run_yt_script(["/home/hatch/data/youtube/yt.py", "recent", "10"])
+    if isinstance(recent, list) and recent:
+        for v in recent[:10]:
+            plan["published"].append({
+                "stage": "published",
+                "videoId": v.get("id", ""),
+                "title": v.get("title", ""),
+                "publishedAt": v.get("published", ""),
+                "views": int(v.get("views", 0) or 0),
+            })
+    else:
+        plan["sample"] = True
+
+    # 4) 去重：本地 queued/ready 中标题与已发布高度重合的，视为已发布，不再显示在待办
+    pub_norm = {_norm_title(v["title"]) for v in plan["published"]}
+    def is_dup(title):
+        nt = _norm_title(title)
+        if not nt:
+            return False
+        return any(nt in p or p in nt for p in pub_norm if p)
+    plan["queued"] = [q for q in plan["queued"] if not is_dup(q["title"])]
+    plan["ready"] = [r for r in plan["ready"] if not is_dup(r["title"])]
+
+    plan["counts"] = {k: len(plan[k]) for k in ("queued", "ready", "published")}
+    _publish_plan_cache["at"] = now
+    _publish_plan_cache["data"] = plan
+    return plan
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "PerpetuaConsole/2.0"
+    protocol_version = "HTTP/1.0"  # 短连接，隧道更可靠
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path == "/":
+            self.serve_index()
+            return
+        if path == "/api/app.css":
+            self.serve_file("app.css", "text/css; charset=utf-8")
+            return
+        if path == "/api/app.js":
+            self.serve_file("app.js", "application/javascript; charset=utf-8")
+            return
+        if path.startswith("/api/"):
+            # MCP 服务端代理：前端不再持有 token，所有 MCP 调用走这里。
+            # token 只在服务端读 .token 文件，不下发前端。
+            if path == "/api/mcp/tools/list":
+                self.api_mcp_tools_list()
+                return
+            qs = parse_qs(parsed.query)
+            if path == "/api/snapshot":
+                self.api_snapshot()
+            elif path == "/api/pipeline":
+                self.api_pipeline(qs.get("tenant_id", ["default"])[0])
+            elif path == "/api/logs":
+                self.api_logs(qs.get("source", ["all"])[0], min(int(qs.get("lines", ["100"])[0]), 500))
+            elif path == "/api/tenants":
+                self.api_tenants()
+            elif path == "/api/health":
+                self.api_health()
+            elif path == "/api/comments":
+                self.api_comments()
+            elif path == "/api/publish_plan":
+                self.api_publish_plan()
+            else:
+                json_resp(self, {"error": "not found"}, 404)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            payload = {}
+        if parsed.path == "/api/exec":
+            self.api_exec(payload.get("command", ""))
+            return
+        if parsed.path == "/api/chat":
+            self.api_chat(payload.get("message", ""))
+            return
+        if parsed.path == "/api/snapshot/refresh":
+            self.api_snapshot_refresh()
+            return
+        if parsed.path == "/api/settings":
+            self.api_settings_save(payload)
+            return
+        if parsed.path == "/api/tenant/add":
+            self.api_tenant_add(payload)
+            return
+        if parsed.path == "/api/tenant/update":
+            self.api_tenant_update(payload)
+            return
+        if parsed.path == "/api/tenant/delete":
+            self.api_tenant_delete(payload)
+            return
+        if parsed.path == "/api/comments/reply":
+            self.api_comment_reply(payload.get("comment_id", ""), payload.get("text", ""))
+            return
+        if parsed.path == "/api/mcp":
+            # 通用 MCP JSON-RPC 代理：payload {"method": "tools/list", "params": {...}}
+            self.api_mcp_call(payload)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    # ---- 页面 ----
+    def serve_file(self, filename, ctype):
+        try:
+            with open(os.path.join(BASE_DIR, filename), "rb") as f:
+                body = f.read()
+            # 安全：不再向前端注入任何 token。
+            # 高权限 MCP token 只留在服务端（/.token 文件 + /api/mcp 代理），
+            # 页面源码中不再出现真实 token。
+        except OSError:
+            body = b"not found"
+            self.send_response(404)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        accept = self.headers.get("Accept-Encoding", "")
+        if "gzip" in accept and len(body) > 1024:
+            import gzip
+            body = gzip.compress(body)
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+        else:
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+        self.wfile.write(body)
+
+    def serve_index(self):
+        # 直接 serving 完整单文件 index.html（42KB），不再分片加载
+        # 分片方案在手机浏览器上不可靠
+        self.serve_file("index.html", "text/html; charset=utf-8")
+
+    # ---- 快照 ----
+    def api_snapshot(self):
+        # 优先真实 YouTube API 数据，失败时回退演示数据并标注
+        real = fetch_real_snapshot()
+        if real:
+            json_resp(self, real)
+            return
+        data = read_json_file(SNAPSHOT_FILE)
+        if not data:
+            data = dict(SAMPLE_SNAPSHOT)
+        data["sample"] = True
+        json_resp(self, data)
+
+    def api_snapshot_refresh(self):
+        # 强制刷新：清缓存后取真实数据，失败回退演示
+        _real_snapshot_cache["at"] = 0
+        _real_snapshot_cache["data"] = None
+        real = fetch_real_snapshot()
+        if real:
+            write_json_file(SNAPSHOT_FILE, real)
+            json_resp(self, real)
+            return
+        # 回退：演示数据
+        data = read_json_file(SNAPSHOT_FILE) or dict(SAMPLE_SNAPSHOT)
+        data["sample"] = True
+        data["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        write_json_file(SNAPSHOT_FILE, data)
+        json_resp(self, data)
+
+    # ---- 观众评论 ----
+    def api_publish_plan(self):
+        plan = fetch_publish_plan()
+        json_resp(self, plan)
+
+    def api_comments(self):
+        comments = fetch_real_comments(20)
+        if comments is None:
+            json_resp(self, {"ok": False, "comments": [], "sample": True,
+                             "error": "YouTube API 不可用"})
+            return
+        unreplied = sum(1 for c in comments if not c.get("replied"))
+        json_resp(self, {"ok": True, "comments": comments, "sample": False,
+                         "total": len(comments), "unreplied": unreplied,
+                         "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+
+    def api_comment_reply(self, comment_id, text):
+        if not comment_id:
+            json_resp(self, {"ok": False, "error": "缺少 comment_id"}, 400)
+            return
+        result = reply_to_comment(comment_id, text or "")
+        if result.get("ok"):
+            # 回复成功后清缓存，下次拉取刷新状态
+            _real_comments_cache["at"] = 0
+            _real_comments_cache["data"] = None
+        json_resp(self, result)
+
+    # ---- 流水线 ----
+    def api_pipeline(self, tenant_id):
+        now = time.time()
+        if _pipeline_cache["data"] and now - _pipeline_cache["at"] < 60:
+            cached = _pipeline_cache["data"]
+        else:
+            raw = read_json_file(PIPELINE_FILE) or {"runs": []}
+            cached = raw
+            _pipeline_cache["data"] = raw
+            _pipeline_cache["at"] = now
+        runs = cached.get("runs", [])
+        # 按 tenant+stage 取最新
+        latest = {}
+        for r in runs:
+            if r.get("tenant_id", "default") != tenant_id:
+                continue
+            k = r["stage"]
+            if k not in latest or (r.get("at") or "") > (latest[k].get("at") or ""):
+                latest[k] = r
+        # 各阶段期望频率（分钟）：超过 2 倍周期未运行才算 STALE
+        # 2026-10-07 按实际调度频率判，不再一刀切 5 分钟
+        STAGE_FREQ = {
+            "trend": 60,      # 每小时
+            "select": 480,    # 每天 3 档，约 8 小时
+            "review": 30,     # 每 30 分钟
+            "generate": 600,  # 每天 3 档
+            "qc": 20,         # 每 20 分钟 collect
+            "publish": 1440,  # 每天 3 条，不固定
+            "postop": 360,    # 每 6 小时
+            "evolve": 1440,   # 每天
+        }
+        stages = []
+        for sid, cname, ename, is_ai in STAGES:
+            info = latest.get(sid, {})
+            at = info.get("at", "")
+            has = bool(info.get("stage"))
+            freshness = "offline"
+            if has:
+                try:
+                    # 时间戳可能是 UTC（带 Z）或本地时间，统一按 UTC 解析
+                    ats = at[:19]
+                    if at[19:20] == 'Z' or '+' in at[19:]:
+                        # UTC 时间
+                        dt = datetime.strptime(ats, "%Y-%m-%dT%H:%M:%S")
+                        ts = dt.replace(tzinfo=timezone.utc).timestamp()
+                    else:
+                        ts = time.mktime(time.strptime(ats, "%Y-%m-%dT%H:%M:%S"))
+                    age_min = (now - ts) / 60
+                    freq = STAGE_FREQ.get(sid, 60)
+                    # 1 倍周期内=live，2 倍周期内=stale，超过=offline（可能挂了）
+                    if age_min <= freq:
+                        freshness = "live"
+                    elif age_min <= freq * 2:
+                        freshness = "stale"
+                    else:
+                        freshness = "offline"
+                except (ValueError, TypeError):
+                    freshness = "stale"
+            stages.append({
+                "id": sid, "name": cname, "nameEn": ename, "ai": is_ai,
+                "status": info.get("status", "idle"),
+                "detail": info.get("detail", ""),
+                "count": info.get("count", 0),
+                "at": at, "freshness": freshness,
+            })
+        # 整体状态
+        overall = "offline"
+        if any(s["freshness"] == "live" for s in stages):
+            overall = "live"
+        elif any(s["freshness"] == "stale" for s in stages):
+            overall = "stale"
+        json_resp(self, {"stages": stages, "overall": overall, "tenant_id": tenant_id})
+
+    # ---- 日志 ----
+    def api_logs(self, source, lines):
+        result = {}
+        sources = LOG_SOURCES if source == "all" else {source: LOG_SOURCES.get(source, "")}
+        for sid, path in sources.items():
+            if path:
+                result[sid] = tail_file(path, lines)
+        json_resp(self, {"logs": result, "at": time.strftime("%H:%M:%S")})
+
+    # ---- 租户 ----
+    def api_tenants(self):
+        data = read_json_file(os.path.join(DATA, "perpetua", "tenants", "registry.json"))
+        json_resp(self, data or {"tenants": {}})
+
+    # ---- 健康 ----
+    def api_health(self):
+        def pgrep(pat):
+            try:
+                out = subprocess.run(["pgrep", "-f", pat], capture_output=True, timeout=5)
+                return out.returncode == 0
+            except Exception:
+                return False
+        try:
+            st = os.statvfs(DATA)
+            disk = {"total_gb": round(st.f_blocks * st.f_frsize / 1e9, 1),
+                    "free_gb": round(st.f_bavail * st.f_frsize / 1e9, 1)}
+        except OSError:
+            disk = {}
+        json_resp(self, {
+            "ok": True,
+            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "mcp_server": pgrep("mcp_server/server.py"),
+            "tunnel_8734": pgrep("8734:localhost:8734"),
+            "tunnel_8080": pgrep("8080:localhost:8080"),
+            "disk": disk,
+        })
+
+    # ---- 终端 ----
+    def api_exec(self, command):
+        command = (command or "").strip()
+        if not command:
+            json_resp(self, {"error": "empty command"}, 400)
+            return
+        for pat in BLOCKED:
+            if re.search(pat, command):
+                self.audit(command, "BLOCKED")
+                json_resp(self, {"output": "BLOCKED: 危险命令已拦截", "exit_code": 126, "blocked": True}, 200)
+                return
+        try:
+            r = subprocess.run(command, shell=True, cwd=DATA, capture_output=True,
+                               text=True, timeout=30)
+            output = redact((r.stdout or "") + (r.stderr or ""))
+            truncated = False
+            if len(output) > 20480:
+                output = output[:20480] + "\n...[truncated]"
+                truncated = True
+            self.audit(command, f"exit={r.returncode}")
+            json_resp(self, {"output": output, "exit_code": r.returncode, "truncated": truncated})
+        except subprocess.TimeoutExpired as e:
+            out = redact((e.stdout or b"").decode(errors="replace") + (e.stderr or b"").decode(errors="replace"))
+            self.audit(command, "TIMEOUT")
+            json_resp(self, {"output": out + "\n[30秒超时，已终止]", "exit_code": -1, "timeout": True})
+
+    def audit(self, command, result):
+        try:
+            with open(AUDIT_LOG, "a") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | {result} | {command[:500]}\n")
+            os.chmod(AUDIT_LOG, 0o600)
+        except OSError:
+            pass
+
+    # ---- 聊天 ----
+    def api_chat(self, message):
+        msg = (message or "").strip()
+        if not msg:
+            json_resp(self, {"reply": "请输入问题。"}, 200)
+            return
+        # 关键词直达
+        reply = self.chat_keyword(msg)
+        if reply:
+            json_resp(self, {"reply": reply, "source": "local"}, 200)
+            return
+        # Marvis 异步队列
+        qid = self.chat_enqueue(msg)
+        json_resp(self, {"reply": "复杂问题已转交 Marvis 异步处理，请稍候…", "source": "marvis", "qid": qid}, 200)
+
+    def chat_keyword(self, msg):
+        m = msg.lower()
+        snap = read_json_file(SNAPSHOT_FILE) or SAMPLE_SNAPSHOT
+        if "热点" in msg or "trend" in m:
+            try:
+                r = subprocess.run(["python3", os.path.join(DATA, "trend_spike_detector.py")],
+                                   capture_output=True, text=True, timeout=60, cwd=DATA)
+                out = (r.stdout or "")[-800:]
+                return f"热点检测已执行：\n{out or '(无输出)'}"
+            except Exception as e:
+                return f"热点检测执行失败：{e}"
+        if "猪八戒" in msg or "zbj" in m:
+            return "猪八戒配额：已入驻 1 个，剩余 0（每日 09:49 自动检查，仅在 0→>0 时通知）。"
+        if "队列" in msg or "ask" in m:
+            q = read_json_file(os.path.join(DATA, "ask_studio", "queue.json")) or {}
+            items = q.get("queue", q if isinstance(q, list) else [])
+            n = len(items) if isinstance(items, list) else 0
+            return f"Ask Studio 队列：{n} 个待处理问题。"
+        if "健康" in msg or "health" in m:
+            hs = snap.get("health", [])
+            lines = [f"{'✓' if h.get('healthy') else '✗'} {h.get('name')}: {h.get('detail')}" for h in hs]
+            return "系统健康：\n" + "\n".join(lines)
+        if "ypp" in m:
+            v = snap.get("shortsViews90d", 0)
+            g = snap.get("shortsGoal", 3000000)
+            pct = round(v / g * 100, 1) if g else 0
+            return f"YPP 进度：{v/1e4:.1f}万 / {g/1e4:.0f}万（{pct}%），还需 {(g-v)/1e4:.1f}万次观看。"
+        if "配额" in msg or "quota" in m:
+            return f"今日配额：{snap.get('quotaUsed', 0)} / {snap.get('quotaTotal', 10)}（每日 00:00 重置）。"
+        if "日志" in msg or "log" in m:
+            return "请切换到「实时日志」面板查看，或问我具体哪个服务的日志（mcp/watchdog/tunnel/poller）。"
+        return None
+
+    def chat_enqueue(self, msg):
+        reqs = read_json_file(CHAT_REQ) or {"requests": []}
+        qid = f"q-{int(time.time())}"
+        reqs.setdefault("requests", []).append({
+            "id": qid, "message": msg, "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "status": "pending",
+        })
+        write_json_file(CHAT_REQ, reqs)
+        return qid
+
+    # ---- 租户管理 ----
+    def _tenant_registry(self):
+        path = os.path.join(DATA, "perpetua", "tenants", "registry.json")
+        return path, read_json_file(path) or {"tenants": {}}
+
+    def api_tenant_add(self, payload):
+        path, reg = self._tenant_registry()
+        tid = (payload.get("name") or "").strip().lower().replace(" ", "-") or f"t-{int(time.time())}"
+        tenants = reg.setdefault("tenants", {})
+        if tid in tenants:
+            json_resp(self, {"error": "租户已存在"}, 400)
+            return
+        plan = payload.get("plan", "Pro")
+        quota_map = {"Free": 3, "Pro": 10, "Enterprise": 50}
+        tenants[tid] = {
+            "id": tid,
+            "name": payload.get("name", tid),
+            "youtube_channel_id": payload.get("channel_id", ""),
+            "youtube_channel_name": payload.get("channel_id", ""),
+            "plan": plan,
+            "quota": {"videos_per_day": quota_map.get(plan, 10)},
+            "status": "active",
+            "theme": "",
+            "created": time.strftime("%Y-%m-%d"),
+        }
+        write_json_file(path, reg)
+        json_resp(self, {"ok": True, "id": tid})
+
+    def api_tenant_update(self, payload):
+        path, reg = self._tenant_registry()
+        tid = payload.get("id", "")
+        t = reg.get("tenants", {}).get(tid)
+        if not t:
+            json_resp(self, {"error": "租户不存在"}, 404)
+            return
+        if "quota" in payload:
+            t.setdefault("quota", {})["videos_per_day"] = int(payload["quota"])
+        if "status" in payload:
+            t["status"] = payload["status"]
+        if "plan" in payload:
+            t["plan"] = payload["plan"]
+        write_json_file(path, reg)
+        json_resp(self, {"ok": True})
+
+    def api_tenant_delete(self, payload):
+        path, reg = self._tenant_registry()
+        tid = payload.get("id", "")
+        if tid == "default":
+            json_resp(self, {"error": "default 租户不可删除"}, 400)
+            return
+        if tid in reg.get("tenants", {}):
+            del reg["tenants"][tid]
+            write_json_file(path, reg)
+            json_resp(self, {"ok": True})
+        else:
+            json_resp(self, {"error": "租户不存在"}, 404)
+
+    # ---- 设置 ----
+    def api_settings_save(self, payload):
+        path = os.path.join(DATA, "perpetua", "console_settings.json")
+        cur = read_json_file(path) or {}
+        cur.update({k: payload.get(k, v) for k, v in {
+            "daily_target": 2, "virality_threshold": 60, "plan": "Pro",
+            "spike_detector": True, "auto_retitle": True, "ask_studio_auto": True,
+        }.items() if k in payload})
+        write_json_file(path, cur)
+        json_resp(self, {"ok": True, "settings": cur})
+
+    # ---- MCP 服务端代理 ----
+    def api_mcp_tools_list(self):
+        """GET /api/mcp/tools/list：服务端调 MCP tools/list，原样返回。"""
+        _audit_mcp_call("tools/list")
+        result, err = _mcp_rpc("tools/list", {})
+        if err:
+            json_resp(self, {"error": err}, 502)
+            return
+        json_resp(self, result or {})
+
+    def api_mcp_call(self, payload):
+        """POST /api/mcp：通用 JSON-RPC 代理，payload {"method","params"}。"""
+        method = (payload or {}).get("method", "")
+        params = (payload or {}).get("params", {})
+        if not method or not isinstance(method, str):
+            json_resp(self, {"error": "method required"}, 400)
+            return
+        _audit_mcp_call(method)
+        result, err = _mcp_rpc(method, params)
+        if err:
+            json_resp(self, {"error": err}, 502)
+            return
+        json_resp(self, result if result is not None else {})
+
+
+def main():
+    port = int(os.environ.get("CONSOLE_PORT", "8080"))
+    srv = HTTPServer(("127.0.0.1", port), Handler)
+    print(f"Perpetua console v2 on 127.0.0.1:{port}", flush=True)
+    srv.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

@@ -14,7 +14,7 @@ warning 可过，fail 必须拦。自动修复成功后重新验证。
   2. duration    时长 9-11s —— 超出自动 ffmpeg 裁到 11s；不足 9s 拒绝
   3. blackframe  黑帧/白闪（抽 5 帧，抄 etch181）—— 有坏帧直接拒绝（需重生成）
   4. firstframe  首帧静音测试（v2 P0）—— 全黑/全白拒绝；低对比度/无主体 warning
-  5. loop       无缝循环（调 loop_check.check_loop，阈值 0.85）
+  5. loop       无缝循环（调 loop_check.check_loop，阈值 0.75）
                 不通过 → 若有 regen_fn 则触发重生成（最多 2 次），否则拒绝
   6. climax      高潮时机（音频能量峰值应在 6.5-7.5s）—— warning
   7. tailcut     结尾拖尾（v2 P0：最后 1s 能量应骤降）—— warning
@@ -43,7 +43,7 @@ PERPETUA = "/home/hatch/data/perpetua"
 QC_LOG = os.path.join(PERPETUA, "pre_upload_qc.log")
 
 MIN_DUR, MAX_DUR = 9.0, 11.0
-LOOP_THRESHOLD = 0.85
+LOOP_THRESHOLD = 0.75  # 2026-10-07 与 loop_check.py 对齐（0.85 实测不可达）
 CLIMAX_RANGE = (6.5, 7.5)
 
 

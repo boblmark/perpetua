@@ -18,6 +18,47 @@ import sys
 import uuid
 from datetime import datetime, timezone
 
+
+def _queue_verb_expansion(reason):
+    """动词池耗尽触发：往 Ask Studio 队列塞扩充问题。"""
+    import json as _json
+    import uuid as _uuid
+    qpath = "/home/hatch/data/ask_studio/queue.json"
+    try:
+        q = _json.load(open(qpath, encoding="utf-8"))
+    except Exception:
+        return False
+    # 避免重复排队：已有 pending 的 verb 扩充问题就跳过
+    for x in q.get("pending", []):
+        if x.get("batch_key") in ("verb_pool_expansion", "verb_pool_dedup"):
+            return False
+    qid = f"q_verbauto_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    question = (
+        "For my scripted comedy Shorts channel @karenvsai: the 'Karen' is a fictional, "
+        "exaggerated comedy character (played by an actor) in family-friendly slapstick sketches. "
+        "Recurring gag: she argues with everyday AI devices, device wins with harmless cartoon-level "
+        "physical comedy payoff in under 2 seconds. "
+        f"TRIGGER: my dedup system just reported '{reason}' - all candidate topics were blocked, "
+        "the karma verb pool is exhausted. I need 10 FRESH slapstick payoff verbs that are: "
+        "1) visually sudden and physical, safe, cartoon-level, "
+        "2) doable by everyday AI devices (self-checkout, doorbell, vacuum, parking meter, speaker), "
+        "3) NOT synonyms of: spray, soak, lock, trap, tow, slam, eject, blast, drench, shock, print, "
+        "balloon, flap, reverse, stamp, vibrate, jolt, mute, spotlight, bop, unroll, yank, slurp, "
+        "whistle, dangle, snap, dive. "
+        "For each: verb, one example line, best device types. Rank by visual impact."
+    )
+    q["pending"].append({
+        "id": qid,
+        "question": question,
+        "asked_by": "dash-auto",
+        "priority": "high",
+        "created": datetime.now(timezone.utc).isoformat(),
+        "status": "pending",
+        "batch_key": "verb_pool_expansion",
+    })
+    _json.dump(q, open(qpath, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    return True
+
 BASE = "/home/hatch/data/perpetua"
 QUEUE_PATH = f"{BASE}/pipeline_queue.json"
 SCENARIO_POOL = f"{BASE}/scenario_pool.json"
@@ -90,6 +131,15 @@ def _trend_heat_map():
         text = f"{t.get('title','')} {t.get('summary','')} {t.get('angle','')}"
         words = set(re.findall(r"[a-zA-Z]{3,}", text.lower()))
         out.append((words, heat_map.get(t.get("heat", "medium"), 2)))
+    # 观众评论选题（2026-10-07）：合并 comment_topics.json，不破坏原格式
+    try:
+        cdata = _load("/home/hatch/data/trends/comment_topics.json", {})
+        for t in cdata.get("candidates", []):
+            text = f"{t.get('title','')} {t.get('summary','')} {t.get('angle','')}"
+            words = set(re.findall(r"[a-zA-Z]{3,}", text.lower()))
+            out.append((words, heat_map.get(t.get("heat", "medium"), 2)))
+    except Exception:
+        pass
     return out
 
 
@@ -97,16 +147,47 @@ def select_topics(n=2, slot="12:30"):
     from virality_score import score as vscore
     from dedup_check import check_duplicate
     from viral_prompt import build_viral_prompt
+    from datetime import datetime
+
+    # P1-9 周五档：周五 12:30 时段优先选 preferred_day=Friday 的品牌系列
+    weekday = datetime.now().strftime("%A")  # Monday..Sunday
+    is_friday_slot = (weekday == "Friday" and slot == "12:30")
 
     pool = _load(SCENARIO_POOL, [])
     if not pool:
         print("scenario_pool.json 为空", file=sys.stderr)
-        pipeline_log("topic_select", "error", "scenario_pool.json 为空", 0)
+        pipeline_log("select", "error", "scenario_pool.json 为空", 0)
         return []
     trends = _trend_heat_map()
     queue = load_queue()
     used = {i["topic"] for i in queue
             if i.get("status") not in ("uploaded", "rejected", "review_failed")}
+    # 剧集系列亲和（2026-10-07）：新选题优先填已有系列宇宙
+    try:
+        _series_cfg = json.load(open(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "series.json"),
+            encoding="utf-8"))
+        _series_list = _series_cfg.get("series", [])
+        _affinity_boost = _series_cfg.get("affinity_boost", 15)
+    except Exception:
+        _series_list, _affinity_boost = [], 0
+
+    def _series_match(sc):
+        import re as _re
+        text = f"{sc.get('topic','')} {sc.get('tags','')} {sc.get('hook','')}".lower()
+        best, best_score = None, 0
+        for s in _series_list:
+            if s.get("status") not in ("active", "seed"):
+                continue
+            score = 0
+            for kw in s.get("device_keywords", []):
+                # 词边界匹配，防 "car" 命中 "cart"
+                if _re.search(r"(?<![a-z])" + _re.escape(kw.lower()) + r"(?![a-z])", text):
+                    score += len(kw)  # 长关键词权重更高
+            if score > best_score:
+                best, best_score = s, score
+        return best
+
     scored = []
     for sc in pool:
         topic = sc["topic"]
@@ -125,6 +206,19 @@ def select_topics(n=2, slot="12:30"):
         for tw, th in trends:
             if sc_words & tw:
                 boost = max(boost, th * 3)
+        # P1-9: 周五档品牌系列加权
+        if is_friday_slot and sc.get("preferred_day") == "Friday":
+            boost += 30
+            pipeline_log("select", "ok",
+                         f"周五档加权: {topic} (+30)", 0)
+        # 剧集亲和加权：命中现有系列宇宙的场景优先
+        _ms = _series_match(sc)
+        if _ms:
+            boost += _affinity_boost
+            sc["_series_id"] = _ms["id"]
+            sc["_series_name"] = _ms["name"]
+            pipeline_log("select", "ok",
+                         f"剧集亲和加权: {topic} -> {_ms['name']} (+{_affinity_boost})", 0)
         scored.append((base + boost, sc))
     scored.sort(key=lambda x: -x[0])
     selected = []
@@ -137,28 +231,87 @@ def select_topics(n=2, slot="12:30"):
         except Exception:
             is_dup, matched, ov = False, None, 0
         if is_dup:
-            pipeline_log("topic_select", "ok", f"去重拦截: {topic} (重叠{ov})", 0)
+            pipeline_log("select", "ok", f"去重拦截: {topic} (重叠{ov})", 0)
             continue
+        # 公式级去重（2026-10-07）：防"系列公式"滑向"套模板"。
+        # 先比 device + hook（不需要 prompt），prompt 建好后再比 karma 动词。
+        try:
+            from formula_dedup import check_formula, fingerprint
+            f_dup, f_reason, f_detail = check_formula(topic, hook, "")
+            if f_dup and f_reason in ("device_collision", "hook_collision"):
+                pipeline_log("select", "ok",
+                             f"公式去重拦截: {topic} ({f_reason}: {f_detail.get('matched')})", 0)
+                continue
+        except Exception as e:
+            pipeline_log("select", "error", f"公式去重异常跳过: {e}", 0)
         try:
             pkg = build_viral_prompt(topic, hook,
                                      emoji_pair=tuple(sc.get("emoji_pair", ["🤖", "😂"])))
         except ValueError as e:
-            pipeline_log("topic_select", "error", f"prompt 纯度拒绝 {topic}: {e}", 0)
+            pipeline_log("select", "error", f"prompt 纯度拒绝 {topic}: {e}", 0)
             continue
+        # prompt 建好后：检查 karma 动词 30 天内是否用过，撞了就换动词重建
+        try:
+            from formula_dedup import check_formula as _cf2, KARMA_VERBS as _KV
+            _fd, _fr, _fdet = _cf2(topic, hook, pkg["prompt"])
+            if _fd and _fr == "karma_verb_reuse":
+                rebuilt = False
+                used_verb = _fdet.get("verb")
+                from formula_dedup import KARMA_VERBS as _FULL_KV
+                _base_verbs = sorted(set(
+                    re.sub(r"(s|ed)$", "", v) for v in _FULL_KV
+                ))
+                for _v in _base_verbs:
+                    if _v == used_verb:
+                        continue
+                    _payoff = (f"sudden slapstick mishap in under 2 seconds — a comedic "
+                               f"{_v} gag erupts from the {topic} (tangible physical comedy). "
+                               f"She freezes mid-gesture in comic disbelief, caught on camera")
+                    try:
+                        pkg = build_viral_prompt(topic, hook,
+                                                 emoji_pair=tuple(sc.get("emoji_pair", ["🤖", "😂"])),
+                                                 karma_payoff=_payoff)
+                        _fd2, _fr2, _ = _cf2(topic, hook, pkg["prompt"])
+                        if not (_fd2 and _fr2 == "karma_verb_reuse"):
+                            rebuilt = True
+                            pipeline_log("select", "ok",
+                                         f"karma 动词撞车已换词重建: {topic} ({used_verb}->{_v})", 0)
+                            break
+                    except ValueError:
+                        continue
+                if not rebuilt:
+                    pipeline_log("select", "ok",
+                                 f"公式去重拦截: {topic} (karma_verb_reuse 无可用动词)", 0)
+                    continue
+        except Exception as e:
+            pipeline_log("select", "error", f"karma 动词检查异常跳过: {e}", 0)
+        title = pkg["title"]
+        # P1-9: 品牌系列标题加前缀（如【AI Satire】）
+        brand = sc.get("brand_prefix", "")
+        if brand and not title.startswith(brand):
+            title = f"{brand}{title}"
         selected.append({
             "topic": topic, "hook": hook,
-            "title": pkg["title"], "prompt": pkg["prompt"],
+            "title": title, "prompt": pkg["prompt"],
             "description": pkg.get("description", ""),
             "tags": "Karen,InstantKarma,Shorts,AICustomerService,Comedy",
             "virality_score": round(total, 1),
+            "series": sc.get("series", ""),
+            "series_id": sc.get("_series_id", ""),
+            "series_name": sc.get("_series_name", ""),
             "status": "selected", "slot": slot,
             "urgent": False, "created_at": now_iso(),
         })
     queue.extend(selected)
     save_queue(queue)
-    pipeline_log("topic_select", "ok",
+    pipeline_log("select", "ok",
                  f"选中 {len(selected)} 个选题({slot}): "
                  + " / ".join(s["topic"] for s in selected), len(selected))
+    # 动词池耗尽触发：空窗口时自动向 Ask Studio 求新词
+    if len(selected) == 0:
+        if _queue_verb_expansion(f"slot {slot} 空窗口，所有候选被去重拦截"):
+            pipeline_log("select", "ok",
+                         "动词池耗尽，已自动向 Ask Studio 队列追加扩充问题", 0)
     return selected
 
 
@@ -182,7 +335,7 @@ def review_pending(max_wait_minutes=30):
             if not answer:
                 item["status"] = "review_timeout"
                 item["review_qid"] = qid
-                pipeline_log("topic_select", "error", f"终审超时: {topic}", 0)
+                pipeline_log("select", "error", f"终审超时: {topic}", 0)
                 changed = True
                 continue
             fb = find_best_review_answer(qid)
@@ -192,15 +345,15 @@ def review_pending(max_wait_minutes=30):
             item["review_qid"] = qid
             if score is not None and score >= REVIEW_THRESHOLD:
                 item["status"] = "review_passed"
-                pipeline_log("topic_select", "ok", f"终审通过 {score}分: {topic}", 1)
+                pipeline_log("select", "ok", f"终审通过 {score}分: {topic}", 1)
             else:
                 item["status"] = "review_failed"
-                pipeline_log("topic_select", "error", f"终审未达标 {score}分: {topic}", 0)
+                pipeline_log("select", "error", f"终审未达标 {score}分: {topic}", 0)
             changed = True
         except Exception as e:
             item["status"] = "review_error"
             item["review_error"] = str(e)[:200]
-            pipeline_log("topic_select", "error", f"终审异常 {topic}: {e}", 0)
+            pipeline_log("select", "error", f"终审异常 {topic}: {e}", 0)
             changed = True
     if changed:
         save_queue(queue)
@@ -256,9 +409,22 @@ def collect_results():
             continue
         res = _load(rp, {})
         if res.get("status") != "done":
-            item["status"] = "generate_failed"
-            item["generate_error"] = str(res.get("error", ""))[:200]
-            pipeline_log("generate", "error", f"生成失败 {item['topic']}", 0)
+            # 失败重试机制：最多重试 2 次，换不同的 karma 动词
+            retry = item.get("retry_count", 0)
+            if retry < 2:
+                item["retry_count"] = retry + 1
+                item["status"] = "selected"  # 打回重选，换动词重试
+                item["retry_reason"] = str(res.get("error", ""))[:200]
+                pipeline_log("generate", "ok",
+                             f"生成失败，第 {retry+1} 次重试 {item['topic']}", 0)
+            else:
+                item["status"] = "generate_failed"
+                item["generate_error"] = str(res.get("error", ""))[:200]
+                pipeline_log("generate", "error",
+                             f"生成失败(已重试2次，放弃) {item['topic']}", 0)
+                # 告警：连续失败需要人工看
+                _queue_verb_expansion(f"生成连续失败: {item['topic']}") \
+                    if 'verb' in str(res.get('error','')).lower() else None
             changed = True
             continue
         video = res.get("file", "")
@@ -268,8 +434,15 @@ def collect_results():
         item["status"] = "generated"
         pipeline_log("generate", "ok",
                      f"生成完成: {item['topic']} → {os.path.basename(final)}", 1)
+        # QC 重生成回调：loop 检查失败时触发重新生成
+        def _qc_regen(attempt):
+            pipeline_log("qc", "ok",
+                         f"QC 触发重生成 (attempt {attempt}) {item['topic']}", 0)
+            # 标记需要重新走生成流程
+            return None  # 返回 None 让 QC 标记 needs_regen，由管线统一重试
+
         try:
-            qc = run_qc(final, title=item["title"])
+            qc = run_qc(final, title=item["title"], regen_fn=_qc_regen)
         except Exception as e:
             item["status"] = "qc_error"
             item["qc_error"] = str(e)[:200]
@@ -278,10 +451,27 @@ def collect_results():
             continue
         item["qc_report"] = {"passed": qc.get("passed"),
                              "warnings": len(qc.get("warnings", [])),
-                             "rejects": qc.get("rejects", [])}
+                             "rejects": qc.get("rejects", []),
+                             "regen_used": qc.get("regen_used", 0)}
         if not qc.get("passed"):
-            item["status"] = "qc_failed"
-            pipeline_log("qc", "error", f"QC 拒绝 {item['topic']}", 0)
+            # QC 失败处理：needs_regen 说明自动修不好，需要重生成
+            if qc.get("needs_regen"):
+                retry = item.get("qc_retry", 0)
+                if retry < 2:
+                    item["qc_retry"] = retry + 1
+                    item["status"] = "selected"  # 打回重选，重新生成
+                    pipeline_log("qc", "ok",
+                                 f"QC 失败，第 {retry+1} 次重生成 {item['topic']}: "
+                                 f"{qc.get('rejects', [])[:1]}", 0)
+                else:
+                    item["status"] = "qc_failed"
+                    pipeline_log("qc", "error",
+                                 f"QC 失败(已重生成2次，放弃) {item['topic']}", 0)
+            else:
+                # 非 needs_regen 的失败（如文件损坏）直接标记
+                item["status"] = "qc_failed"
+                pipeline_log("qc", "error", f"QC 拒绝 {item['topic']}: "
+                             f"{qc.get('rejects', [])[:2]}", 0)
             changed = True
             continue
         qc_video = qc.get("output_file") or final
@@ -305,7 +495,7 @@ def collect_results():
         awaiting.append(entry)
         _save(APPROVAL_PATH, awaiting)
         item["status"] = "awaiting_human"
-        pipeline_log("pending_approval", "ok",
+        pipeline_log("review", "ok",
                      f"待人工审批: {item['topic']}", 1)
         notify_inbox("approval_needed",
                      f"【人工终审】视频已生成并通过 QC，待批准上传：{item['title'][:80]}",
@@ -317,12 +507,13 @@ def collect_results():
     return queue
 
 
-def _do_upload(video, title, description):
+def _do_upload(video, title, description, template=None):
+    tmpl = "" if template is None else f", template={template!r}"
     code = (
         "import sys; sys.path.insert(0, '/home/hatch/data/mcp_server');"
         "import server, json;"
         f"r = server.youtube_upload({video!r}, {title!r}, {description!r}, "
-        "tags='Karen,InstantKarma,Shorts', language='en', ai_disclosure=True);"
+        f"tags='Karen,InstantKarma,Shorts', language='en', ai_disclosure=True{tmpl});"
         "print(json.dumps({'result': r}, ensure_ascii=False))"
     )
     r = subprocess.run([VENV_PY, "-c", code], capture_output=True,
@@ -345,7 +536,10 @@ def upload_approved(topic):
     if not target:
         return {"ok": False, "error": f"待审批队列中没有带视频的 {topic}"}
     res = _do_upload(target["video_file"], target["title"],
-                     target.get("description", ""))
+                     target.get("description", ""),
+                     template={"topic": target.get("topic", ""),
+                               "hook": target.get("hook", ""),
+                               "prompt": target.get("prompt", "")})
     ok = "youtube.com" in res or "youtu.be" in res
     target["status"] = "uploaded" if ok else "upload_failed"
     target["upload_result"] = res[:500]
@@ -358,7 +552,7 @@ def upload_approved(topic):
             item["status"] = "uploaded" if ok else "upload_failed"
             item["upload_result"] = res[:500]
     save_queue(queue)
-    pipeline_log("upload", "ok" if ok else "error",
+    pipeline_log("publish", "ok" if ok else "error",
                  f"{'上传成功' if ok else '上传失败'}: {topic}", 1 if ok else 0)
     return {"ok": ok, "result": res[:300]}
 
@@ -368,7 +562,7 @@ def urgent_submit(topic, hook):
     try:
         pkg = build_viral_prompt(topic, hook)
     except ValueError as e:
-        pipeline_log("topic_select", "error", f"URGENT 纯度拒绝: {e}", 0)
+        pipeline_log("select", "error", f"URGENT 纯度拒绝: {e}", 0)
         return {"ok": False, "error": str(e)}
     queue = load_queue()
     item = {
@@ -381,7 +575,7 @@ def urgent_submit(topic, hook):
     }
     queue.append(item)
     save_queue(queue)
-    pipeline_log("topic_select", "ok", f"URGENT 选题: {topic}（豁免终审）", 1)
+    pipeline_log("select", "ok", f"URGENT 选题: {topic}（豁免终审）", 1)
     return {"ok": True, "topic": item["topic"]}
 
 
@@ -392,11 +586,14 @@ def urgent_upload_ready():
         if not (item.get("urgent") and item.get("status") == "qc_passed"):
             continue
         res = _do_upload(item["video_file"], item["title"],
-                         item.get("description", ""))
+                         item.get("description", ""),
+                         template={"topic": item.get("topic", ""),
+                                   "hook": item.get("hook", ""),
+                                   "prompt": item.get("prompt", "")})
         ok = "youtube.com" in res or "youtu.be" in res
         item["status"] = "uploaded" if ok else "upload_failed"
         item["upload_result"] = res[:500]
-        pipeline_log("upload", "ok" if ok else "error",
+        pipeline_log("publish", "ok" if ok else "error",
                      f"URGENT {'上传成功' if ok else '上传失败'}: {item['topic']}",
                      1 if ok else 0)
         changed = True
@@ -480,7 +677,7 @@ if __name__ == "__main__":
                 "slot": "test", "urgent": False, "created_at": now_iso()}
         queue.append(item)
         save_queue(queue)
-        pipeline_log("topic_select", "ok", f"测试选题: {topic}", 1)
+        pipeline_log("select", "ok", f"测试选题: {topic}", 1)
         n = submit_jobs()
         print(json.dumps(
             {"ok": True, "submitted": n, "topic": item["topic"],

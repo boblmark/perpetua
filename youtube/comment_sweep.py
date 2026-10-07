@@ -12,12 +12,24 @@ CHANNEL_ID = "UCaVJw-mQc51X8WWssI1vjbg"
 DONE_FILE = "/home/hatch/data/youtube/comment_reply_done.json"
 SELF_AUTHOR = "@KarenVsAI"  # 频道自己的引导评论不回复
 
+# 2026-10-07 升级：从"礼貌回复"改成"引发讨论"话术
+# 目标：每条回复都要让人想再回一条，带动评论区热度
 REPLY_TEMPLATES = [
-    "Thanks for watching! 🔥 Which part was your favorite?",
-    "Glad you enjoyed it! 😂 More Karen vs AI coming soon!",
-    "Appreciate the comment! 👀 What should the AI do next?",
-    "Haha right?! 🤣 Drop a 🔥 if Karen deserved it!",
-    "This one was fun to make! 🎬 What do you want to see next?",
+    # 站队型：制造 Team Karen vs Team AI 对立
+    "Team Karen or Team AI? 👀 Be honest, whose side are you REALLY on?",
+    "Karen walked in SO confident... and left SO humbled 😭 Who else saw that coming?",
+    # 提问型：让观众分享自己的经历
+    "Has this EVER happened to you?? 🤣 Tell us your story below!",
+    "What would YOU have done in Karen's shoes? 👟 Wrong answers only!",
+    # 悬念型：预告下期，留钩子
+    "Wait till you see what the AI does NEXT week... 👀🔥 Any guesses?",
+    "This was just the warm-up 😏 The AI has something BIGGER planned...",
+    # 共鸣型：强化"即时报应"的爽感
+    "The INSTANT karma in this one though!! ⚡️ Replay it, I dare you!",
+    "POV: You try to scam the AI and the AI says 'nah' 🤖💅",
+    # 互动型：直接要行动
+    "Drop a 🔥 if Karen 100% deserved this! Let's see how many we get!",
+    "Tag someone who acts like Karen 😂👇 (we all know one)",
 ]
 
 def _load_oauth():
