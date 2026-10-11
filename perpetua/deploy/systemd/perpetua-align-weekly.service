@@ -1,0 +1,8 @@
+[Unit]
+Description=Perpetua weekly YouTube alignment check
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/hatch/data/jev/align_check.py
+StandardOutput=append:/home/hatch/data/jev/align_check.log
+StandardError=append:/home/hatch/data/jev/align_check.log

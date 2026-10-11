@@ -1,0 +1,34 @@
+EXTREME CLOSE-UP OPENING (critical): The FIRST FRAME must show Karen's face filling at least 50% of the vertical frame - nose nearly touching the lens, eyes wide, mouth open mid-shout. Think mugshot framing, not a wide scene.
+
+
+MOTION QUANTIFICATION (v5.1, critical for QC):
+- Karen's head/upper body MUST move at least 20% of frame width every single second. Measure this visually: if her nose moves less than 1/5 of screen width in any 1-second window, the take is rejected.
+- NEVER hold still for more than 0.3 seconds. Even "pauses" must have micro-movement: breathing, blinking, finger trembling, camera handheld shake.
+- The camera is HANDHELD, not tripod: constant subtle shake (±10 pixels) throughout. This is CCTV on a windy pole, not a studio lockoff.
+- Motion blur is DESIRED: fast movements should smear slightly. Sharp static frames are a failure mode.
+
+LOOP PRE-BURIAL (v5.1, critical for QC):
+- The FINAL 0.5 seconds MUST show Karen returning to her EXACT opening pose: same head angle, same mouth shape, same hand position as frame 0.
+- Think of it as a GIF loop: frame 0 and final frame should be nearly pixel-identical in composition. The video must play seamlessly on repeat.
+- Choreograph the action as a CYCLE: Karen lunges forward (0-3s), recoils (3-6s), lunges again (6-8s) returning to start position. The 8s video is one complete oscillation.
+
+HIGH MOTION REQUIREMENT (original): Every second must have vigorous physical action - Karen violently shaking the meter, lunging toward camera, finger jabbing aggressively, body swaying with rage. NO static poses. The camera should feel the energy.
+
+Vertical 9:16 short, exactly 8 seconds, 30fps. Raw CCTV / dashcam / smart-camera aesthetic: high contrast, slightly desaturated daylight, timestamp HUD overlay in the top-LEFT corner (e.g. 'CAM 03 - 14:22:07'). No black bars, no watermark, no cinematic letterbox.
+
+Cast: Karen: middle-aged white woman, blonde bob or messy bun, oversized sunglasses pushed up on her head, pink tracksuit top. Perpetually outraged: wide eyes, mouth open mid-rant, finger jabbing. AI device: a smart parking meter — an EVERYDAY automated friction point, not a studio prop. Anthropomorphized just enough: glowing status light and a small screen face showing deadpan text. The AI device stays perfectly calm while Karen escalates — its comedy comes from cold literal enforcement, never arguing back. One bystander frozen mid-stare, phone out, selling the 'caught on camera' realism.
+
+0-2s HOOK ENGINE (1.2-Second Karen Snap, v5): frame 0.00s OPENS on a TIGHT CLOSE-UP of Karen mid-expression — peak facial tension (disbelief, outrage, or confusion — NOT generic screaming), high-contrast lighting, finger jabbing toward camera. NEVER wide shots, establishing scenes, logos, or fade-ins in 0-2s; camera NEVER pulls back before 2.00s. Conflict already in progress, zero setup: Karen violently shakes the parking meter, lunging toward camera mid-rant. Premise hook text on screen at 0.00s, MAX 6 words, upper-third placement, visible for the ENTIRE 0-2s window — NEVER giant explanatory titles (they spoil + kill the loop). Movement in every frame, nothing static. UI SAFE ZONE (hard rule): every key text overlay and the visual gag MUST sit in the top-middle third of the frame. NEVER place critical info on the right edge (engagement icons cover it) or in the bottom 25% (Shorts title/channel overlay truncates it). CCTV timestamp HUD goes top-LEFT corner only.
+
+2-6s RAPID ESCALATION: Karen pushes the parking meter to its limit — the exact wrong move, louder, closer to camera, absurd demand. The parking meter responds with cold literal logic: it does not argue, it ENFORCES. Deadpan 0.5s pause before it acts — the pause IS the joke.
+
+6-7s CLIMAX — SUDDEN PHYSICAL KARMA (the punchline window, highest-leverage second): sudden slapstick mishap in under 2 seconds — a comedic towed gag erupts from the smart parking meter (tangible physical comedy: spray, lock, trap, soak). She freezes mid-gesture in comic disbelief, caught on camera. The consequence MUST land inside 6-7s and be TANGIBLE and SUDDEN — spray, lock, trap, soak, tow — never a purely verbal burn. Comic aftermath: she stands frozen mid-gesture, drenched or locked out, in total comic disbelief.
+
+7-8s LOOP-OUT (max ~1s aftermath, then hard cut): AI chimes a reset phrase ('NEXT CUSTOMER, PLEASE.') matching the opening audio/frame. Final frame MUST visually rhyme with frame 1 (same angle on the parking meter, Karen re-entering) — post-generation verified by loop_check.py (similarity >= 0.75). No dead air: cut the moment the karma lands + 2s.
+
+Audio (v5 1.2s Snap): MUST begin at 0.00s at 70% volume (mid-level, NOT max) with an instantly recognizable vocal onset — e.g. "Excuse me—", "No, no, NO—". The onset creates curiosity, not alarm. MUST ramp volume continuously to peak by 2.00s, synced to Karen's visual expression peak. NEVER start at peak volume, NEVER start silent, NEVER a loud Foley transient / mute-drop hit at 0s (v4 peak-open overturned: triggers ad/bot instinct → instant swipe). NEVER background music, SFX, or silence masking the vocal onset in 0.00-2.00s. Naturalistic Foley + low CCTV current-hum after 2s, mobile-safe dynamic range, no clipping. NEVER a loud royalty-free upbeat track, NEVER harsh alarm blasts, NEVER silent for more than 1 second. On-screen text: max 3 overlays, each 6 words or fewer, high-contrast white/yellow with black stroke, ALL inside the top-middle third of the frame (UI safe zone — never right edge or bottom 25%). 0-2s premise hook text visible for the ENTIRE 0-2s window. CCTV timestamp HUD top-LEFT corner only. Subtitles show SPOKEN DIALOGUE ONLY — never meta-titles, scene labels, 'POV', 'Wait for it', or character names. Hard cuts only — no slow motion, no fade-to-black, no fade-in, no static text-only openings. The AI always gets the last laugh; instant karma is the brand.
+DATA-DRIVEN DIRECTIVES (from channel's own retention telemetry, 44 videos, 2026-10-07):
+- BOOST videos with title_len lower in winners (winners 57.2 vs losers 73.333)
+- BOOST videos with hashtag_n lower in winners (winners 1.4 vs losers 1.667)
+- BOOST videos with device:unknown higher in winners (winners 0.235 vs losers 0.114)
+Treat these as weighted preferences, not hard rules.

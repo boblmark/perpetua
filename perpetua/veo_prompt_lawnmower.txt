@@ -1,0 +1,13 @@
+Vertical 9:16 short, exactly 8 seconds, 30fps. Raw CCTV / dashcam / smart-camera aesthetic: high contrast, slightly desaturated daylight, timestamp HUD overlay in the top-LEFT corner (e.g. 'CAM 07 - 09:15:22'). No black bars, no watermark, no cinematic letterbox.
+
+Cast: Karen: middle-aged white woman, blonde bob or messy bun, oversized sunglasses pushed up on her head, pink tracksuit top. Perpetually outraged: wide eyes, mouth open mid-rant, finger jabbing. AI device: an AI robot lawn mower — a low disc-shaped robot with spinning blades underneath, glowing status light, small screen face showing deadpan text. The mower stays perfectly calm while Karen escalates — its comedy comes from cold literal enforcement, never arguing back. One neighbor frozen mid-stare, phone out, selling the 'caught on camera' realism.
+
+0-2s HOOK ENGINE: frame 0.00s OPENS on a TIGHT CLOSE-UP of Karen mid-expression — peak facial tension, finger jabbing toward camera. NEVER wide shots in 0-2s. Conflict already in progress: Karen screaming at the robot mower for crossing onto her lawn. Premise hook text on screen at 0.00s, MAX 6 words, upper-third placement: "MOWER CROSSED HER LAWN". Movement in every frame, nothing static.
+
+2-6s RAPID ESCALATION: Karen tries to physically block the mower, stepping in front of it, waving arms. The mower calmly stops, recalculates, and drives around her using its obstacle avoidance. Deadpan 0.5s pause before it moves — the pause IS the joke. Karen gets angrier, tries to pick it up.
+
+6-7s CLIMAX — SUDDEN PHYSICAL KARMA: the mower's boundary wire triggers — it suddenly reverses at high speed, its spinning blades kicking up a massive cloud of grass clippings directly into Karen's face. She freezes mid-gesture, covered in grass, in comic disbelief.
+
+7-8s LOOP-OUT: mower screen shows "LAWN COMPLETE". Final frame visually rhymes with frame 1.
+
+Audio: MUST begin at 0.00s at 70% volume with Karen shouting "Get off my lawn—". MUST ramp to peak by 2.00s. NEVER start silent. Naturalistic Foley after 2s. On-screen text max 3 overlays, 6 words or fewer each, white/yellow with black stroke, top-middle third only.

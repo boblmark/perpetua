@@ -1,0 +1,80 @@
+# KB 知识源注册表（2026-10-09 三脑评审 C 方案 Commit 1）
+# 每个源：key / path / adapter / task_types / device_scope / refresh
+# adapter 类型：json_file / deep_dive_md / brain_review_dir / notebooklm_export
+
+- key: dynamic_constraints
+  path: /home/hatch/data/perpetua/dynamic_constraints.json
+  adapter: json_file
+  task_types: [prompt_gen, qc, topic_gen]
+  device_scope: null
+  refresh: cron
+  priority: 1
+  extract:
+    entries_from: directives
+    entry_id_template: "dynamic_constraints:{index}"
+
+- key: criteria
+  path: /home/hatch/data/jev/criteria.json
+  adapter: json_file
+  task_types: [prompt_gen, review, topic_gen]
+  device_scope: null
+  refresh: cron
+  priority: 2
+  extract:
+    entries_from: rules
+    entry_id_template: "criteria:{index}"
+
+- key: publish_cadence
+  path: /home/hatch/data/perpetua/kb/publish_cadence.json
+  adapter: json_file
+  task_types: [publish, review]
+  device_scope: null
+  refresh: manual
+  priority: 3
+  extract:
+    entries_from: cadence
+    entry_id_template: "publish_cadence:{index}"
+
+- key: deep_dive_findings
+  path: /home/hatch/data/perpetua/kb/deep_dive_findings.json
+  adapter: json_file
+  task_types: [prompt_gen, qc, topic_gen, review]
+  device_scope: null
+  refresh: cron
+  priority: 4
+  extract:
+    entries_from: findings
+    entry_id_template: "deep_dive:{device}:{index}"
+
+- key: brain_review_index
+  path: /home/hatch/data/perpetua/kb/brain_review_index.json
+  adapter: json_file
+  task_types: [topic_gen, prompt_gen, review]
+  device_scope: null
+  refresh: manual
+  priority: 5
+  extract:
+    entries_from: verdicts
+    entry_id_template: "brain_review:{index}"
+
+- key: notebooklm_export
+  path: /home/hatch/data/perpetua/kb/notebooklm_export.json
+  adapter: json_file
+  task_types: [prompt_gen, review, topic_gen]
+  device_scope: null
+  refresh: manual
+  priority: 6
+  extract:
+    entries_from: notes
+    entry_id_template: "notebooklm:{index}"
+
+- key: dud_feedback
+  path: /home/hatch/data/perpetua/dud_feedback.jsonl
+  adapter: jsonl_tail
+  task_types: [prompt_gen, post_publish]
+  device_scope: null
+  refresh: cron
+  priority: 7
+  extract:
+    entries_from: tail_14
+    entry_id_template: "dud_feedback:{index}"

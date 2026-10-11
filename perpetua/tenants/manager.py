@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Perpetua 多租户管理：租户注册、数据隔离、配额"""
+import sys
+sys.path.insert(0, "/home/hatch/data/perpetua")
+from json_safe import atomic_write_json
 import json, os, shutil
 from datetime import datetime, timezone
 
@@ -17,7 +20,7 @@ def load():
     return {"tenants": {}}
 
 def save(r):
-    json.dump(r, open(REGISTRY, "w"), ensure_ascii=False, indent=2)
+    atomic_write_json(REGISTRY, r)
 
 def create_tenant(name, youtube_channel_id="", plan="free", theme="",
                   keywords=None, content_style=""):

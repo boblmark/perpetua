@@ -1,0 +1,3 @@
+ deep teardown（竞品爆款事件触发）:
+视频 https://youtu.be/Lh17PbIOcfc（當你來到最差的學校！#搞笑 #ai短劇 #校園 #shorts  #aianimation #comedyshorts），频道 @MarcusLee，当前约 101241 播放。
+拆解：前 3 秒钩子、冲突结构、笑点机制、可复用 takeaway（3 条以内，只写可验证的，不编造数字）。输出写入议题证据池格式。

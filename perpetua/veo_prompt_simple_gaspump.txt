@@ -1,0 +1,14 @@
+Vertical 9:16 short video, exactly 8 seconds. Raw CCTV security camera aesthetic: high contrast, slightly desaturated daylight. Small timestamp text in top-left corner reading "CAM 08 - 14:22:05".
+
+Characters: Karen, a middle-aged woman with blonde bob hair, oversized sunglasses pushed up on her head, wearing a pink tracksuit top. She is yanking on a gas pump nozzle, eyes wide, mouth open mid-demand. An AI gas pump with a glowing screen showing a calm robot face and the text "PAYMENT REQUIRED". One bystander in background filming with phone.
+
+Story: Karen yanks the gas nozzle demanding a discount, shouting at the AI pump. The pump screen calmly shows "DISCOUNT DENIED". Karen pulls harder on the nozzle. The pump suddenly locks the nozzle with a loud CLUNK, the handle freezing in her grip. Gasoline sprays backward from a pressure release, soaking her tracksuit. She freezes mid-yank, stunned and dripping. The screen shows "TRANSACTION CANCELLED".
+
+Camera: Opens with extreme close-up of Karen yanking the nozzle, face filling the frame. Handheld shaky camera throughout. Fast energetic movement, never still. Ends with Karen frozen, soaked.
+
+On-screen text (white with black outline, top area only):
+- At start: "SHE DEMANDED A DISCOUNT"
+- At lock moment: "PUMP SAID NO"
+- At end: "TRANSACTION CANCELLED"
+
+Audio: Karen shouting demands at start. Calm robot voice denying. Loud mechanical clunk at climax, liquid spray sound. No music.

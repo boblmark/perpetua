@@ -1,0 +1,21 @@
+Vertical 9:16 short video, exactly 8 seconds. Raw dashcam CCTV aesthetic from inside a car: high contrast, slightly desaturated daylight. Small timestamp text in top-left corner reading "CAM 02 - 12:47:33".
+
+Characters: Karen, a middle-aged woman with blonde bob hair, oversized sunglasses pushed up on her head, wearing a pink tracksuit top, in the driver seat of her car. An AI drive-thru speaker post outside her window with a glowing blue ring and a small screen showing a calm robot face.
+
+CAMERA AND MOTION — this is the most important instruction:
+- The camera NEVER sits still. From frame 1, the camera is whipping, shaking violently, punch-zooming — constant aggressive camera movement with visible motion blur. Think found-footage chaos, not a tripod.
+- Every second must have LARGE pixel displacement: lunging bodies, flying objects, snapping heads, shaking camera. No talking-head stillness at any point.
+
+TIMELINE:
+- 0.0-1.5s EXPLOSIVE OPENING: Extreme close-up of Karen's furious face filling the frame. She LUNGES toward the lens while the camera WHIP-PANS sideways with heavy motion blur. Her palm SLAMS toward the camera. Maximum chaos from the very first frame.
+- 1.5-4s ESCALATION: Karen hangs half out the car window, both arms windmilling as she jabs at the AI speaker. Camera orbits shakily around her, never settling.
+- 4-6.5s RAMP: Karen seizes the speaker post and wrenches it side to side. Rapid aggressive zoom punch-ins. Debris and dust kicking up.
+- 6.5-7.5s CLIMAX — PEAK VIOLENCE: The AI speaker DETONATES a hurricane burst of printed receipts point-blank into Karen's face. Paper explosion fills the screen, her head SNAPS back, hair whips across the lens, sunglasses fly at the camera. The single most violent second of the video.
+- 7.5-8s SEAMLESS LOOP CLOSE: All motion freezes INSTANTLY. Final frame holds Karen's shocked wide-eyed face in the EXACT same extreme close-up framing, angle, and position as the very first frame — as if the video snapped back to its start. A perfect visual loop: first frame and last frame are near-identical.
+
+On-screen text (white with black outline, top area only):
+- At start: "SHE YELLED AT THE AI"
+- At climax: "BIG MISTAKE"
+- At end: "ORDER CANCELLED"
+
+Audio: The video OPENS with a violent hard transient — a car-door SLAM impact layered with Karen's scream "EXCUSE ME?!" at FULL VOLUME from the very first frame. Zero fade-in, zero silence at start. Her voice stays loud and furious throughout, rising toward the climax. At 6.5s a distorted robotic voice booms "ORDER... CANCELLED" over a paper-blast whoosh. Abrupt total silence on the final freeze frame. No music.

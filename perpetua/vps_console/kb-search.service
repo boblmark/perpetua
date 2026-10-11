@@ -1,0 +1,16 @@
+[Unit]
+Description=KB hybrid search sidecar (127.0.0.1:18092)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/data/research/kb-search
+ExecStart=/home/hatch/data/research/kb-search/venv/bin/python server.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/hatch/data/research/kb-search/server.log
+StandardError=append:/home/hatch/data/research/kb-search/server.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ViralLoop OA · 公司运营中枢</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--panel:#161b26;--border:#2a3348;--txt:#e6e9f0;--muted:#8b93a7;--accent:#4f8ef7;--green:#4ade80;--red:#f87171;--yellow:#fbbf24;--gray:#64748b}
+body{background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;height:100vh;overflow:hidden}
+/* 左侧导航 */
+.sidebar{width:220px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.brand{padding:18px 16px;border-bottom:1px solid var(--border)}
+.brand h1{font-size:17px}
+.brand .sub{font-size:11px;color:var(--muted);margin-top:4px}
+.nav{flex:1;overflow-y:auto;padding:8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--muted);margin-bottom:2px;transition:all .15s}
+.nav-item:hover{background:#1e2637;color:var(--txt)}
+.nav-item.active{background:#1e3a5f;color:#7dd3fc}
+.nav-item .badge{margin-left:auto;background:var(--red);color:#fff;font-size:11px;padding:1px 7px;border-radius:10px}
+.nav-sec{font-size:11px;color:var(--gray);padding:12px 12px 4px;text-transform:uppercase}
+/* 右侧内容 */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{padding:14px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--panel)}
+.topbar h2{font-size:18px}
+.topbar .clock{font-size:12px;color:var(--muted)}
+.content{flex:1;overflow-y:auto;padding:24px}
+.page{display:none}
+.page.active{display:block;animation:fade .2s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+/* 卡片 */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px}
+.card h3{font-size:14px;margin-bottom:10px;color:#a8b3cc}
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid #202838}
+.kv:last-child{border:none}
+.kv .v{color:#7dd3fc;font-weight:600}
+/* 组织架构 */
+.dept{margin-bottom:18px}
+.dept-name{font-size:15px;font-weight:600;color:#c4b5fd;margin-bottom:8px}
+.role-row{display:flex;align-items:center;gap:10px;padding:9px 12px;background:#1a2233;border-radius:8px;margin-bottom:6px;font-size:13px}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.d-ok{background:var(--green)}.d-live{background:var(--green);box-shadow:0 0 6px var(--green)}.d-offline{background:var(--red)}.d-idle{background:var(--gray)}.d-restricted{background:var(--yellow)}
+.role-note{margin-left:auto;font-size:11px;color:var(--gray)}
+/* 审批 */
+.appr{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+.appr .tag{display:inline-block;font-size:11px;padding:3px 10px;border-radius:4px;margin-right:8px}
+.tag-video{background:#7c3aed}.tag-ask{background:#0284c7}.tag-urgent{background:#dc2626}
+.appr .title{font-size:15px;margin:8px 0}
+.appr .meta{font-size:12px;color:var(--muted)}
+.appr .actions{margin-top:12px;display:flex;gap:8px}
+.btn{padding:8px 20px;border:none;border-radius:6px;cursor:pointer;font-size:13px}
+.btn-ok{background:#16a34a;color:#fff}.btn-no{background:#374151;color:#fff}
+.btn-ok:hover{background:#15803d}.btn-no:hover{background:#4b5563}
+/* 管线 */
+.stage{display:flex;align-items:center;gap:12px;padding:12px;background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-bottom:8px}
+.stage .num{width:28px;height:28px;border-radius:50%;background:#1e3a5f;color:#7dd3fc;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.stage .info{flex:1}
+.stage .name{font-size:14px;font-weight:600}
+.stage .desc{font-size:12px;color:var(--muted);margin-top:2px}
+.empty{color:var(--gray);font-size:13px;padding:20px;text-align:center}
+@media(max-width:768px){.sidebar{width:64px}.nav-item span.lbl,.brand .sub,.brand h1{display:none}.nav-item{justify-content:center}}
+</style>
+</head>
+<body>
+<!-- 左侧导航 -->
+<div class="sidebar">
+<div class="brand"><h1>🏢 ViralLoop</h1><div class="sub">AI 数据中心指挥</div></div>
+<div class="nav">
+<div class="nav-sec">运营</div>
+<div class="nav-item active" data-p="dashboard"><span>📊</span><span class="lbl">运营总览</span></div>
+<div class="nav-item" data-p="approvals"><span>✅</span><span class="lbl">待办审批</span><span class="badge" id="nav-badge">0</span></div>
+<div class="nav-item" data-p="pipeline"><span>🔄</span><span class="lbl">工作流</span></div>
+<div class="nav-sec">组织</div>
+<div class="nav-item" data-p="org"><span>👥</span><span class="lbl">组织架构</span></div>
+<div class="nav-item" data-p="depts"><span>📈</span><span class="lbl">部门 KPI</span></div>
+<div class="nav-sec">系统</div>
+<div class="nav-item" data-p="audit"><span>🛡️</span><span class="lbl">审计日志</span></div>
+<div class="nav-item" data-p="marvis"><span>🤝</span><span class="lbl">Marvis 协作</span></div>
+<div class="nav-item" data-p="videos"><span>🎬</span><span class="lbl">视频库</span></div>
+<div class="nav-sec">内容</div>
+<div class="nav-item" data-p="content"><span>🧰</span><span class="lbl">内容工具箱</span></div>
+<div class="nav-sec">增长</div>
+<div class="nav-item" data-p="leads"><span>💼</span><span class="lbl">销售管道</span></div>
+<div class="nav-item" data-p="dist"><span>📡</span><span class="lbl">分发矩阵</span></div>
+<div class="nav-item" data-p="revenue"><span>💰</span><span class="lbl">变现看板</span></div>
+<div class="nav-sec">架构</div>
+<div class="nav-item" data-p="blueprint"><span>🏗️</span><span class="lbl">架构蓝图</span></div>
+</div>
+</div>
+<!-- 右侧 -->
+<div class="main">
+<div class="topbar"><h2 id="page-title">运营总览</h2>
+<div style="display:flex;align-items:center;gap:12px">
+<button onclick="speakPending()" style="background:#1e3a5f;border:1px solid #2a3550;color:#7dd3fc;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px">🔊 语音播报待办</button>
+<input id="cmd-input" placeholder="输入指令，如：批准视频 / 查看待办" style="background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px 12px;border-radius:8px;font-size:13px;width:220px" onkeydown="if(event.key==='Enter')sendCmd()">
+<button id="mic-btn" onclick="voiceCmd()" title="语音输入" style="background:#1e3a5f;border:1px solid #2a3550;color:#7dd3fc;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:15px">🎤</button>
+<button onclick="sendCmd()" style="background:#16a34a;border:none;color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px">执行</button>
+<div class="clock" id="clock"></div></div></div>
+<div class="content">
+
+<!-- 总览 -->
+<div class="page active" id="p-dashboard">
+<div class="cards" id="dash-cards"><div class="empty">加载中…</div></div>
+<div class="cards" id="charts-row" style="margin-top:4px"></div>
+</div>
+
+<!-- 审批 -->
+<div class="page" id="p-approvals"><div id="appr-list"><div class="empty">加载中…</div></div></div>
+
+<!-- 工作流 -->
+<div class="page" id="p-pipeline"><div class="cards" id="pipe-charts-row" style="margin-bottom:4px"></div><div id="pipeline-list"><div class="empty">加载中…</div></div></div>
+
+<!-- 组织 -->
+<div class="page" id="p-org"><div id="org-tree"><div class="empty">加载中…</div></div></div>
+
+<!-- 部门KPI -->
+<div class="page" id="p-depts"><div class="cards" id="dept-cards"><div class="empty">加载中…</div></div></div>
+
+<!-- 审计 -->
+<div class="page" id="p-audit"><div id="audit-list"><div class="empty">加载中…</div></div></div>
+
+<!-- Marvis -->
+<div class="page" id="p-marvis"><div id="marvis-panel"><div class="empty">加载中…</div></div></div>
+
+<!-- 视频库 -->
+<div class="page" id="p-videos"><div id="video-list"><div class="empty">加载中…</div></div></div>
+
+<!-- 内容工具箱 -->
+<div class="page" id="p-content">
+<div id="ct-tools" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
+<div class="card"><h3 id="ct-title">选择工具</h3><div id="ct-form"></div></div>
+<div class="card" style="margin-top:12px"><h3>结果</h3><div id="ct-result"><div class="empty">选择上方工具开始</div></div></div>
+</div>
+
+<!-- 销售管道 -->
+<div class="page" id="p-leads">
+<div class="card"><h3>➕ 新线索</h3>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<input id="ld-name" placeholder="客户/公司名" style="flex:1;min-width:120px;background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px">
+<select id="ld-source" style="background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px"><option>猪八戒</option><option>Upwork</option><option>转介绍</option><option>自然流量</option><option>其他</option></select>
+<input id="ld-demand" placeholder="需求简述" style="flex:2;min-width:160px;background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px">
+<button onclick="leadAdd()" style="background:#16a34a;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer">添加</button>
+</div><div class="meta" style="margin-top:6px">报价/对外消息发出前必须人类确认，本模块只记录流转不自动发送。</div></div>
+<div id="leads-board" style="margin-top:12px"><div class="empty">加载中…</div></div>
+</div>
+
+<!-- 分发矩阵 -->
+<div class="page" id="p-dist">
+<div class="card"><h3>➕ 加入分发队列</h3>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<input id="dt-vid" placeholder="video_id" style="background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px">
+<input id="dt-title" placeholder="标题" style="flex:1;min-width:160px;background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px">
+<button onclick="distAdd()" style="background:#16a34a;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer">加入</button>
+</div></div>
+<div id="dist-list" style="margin-top:12px"><div class="empty">加载中…</div></div>
+</div>
+
+<!-- 变现看板 -->
+<div class="page" id="p-revenue">
+<div class="card"><h3>➕ 记一笔收入</h3>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<input id="rv-date" type="date" style="background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px">
+<select id="rv-source" style="background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px"><option>猪八戒</option><option>Upwork</option><option>YouTube</option><option>赞助</option><option>联盟</option><option>其他</option></select>
+<select id="rv-type" style="background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px"><option>服务</option><option>订阅</option><option>赞助</option><option>广告分成</option><option>联盟</option></select>
+<input id="rv-amount" type="number" placeholder="金额" style="width:110px;background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px">
+<input id="rv-note" placeholder="备注" style="flex:1;min-width:120px;background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px">
+<button onclick="revenueAdd()" style="background:#16a34a;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer">记账</button>
+</div></div>
+<div id="revenue-board" style="margin-top:12px"><div class="empty">加载中…</div></div>
+</div>
+
+<!-- 架构蓝图 -->
+<div class="page" id="p-blueprint"><div id="blueprint-body"><div class="empty">加载中…</div></div></div>
+
+</div>
+</div>
+
+<script>
+const TITLES={dashboard:'运营总览',approvals:'待办审批',pipeline:'工作流状态',org:'组织架构',depts:'部门 KPI',audit:'审计日志',marvis:'Marvis 协作',videos:'视频库',content:'内容工具箱',leads:'销售管道',dist:'分发矩阵',revenue:'变现看板',blueprint:'架构蓝图'};
+const STAGE_NAMES={trend:'趋势输入',select:'选题生成',review:'Ask Studio 评审',generate:'视频生成',qc:'QC 质检',publish:'终审上传',postop:'发布后运营',evolve:'数据进化'};
+const STAGE_DESC={trend:'雷达每天 + 热点每小时',select:'每天 3 档选题',review:'每 30 分钟 · ≥85 分放行',generate:'每 10 分钟 · 失败重试 2 次',qc:'每 20 分钟 · 10 项检查',publish:'Marvis 取货 / Dash 代传',postop:'6h 换标题 · 评论互动',evolve:'标准每天进化'};
+let cache={};
+
+document.querySelectorAll('.nav-item').forEach(el=>{
+  el.onclick=()=>{
+    document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('p-'+el.dataset.p).classList.add('active');
+    document.getElementById('page-title').textContent=TITLES[el.dataset.p];
+    render(el.dataset.p);
+  };
+});
+
+const dot=s=>`<span class="dot d-${s}"></span>`;
+const stName=s=>({live:'运行中',ok:'正常',offline:'离线',idle:'空闲',restricted:'受限',active:'在岗'}[s]||s);
+
+async function fetchJSON(u){const r=await fetch(u);return r.json();}
+
+async function loadAll(){
+  document.getElementById('clock').textContent='实时更新 · '+new Date().toLocaleString('zh-CN');
+  try{cache.org=await fetchJSON('/api/oa/org');}catch(e){}
+  try{cache.appr=await fetchJSON('/api/oa/approvals');}catch(e){}
+  try{cache.dept=await fetchJSON('/api/oa/departments');}catch(e){}
+  try{cache.pipe=await fetchJSON('/api/pipeline?tenant_id=default');}catch(e){}
+  const n=(cache.appr&&cache.appr.count)||0;
+  const b=document.getElementById('nav-badge');
+  b.textContent=n; b.style.display=n?'':'none';
+  render(document.querySelector('.nav-item.active').dataset.p);
+}
+
+function render(p){
+  if(p==='dashboard')renderDash();
+  else if(p==='approvals')renderAppr();
+  else if(p==='pipeline')renderPipe();
+  else if(p==='org')renderOrg();
+  else if(p==='depts')renderDepts();
+  else if(p==='audit')renderAudit();
+  else if(p==='marvis')renderMarvis();
+  else if(p==='videos')renderVideos();
+  else if(p==='content')renderContent();
+  else if(p==='leads')renderLeads();
+  else if(p==='dist')renderDist();
+  else if(p==='revenue')renderRevenue();
+  else if(p==='blueprint')renderBlueprint();
+}
+
+function renderDash(){
+  const pipe=cache.pipe||{};
+  const stages=pipe.stages||[];
+  const live=stages.filter(s=>s.freshness==='live').length;
+  const appr=(cache.appr&&cache.appr.count)||0;
+  const subs=(cache.snap&&cache.snap.subs)||'—';
+  document.getElementById('dash-cards').innerHTML=`
+    <div class="card"><h3>管线健康</h3>
+      <div class="kv"><span>整体状态</span><span class="v">${pipe.overall==='live'?'🟢 正常':'🔴 异常'}</span></div>
+      <div class="kv"><span>运行中阶段</span><span class="v">${live} / 8</span></div></div>
+    <div class="card"><h3>待办事项</h3>
+      <div class="kv"><span>待审批</span><span class="v">${appr} 项</span></div>
+      <div class="kv"><span>审批红线</span><span class="v">发布/删除/花钱</span></div></div>
+    <div class="card"><h3>频道</h3>
+      <div class="kv"><span>@karenvsai</span><span class="v">532 订阅</span></div>
+      <div class="kv"><span>YPP 目标</span><span class="v">90天 300万播放</span></div></div>
+    <div class="card"><h3>快捷入口</h3>
+      <div class="kv"><span>Perpetua Dashboard</span><span class="v"><a href="/" style="color:#7dd3fc">→ 前往</a></span></div>
+      <div class="kv"><span>公司章程</span><span class="v">CHARTER.md</span></div></div>`;
+  renderCharts();
+}
+async function renderCharts(){
+  const els=[document.getElementById('charts-row'),document.getElementById('pipe-charts-row')].filter(Boolean);
+  if(!els.length)return;
+  try{
+    const d=await fetchJSON('/api/oa/charts');
+    let html='';
+    if(d.daily_output&&d.daily_output.length){
+      const max=Math.max.apply(null,d.daily_output.map(x=>x.count).concat([1]));
+      html+='<div class="card"><h3>📊 近14天日产量</h3><div style="display:flex;align-items:flex-end;gap:4px;height:80px;margin-top:8px">'+d.daily_output.map(x=>'<div title="'+x.day+': '+x.count+'" style="flex:1;background:#3b82f6;border-radius:3px 3px 0 0;height:'+(Math.round(x.count/max*70)+4)+'px"></div>').join('')+'</div><div class="meta" style="margin-top:4px">'+d.daily_output[0].day+' ~ '+d.daily_output[d.daily_output.length-1].day+'</div><div class="meta" style="margin-top:6px;color:#94a3b8">每天通过选题评审进入生成的视频数。悬停柱子查看具体日期和数量。</div></div>';
+    }
+    html+='<div class="card"><h3>✅ QC 通过率</h3><div style="font-size:28px;font-weight:700;color:#4ade80;margin:8px 0">'+(d.qc_rate||0)+'%</div><div class="meta">共 '+(d.qc_total||0)+' 次检查</div><div class="meta" style="margin-top:6px;color:#94a3b8">视频生成后自动质检（10项检查）的通过比例。通过率低说明生成质量有问题，需调整提示词。</div></div>';
+    if(d.views_trend&&d.views_trend.length){
+      const max=Math.max.apply(null,d.views_trend.map(x=>x.views).concat([1]));
+      html+='<div class="card"><h3>👁 近14天播放趋势</h3><div style="display:flex;align-items:flex-end;gap:3px;height:80px;margin-top:8px">'+d.views_trend.map(x=>'<div title="'+x.day+'：'+x.views+' 播放" style="flex:1;background:#8b5cf6;border-radius:3px 3px 0 0;height:'+(Math.round(x.views/max*70)+4)+'px"></div>').join('')+'</div><div class="meta" style="margin-top:6px;color:#94a3b8">每天新发布视频获得的播放量。柱子越高说明当天视频越受欢迎。</div></div>';
+    }
+    els.forEach(el=>el.innerHTML=html);
+  }catch(e){els.forEach(el=>el.innerHTML='');}
+}
+
+function renderAppr(){
+  const a=cache.appr||{approvals:[],count:0};
+  const tagFor=t=>t==='video'?'<span class="tag tag-video">视频终审</span>':t==='retitle'?'<span class="tag tag-urgent">改标题</span>':'<span class="tag tag-ask">Ask 评审</span>';
+  document.getElementById('appr-list').innerHTML=a.count?a.approvals.map(x=>`
+    <div class="appr">
+      ${tagFor(x.type)}
+      <div class="title">${x.title||'(无标题)'}</div>
+      ${x.type==='retitle'?`<div class="meta" style="margin:6px 0">📹 ${x.video_id||''}<br>📝 ${x.reason||''}</div>`:''}
+      <div class="meta">创建时间：${x.created||'—'}</div>
+      ${(x.type==='video'||x.type==='retitle')?`<div class="actions">
+        <button class="btn btn-ok" onclick="decide('${(x.title||'').replace(/'/g,'')}',true)">批准</button>
+        <button class="btn btn-no" onclick="decide('${(x.title||'').replace(/'/g,'')}',false)">驳回</button>
+      </div>`:`<div class="meta" style="margin-top:8px">⏳ 等待 Ask Studio 回答</div>`}
+    </div>`).join(''):'<div class="empty">暂无待审批事项 🎉</div>';
+}
+
+function renderPipe(){
+  const stages=(cache.pipe&&cache.pipe.stages)||[];
+  const order=['trend','select','review','generate','qc','publish','postop','evolve'];
+  const map={};stages.forEach(s=>map[s.id||s.stage]=s);
+  document.getElementById('pipeline-list').innerHTML=order.map((id,i)=>{
+    const s=map[id]||{};
+    const f=s.freshness||'offline';
+    const col=f==='live'?'#4ade80':f==='stale'?'#fbbf24':'#f87171';
+    const txt=f==='live'?'运行中':f==='stale'?'延迟':'离线';
+    return `<div class="stage" onclick="showStageLogs('${id}')" style="cursor:pointer"><div class="num">${i+1}</div>
+      <div class="info"><div class="name">${dot(f==='live'?'live':f==='stale'?'idle':'offline')} ${STAGE_NAMES[id]||id}</div>
+      <div class="desc">${STAGE_DESC[id]||''}${s.at?' · 上次 '+s.at.slice(0,16).replace('T',' '):''}</div></div>
+      <div style="font-size:12px;color:${col}">${txt}</div></div>`;
+  }).join('');
+}
+
+function renderOrg(){
+  const o=cache.org;if(!o){document.getElementById('org-tree').innerHTML='<div class="empty">加载失败</div>';return;}
+  let h=`<div class="dept"><div class="role-row">${dot('ok')}<b>👑 ${o.ceo.name}</b> · CEO<span class="role-note">决策 · 审美 · 终审</span></div>
+  <div class="role-row">${dot('ok')}<b>🧭 ${o.chief_of_staff.name}</b> · 幕僚长<span class="role-note">路由 · 协调 · 异常</span></div></div>`;
+  for(const d of o.departments){
+    h+=`<div class="dept"><div class="dept-name">📁 ${d.name}</div>`;
+    for(const r of d.roles){
+      const sk=(r.skills||[]).map(s=>`<span style="background:#1e3a5f;color:#7dd3fc;padding:1px 8px;border-radius:10px;font-size:11px;margin-left:4px">🧰${s}</span>`).join('');
+      h+=`<div class="role-row">${dot(r.status)}${r.name}<span class="role-note">${r.note||stName(r.status)}</span>${sk}</div>`;
+    }
+    h+='</div>';
+  }
+  h+=`<div class="dept"><div class="role-row">${dot('restricted')}<b>🤝 Marvis</b> · 外部协作<span class="role-note">已切断直接 API</span></div></div>`;
+  document.getElementById('org-tree').innerHTML=h;
+}
+
+function renderDepts(){
+  const d=cache.dept||{departments:{}};
+  const icons={content:'📝',qc:'🔍',publish:'🚀',ops:'📊',audit:'🛡️'};
+  document.getElementById('dept-cards').innerHTML=Object.entries(d.departments).map(([k,v])=>`
+    <div class="card"><h3>${icons[k]||'📁'} ${v.name}</h3>
+    ${Object.entries(v.kpis).map(([kk,vv])=>`<div class="kv"><span>${kk}</span><span class="v">${vv}</span></div>`).join('')||'<div class="empty">暂无数据</div>'}
+    </div>`).join('');
+}
+
+async function renderAudit(){
+  const el=document.getElementById('audit-list');
+  try{
+    const d=await fetchJSON('/api/oa/audit');
+    if(!d.count){el.innerHTML='<div class="empty">暂无审计记录</div>';return;}
+    const colors={urgent:'tag-urgent',warn:'tag-ask',info:'tag-video'};
+    const labels={violation:'违规',audit:'审计',decision:'决策'};
+    el.innerHTML=d.events.map(e=>`
+      <div class="appr"><span class="tag ${colors[e.level]||'tag-ask'}">${labels[e.type]||e.type}</span>
+      <div class="title">${e.title}</div>
+      <div class="meta">${e.at||''}</div></div>`).join('');
+  }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
+}
+async function showStageLogs(stage){
+  const name=(typeof STAGE_NAMES!=='undefined'&&STAGE_NAMES[stage])||stage;
+  let el=document.getElementById('stage-log-modal');
+  if(!el){
+    el=document.createElement('div');
+    el.id='stage-log-modal';
+    el.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:99;display:flex;align-items:center;justify-content:center;padding:20px';
+    el.innerHTML='<div style="background:#0f172a;border:1px solid #1e293b;border-radius:12px;max-width:600px;width:100%;max-height:80vh;overflow:auto;padding:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 id="slm-title" style="margin:0"></h3><button onclick="document.getElementById(\'stage-log-modal\').style.display=\'none\'" style="background:#1e293b;border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer">关闭</button></div><div id="slm-body"></div></div>';
+    document.body.appendChild(el);
+  }
+  el.style.display='flex';
+  document.getElementById('slm-title').textContent=name+' · 最近运行';
+  document.getElementById('slm-body').innerHTML='<div class="empty">加载中…</div>';
+  try{
+    const d=await fetchJSON('/api/oa/stage_logs?stage='+stage);
+    document.getElementById('slm-body').innerHTML=d.count?d.logs.map(l=>'<div class="appr"><span class="tag '+(l.status==='ok'?'tag-video':'tag-urgent')+'">'+(l.status==='ok'?'正常':'异常')+'</span><div class="title">'+(l.detail||'(无详情)')+'</div><div class="meta">'+(l.at?l.at.slice(0,19).replace('T',' '):'')+' · 数量 '+(l.count||0)+'</div></div>').join(''):'<div class="empty">暂无运行记录</div>';
+  }catch(e){document.getElementById('slm-body').innerHTML='<div class="empty">加载失败</div>';}
+}
+async function renderMarvis(){
+  const el=document.getElementById('marvis-panel');
+  try{
+    const d=await fetchJSON('/api/oa/marvis');
+    const stColor=d.status==='active'?'#4ade80':d.status==='delayed'?'#fbbf24':'#64748b';
+    const stTxt={active:'正常取货中',delayed:'取货延迟',idle:'空闲',unknown:'未知'}[d.status]||d.status;
+    el.innerHTML=`
+      <div class="cards">
+      <div class="card"><h3>🤝 Marvis 状态</h3>
+        <div class="kv"><span>状态</span><span class="v" style="color:${stColor}">${stTxt}</span></div>
+        <div class="kv"><span>待取货</span><span class="v">${d.pending_count} 个</span></div>
+        <div class="kv"><span>最大延迟</span><span class="v">${d.max_delay_h||0} 小时</span></div>
+        <div class="kv"><span>累计违规</span><span class="v">${d.violations} 次</span></div></div>
+      <div class="card"><h3>📋 约束</h3>
+        <div class="kv"><span>直接 API</span><span class="v" style="color:#f87171">已切断</span></div>
+        <div class="kv"><span>上传通道</span><span class="v">仅经 MCP</span></div>
+        <div class="kv"><span>取货超时</span><span class="v">2h 告警 / 6h 代传</span></div></div>
+      </div>`;
+  }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
+}
+async function renderVideos(){
+  const el=document.getElementById('video-list');
+  try{
+    const d=await fetchJSON('/api/oa/videos');
+    if(!d.count){el.innerHTML='<div class="empty">暂无视频数据</div>';return;}
+    el.innerHTML=d.videos.map(v=>`
+      <div class="appr">
+        <div class="title">${v.title||'(无标题)'}</div>
+        <div class="meta">👁 ${v.views||0} 播放 · 📅 ${v.published||''} · <a href="https://youtu.be/${v.id}" target="_blank" style="color:#7dd3fc">观看</a></div>
+      </div>`).join('');
+  }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
+}
+
+// ---------------- 内容工具箱 ----------------
+const CT_TOOLS=[
+ {id:'brief',icon:'📋',name:'品牌简报',owner:'审查员',inputs:[],desc:'频道品牌资产：voice、受众、爆款公式、禁忌清单'},
+ {id:'guide',icon:'🧭',name:'内容指导',owner:'选题策略师',inputs:[['topic','话题','如：AI vending machine']],desc:'话题适配度评估 + 推荐角度 + 避坑点'},
+ {id:'copy',icon:'✍️',name:'文案撰写',owner:'制片人',inputs:[['topic','话题','如：smart parking meter']],desc:'3 个英文标题 + 描述 + 置顶评论（含纯度自检）'},
+ {id:'hooks',icon:'🪝',name:'爆款钩子',owner:'选题策略师',inputs:[['topic','话题','如：self-checkout'],['device','AI 设备（可选）','如：self-checkout kiosk']],desc:'10 个 ranked 前 3 秒钩子'},
+ {id:'score',icon:'📊',name:'贴文评分',owner:'审查员',inputs:[['title','标题','粘贴英文标题']],desc:'v2 规则打分，58 分放行线'},
+ {id:'schedule',icon:'🗓️',name:'发帖排期',owner:'运营经理',inputs:[['topics','选题（每行：标题 | 分数）','🅿️ Karen… | 82\n🚗 Karen… | 74']],desc:'7 天三档排期表'},
+ {id:'repurpose',icon:'♻️',name:'内容重塑',owner:'选题策略师',inputs:[['video_id','爆款 video_id（可选）','如 NlFI6_6D07w'],['topic','话题','如：AI vending machine']],desc:'爆款续集 3 角度'},
+];
+let ctCur='brief';
+function renderContent(){
+  document.getElementById('ct-tools').innerHTML=CT_TOOLS.map(t=>
+    `<button onclick="ctSelect('${t.id}')" style="background:${ctCur===t.id?'#1e3a5f':'#141b2d'};border:1px solid #2a3550;color:${ctCur===t.id?'#7dd3fc':'#e6e9f0'};padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px">${t.icon} ${t.name}</button>`).join('');
+  const t=CT_TOOLS.find(x=>x.id===ctCur);
+  document.getElementById('ct-title').textContent=t.icon+' '+t.name+' · '+t.owner;
+  const f=document.getElementById('ct-form');
+  if(!t.inputs.length){
+    f.innerHTML=`<div class="meta" style="margin-bottom:8px">${t.desc}</div><button onclick="ctRun()" style="background:#16a34a;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer">生成简报</button>`;
+  }else{
+    f.innerHTML=`<div class="meta" style="margin-bottom:8px">${t.desc}</div>`+t.inputs.map(i=>
+      `<div style="margin-bottom:8px"><div class="meta">${i[1]}</div>
+       ${i[0]==='topics'?`<textarea id="ct-in-${i[0]}" rows="4" placeholder="${i[2]}" style="width:100%;background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px"></textarea>`
+       :`<input id="ct-in-${i[0]}" placeholder="${i[2]}" style="width:100%;background:#0d1117;border:1px solid #2a3550;color:#e6e9f0;padding:8px;border-radius:8px">`}</div>`).join('')+
+      `<button onclick="ctRun()" style="background:#16a34a;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer">执行</button>`;
+  }
+  if(ctCur==='brief')ctRun();
+}
+function ctSelect(id){ctCur=id;renderContent();}
+async function ctRun(){
+  const t=CT_TOOLS.find(x=>x.id===ctCur);
+  const el=document.getElementById('ct-result');
+  el.innerHTML='<div class="empty">执行中…</div>';
+  const payload={tool:t.id};
+  t.inputs.forEach(i=>{
+    const v=(document.getElementById('ct-in-'+i[0])||{}).value||'';
+    if(i[0]==='topics'){payload.topics=v.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const p=l.split('|');return{title:p[0].trim(),score:parseFloat(p[1])||0};});}
+    else payload[i[0]]=v;
+  });
+  try{
+    const r=await fetch(t.id==='brief'?'/api/oa/content/brief':'/api/oa/content',{method:t.id==='brief'?'GET':'POST',headers:{'Content-Type':'application/json'},body:t.id==='brief'?undefined:JSON.stringify(payload)});
+    const d=await r.json();
+    el.innerHTML=ctRender(t.id,d);
+  }catch(e){el.innerHTML='<div class="empty">执行失败：'+e.message+'</div>';}
+}
+function ctRender(id,d){
+  if(d.error)return '<div class="empty">错误：'+d.error+'</div>';
+  const kv=(k,v)=>`<div class="kv"><span>${k}</span><span class="v">${v}</span></div>`;
+  const li=a=>'<ul style="margin:6px 0;padding-left:20px">'+a.map(x=>'<li style="margin:3px 0">'+x+'</li>').join('')+'</ul>';
+  if(id==='brief')return `<div class="kv"><span>品牌</span><span class="v">${d.brand}</span></div>
+    <div class="meta" style="margin:8px 0"><b>Voice：</b>${d.voice}</div>
+    <div class="meta" style="margin:8px 0"><b>受众：</b>${d.audience}</div>
+    <div class="meta" style="margin:8px 0"><b>标题公式：</b>${d.title_formula}</div>
+    <b>关键发现（真实数据）：</b>${li(d.key_findings||[])}
+    <b>硬规则：</b>${li(d.hard_rules||[])}
+    <div class="meta">${d.gate}</div>`;
+  if(id==='guide')return `<div class="kv"><span>话题</span><span class="v">${d.topic}</span></div>
+    <div class="kv"><span>适配度</span><span class="v">${d.fit_score}</span></div>
+    ${(d.checks||[]).map(c=>`<div class="kv"><span>${c.ok?'✅':'❌'} ${c.item}</span><span class="v" style="font-weight:normal">${c.note}</span></div>`).join('')}
+    <b>推荐角度：</b>${li(d.recommended_angles||[])}<b>避开：</b>${li(d.avoid||[])}
+    <div class="meta">${d.dedup_reminder}</div>`;
+  if(id==='copy')return `<b>标题候选：</b>`+(d.titles||[]).map(t=>`<div class="appr"><div class="title">${t.title}</div><div class="meta">评分 ${t.score} · ${t.pass?'✅ 达标':'❌ 未达线'}</div></div>`).join('')+
+    `<b>描述：</b><div class="meta" style="white-space:pre-wrap;margin:6px 0">${d.description}</div>
+     <b>置顶评论：</b><div class="meta" style="margin:6px 0">${d.pinned_comment}</div>
+     <div class="meta">${d.purity_note}</div>`;
+  if(id==='hooks')return `<b>10 个钩子（${d.topic||''}）：</b>`+(d.hooks||[]).map(h=>`<div class="appr"><div class="title">#${h.rank} [${h.type}] ${h.hook}</div><div class="meta">动词 ${h.verb}（${h.verb_tier} 级）</div></div>`).join('')+`<div class="meta">${d.note}</div>`;
+  if(id==='score'){const c=d.pass?'#4ade80':'#f87171';return `<div style="font-size:32px;font-weight:700;color:${c}">${d.score} <span style="font-size:14px">/ ${d.threshold} 线 · ${d.grade}</span></div>
+    <div class="title" style="margin:8px 0">${d.title}</div>
+    ${(d.breakdown||[]).map(b=>kv(b.item+' ('+b.delta+')',b.note)).join('')}
+    <div class="meta" style="margin-top:8px"><b>建议：</b>${d.suggestion}</div><div class="meta">${d.note}</div>`;}
+  if(id==='schedule'){let lastDay='';return `<b>排期规则：</b>${li(d.rules||[])}<b>7 天排期：</b>`+(d.plan||[]).map(p=>{
+    const dh=p.day!==lastDay?`<div class="meta" style="margin:10px 0 4px;font-weight:700">${p.day}${p.boost?' · '+p.boost:''}</div>`:'';
+    lastDay=p.day;return dh+`<div class="kv"><span>${p.slot} · ${p.title}</span><span class="v">${p.score??''} ${p.slot_note}</span></div>`;}).join('');}
+  if(id==='repurpose')return (d.items||[]).map(it=>`<div class="card" style="margin-bottom:8px"><div class="meta">原片：${it.original||''}${it.views?' · '+it.views+' 播放':''}</div>`+
+    (it.angles||[]).map(a=>`<div class="appr"><div class="title">[${a.angle}] ${a.title}</div><div class="meta">钩子：${a.hook}</div></div>`).join('')+
+    `<div class="meta">${it.dedup_reminder}</div></div>`).join('');
+  return '<pre>'+JSON.stringify(d,null,2)+'</pre>';
+}
+
+// ---------------- 增长模块 ----------------
+async function postJSON(u,b){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json();}
+async function renderLeads(){
+  const el=document.getElementById('leads-board');
+  try{
+    const d=await fetchJSON('/api/oa/leads');
+    let h=`<div class="cards"><div class="card"><h3>💼 线索总数</h3><div style="font-size:28px;font-weight:700">${d.total}</div></div>
+    <div class="card"><h3>💰 已成交金额</h3><div style="font-size:28px;font-weight:700;color:#4ade80">¥${d.won_value}</div><div class="meta">已成交+已交付+复购</div></div></div>`;
+    h+='<div style="display:flex;gap:10px;overflow-x:auto;margin-top:12px">';
+    for(const s of d.stages){
+      const items=(d.by_stage[s]||[]);
+      h+=`<div class="card" style="min-width:220px;flex:1"><h3>${s} (${items.length})</h3>`+items.map(l=>`
+        <div class="appr"><div class="title">${l.name||'(未命名)'} <span class="meta">${l.id}</span></div>
+        <div class="meta">来源 ${l.source} · ${l.demand||''}${l.amount?' · ¥'+l.amount:''}</div>
+        <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
+        ${d.stages.map(ns=>ns===s?'':`<button onclick="leadMove('${l.id}','${ns}')" style="background:#141b2d;border:1px solid #2a3550;color:#7dd3fc;padding:2px 8px;border-radius:6px;cursor:pointer;font-size:11px">→${ns}</button>`).join('')}
+        </div></div>`).join('')+'</div>';
+    }
+    el.innerHTML=h+'</div>';
+  }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
+}
+async function leadAdd(){
+  const name=document.getElementById('ld-name').value.trim();
+  if(!name){alert('填一下客户名');return;}
+  await postJSON('/api/oa/leads',{name,source:document.getElementById('ld-source').value,demand:document.getElementById('ld-demand').value.trim()});
+  document.getElementById('ld-name').value='';document.getElementById('ld-demand').value='';
+  renderLeads();
+}
+async function leadMove(id,stage){
+  await postJSON('/api/oa/leads',{id,stage});renderLeads();
+}
+async function renderDist(){
+  const el=document.getElementById('dist-list');
+  try{
+    const d=await fetchJSON('/api/oa/distribution');
+    const pf={};
+    d.platforms.forEach(p=>pf[p.id]=p.name);
+    el.innerHTML=(d.queue||[]).map(it=>`<div class="card" style="margin-bottom:8px"><div class="title">${it.title||it.video_id} <span class="meta">${it.id}</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${Object.keys(it.platforms).map(p=>{
+        const s=it.platforms[p];const col=s.status==='已发布'?'#4ade80':s.status==='分发中'?'#fbbf24':'#94a3b8';
+        return `<div style="flex:1;min-width:140px;background:#0d1117;border:1px solid #2a3550;border-radius:8px;padding:8px">
+          <div style="font-size:12px;color:${col};font-weight:700">${pf[p]} · ${s.status}</div>
+          ${s.url?`<div class="meta"><a href="${s.url}" target="_blank" style="color:#7dd3fc">打开</a></div>`:''}
+          <div style="margin-top:6px;display:flex;gap:4px">
+          <button onclick="distSet('${it.id}','${p}','分发中','')" style="background:#141b2d;border:1px solid #2a3550;color:#fbbf24;padding:2px 8px;border-radius:6px;cursor:pointer;font-size:11px">分发中</button>
+          <button onclick="distPub('${it.id}','${p}')" style="background:#141b2d;border:1px solid #2a3550;color:#4ade80;padding:2px 8px;border-radius:6px;cursor:pointer;font-size:11px">已发布</button>
+          </div></div>`;}).join('')}</div></div>`).join('')||'<div class="empty">暂无分发任务</div>';
+  }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
+}
+async function distAdd(){
+  const vid=document.getElementById('dt-vid').value.trim();
+  const title=document.getElementById('dt-title').value.trim();
+  if(!vid&&!title){alert('填一下 video_id 或标题');return;}
+  await postJSON('/api/oa/distribution/add',{video_id:vid,title});
+  document.getElementById('dt-vid').value='';document.getElementById('dt-title').value='';
+  renderDist();
+}
+async function distSet(id,p,status,url){await postJSON('/api/oa/distribution/update',{id,platform:p,status,url});renderDist();}
+async function distPub(id,p){
+  const url=prompt('粘贴该平台发布链接（可空）：')||'';
+  await postJSON('/api/oa/distribution/update',{id,platform:p,status:'已发布',url});renderDist();
+}
+async function renderRevenue(){
+  const el=document.getElementById('revenue-board');
+  try{
+    const d=await fetchJSON('/api/oa/revenue');
+    let h=`<div class="cards"><div class="card"><h3>💰 累计收入</h3><div style="font-size:32px;font-weight:700;color:#4ade80">¥${d.total}</div><div class="meta">共 ${d.count} 笔</div></div>
+    <div class="card"><h3>按来源</h3>${(d.by_source||[]).map(x=>`<div class="kv"><span>${x.source}</span><span class="v">¥${x.amount}</span></div>`).join('')||'<div class="empty">暂无</div>'}</div>
+    <div class="card"><h3>按类型</h3>${(d.by_type||[]).map(x=>`<div class="kv"><span>${x.type}</span><span class="v">¥${x.amount}</span></div>`).join('')||'<div class="empty">暂无</div>'}</div></div>`;
+    h+=`<div class="card" style="margin-top:12px"><h3>明细</h3>`+(d.entries||[]).map(e=>`<div class="kv"><span>${e.date} · ${e.source} · ${e.type}${e.note?' · '+e.note:''}</span><span class="v">¥${e.amount}</span></div>`).join('')+'</div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
+}
+async function revenueAdd(){
+  const amount=parseFloat(document.getElementById('rv-amount').value);
+  if(!amount){alert('填一下金额');return;}
+  await postJSON('/api/oa/revenue/add',{date:document.getElementById('rv-date').value,source:document.getElementById('rv-source').value,type:document.getElementById('rv-type').value,amount,note:document.getElementById('rv-note').value.trim()});
+  document.getElementById('rv-amount').value='';document.getElementById('rv-note').value='';
+  renderRevenue();
+}
+
+// ---------------- 架构蓝图 ----------------
+function renderBlueprint(){
+  const el=document.getElementById('blueprint-body');
+  const flow=(steps)=>`<div style="display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:10px 0">`+steps.map((s,i)=>
+    `<div style="flex:1;min-width:110px;background:#141b2d;border:1px solid #2a3550;border-radius:8px;padding:10px;text-align:center">
+     <div style="font-size:20px">${s[0]}</div><div style="font-size:12px;font-weight:700;margin:4px 0">${s[1]}</div>
+     <div class="meta" style="font-size:11px">${s[2]}</div></div>`+(i<steps.length-1?`<div style="align-self:center;padding:0 6px;color:#7dd3fc;font-weight:700">→</div>`:'')).join('')+`</div>`;
+  el.innerHTML=`
+  <div class="card"><h3>🏗️ ViralLoop 一人公司系统架构</h3>
+  <div class="meta">设计原则：<b>单 Agent 全栈 + 部门 SOP + 代码级门禁 + 真实数据驱动</b> —— 不学 Grok 的多 Bot 共享电脑（credential 串味风险），不学 Claude 的纯提示词门禁（靠自觉）。</div></div>
+
+  <div class="card" style="margin-top:12px"><h3>🧬 Muse 架构优势（vs Grok Bot / Claude Code）</h3>
+  <div class="kv"><span>专属 VM</span><span class="v">整台电脑归一人，无多 Bot 共享文件/登录态风险</span></div>
+  <div class="kv"><span>持久记忆</span><span class="v">MEMORY.md + 每日日志 + 人物索引，跨会话连续</span></div>
+  <div class="kv"><span>原生调度</span><span class="v">cron/hook 7×24 后台运行，无需外部编排</span></div>
+  <div class="kv"><span>子代理并行</span><span class="v">派生继承上下文的子代理，结果自动回流</span></div>
+  <div class="kv"><span>系统级审批</span><span class="v">发布/花钱/删数据/对外消息走审批卡，非文字约定</span></div>
+  <div class="kv"><span>人机一体</span><span class="v">手机 App 直接指挥：文字/语音/图片</span></div></div>
+
+  <div class="card" style="margin-top:12px"><h3>🧱 系统分层</h3>
+  ${flow([['👑','决策层','CEO cgb2026 · 审批红线：发布/删除/花钱/对外消息'],['🧭','智能体层','Dash · 7部门SOP · 14技能 · 代码门禁'],['⏰','自动化层','30+ cron/hook · 8阶段管线 · 看门狗'],['💾','数据层','/home/hatch/data · 真实数据 · 账本 · 去重池'],['🌐','基础设施','viralloopapp.com · HTTPS · VPS隧道']])}</div>
+
+  <div class="card" style="margin-top:12px"><h3>👥 组织架构（7部门）</h3>
+  <div class="meta">CEO cgb2026（决策·审美·终审） → 幕僚长 Dash（路由·协调·异常）</div>
+  <div class="kv"><span>内容部</span><span class="v">趋势研究员 · 选题策略师 · 审查员 · 制片人</span></div>
+  <div class="kv"><span>质检部</span><span class="v">QC 质检员</span></div>
+  <div class="kv"><span>发布部</span><span class="v">发布者（需人类授权）</span></div>
+  <div class="kv"><span>运营部</span><span class="v">运营经理 · 数据分析师</span></div>
+  <div class="kv"><span>市场部</span><span class="v">分发专员 · 商务拓展</span></div>
+  <div class="kv"><span>销售部</span><span class="v">线索挖掘员 · 售前顾问 · 客户成功</span></div>
+  <div class="kv"><span>审计部</span><span class="v">审计员（独立）</span></div></div>
+
+  <div class="card" style="margin-top:12px"><h3>🔄 闭环一：内容生产（已跑通）</h3>
+  ${flow([['📡','趋势输入','雷达每天+热点每小时'],['🎯','选题生成','每天3档·三道去重'],['🧪','Ask评审','≥85分放行'],['🎬','视频生成','失败重试2次'],['✅','QC质检','10项检查'],['👑','人工终审','CEO批准'],['🚀','上传发布','Marvis取货'],['📈','发布后运营','换标题·评论互动'],['🧬','数据进化','标准每天进化']])}</div>
+
+  <div class="card" style="margin-top:12px"><h3>🔄 闭环二：分发增长（新建）</h3>
+  ${flow([['🎬','已发布视频','YouTube首发'],['♻️','跨平台改编','内容重塑·平台化标题'],['📡','定时分发','TikTok/Reels/X·分发矩阵'],['📊','数据回收','各平台播放·best-time'],['🔥','爆款加投','高分视频追投/续集'],['🧬','策略回流','分发专员→选题策略师']])}
+  <div class="meta">工具：分发矩阵（本页左侧）手动标记 → 后续接 xPST/Blotato MCP 自动分发</div></div>
+
+  <div class="card" style="margin-top:12px"><h3>🔄 闭环三：销售变现（新建）</h3>
+  ${flow([['🔍','商机监控','猪八戒/Upwork每日扫'],['⭐','线索评分','ICP匹配·意向分'],['💬','跟进触达','话术模板·人类确认发出'],['📝','方案报价','售前顾问·人类确认'],['🤝','成交','合同·首款'],['📦','交付','客户成功跟进'],['🔁','复购增购','NPS·增购'],['💰','回款入账','变现看板']])}
+  <div class="meta">红线：对外消息/报价发出前必须人类确认；花钱/退款需人类批准</div></div>
+
+  <div class="card" style="margin-top:12px"><h3>🔄 闭环四：数据进化（已跑通）</h3>
+  ${flow([['📊','播放数据','all_videos.json'],['💰','收入数据','变现看板账本'],['🎯','线索转化','销售管道赢单归因'],['🧬','标准进化','criteria.json版本+1'],['📝','策略调整','选题/分发/话术更新'],['🔄','下一轮','四个闭环联动']])}
+  <div class="meta">核心：哪个选题带来线索和收入，反哺选题策略 —— 内容不再只为播放，为生意服务</div></div>
+
+  <div class="card" style="margin-top:12px"><h3>🛠️ 技术选型（来自 GitHub 调研）</h3>
+  <div class="kv"><span>跨平台分发</span><span class="v">xPST（开源/MCP）→ 先手动矩阵，稳定后接自动</span></div>
+  <div class="kv"><span>销售自动化</span><span class="v">openoutbound（AI SDR引擎）/ gojiberryai-sales-os（13角色）→ 先跑通手动管道</span></div>
+  <div class="kv"><span>审批门禁</span><span class="v">代码级 hard gate（已验证）+ OA审批流，不靠提示词自觉</span></div>
+  <div class="kv"><span>账本</span><span class="v">变现看板（本页）→ 收入数据回流进化闭环</span></div></div>`;
+}
+
+async function decide(title, ok){
+  if(!confirm((ok?'批准':'驳回')+'「'+title.slice(0,30)+'」？'))return;
+  try{
+    const r=await fetch(ok?'/api/oa/approve':'/api/oa/reject',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title})});
+    const d=await r.json();
+    if(d.ok){alert((ok?'已批准':'已驳回'));loadAll();}
+    else alert('失败：'+(d.error||'未知'));
+  }catch(e){alert('请求失败');}
+}
+async function sendCmd(){
+  const cmd=document.getElementById('cmd-input').value.trim();
+  if(!cmd)return;
+  const title=document.getElementById('page-title');
+  const orig=title.textContent;
+  title.textContent='执行中…';
+  try{
+    // 简单指令解析
+    if(/批准/.test(cmd)){
+      const a=cache.appr||{approvals:[]};
+      const v=a.approvals.find(x=>x.type==='video');
+      if(!v){alert('没有待批准的视频');}
+      else{
+        const r=await fetch('/api/oa/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:v.title})});
+        const d=await r.json();
+        alert(d.ok?'已批准：'+v.title.slice(0,30):'失败：'+d.error);
+        loadAll();
+      }
+    }else if(/驳回/.test(cmd)){
+      const a=cache.appr||{approvals:[]};
+      const v=a.approvals.find(x=>x.type==='video');
+      if(!v){alert('没有待驳回的视频');}
+      else{
+        const r=await fetch('/api/oa/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:v.title})});
+        const d=await r.json();
+        alert(d.ok?'已驳回':'失败：'+d.error);
+        loadAll();
+      }
+    }else if(/待办|审批/.test(cmd)){
+      document.querySelector('[data-p="approvals"]').click();
+    }else if(/工作流|管线/.test(cmd)){
+      document.querySelector('[data-p="pipeline"]').click();
+    }else if(/组织/.test(cmd)){
+      document.querySelector('[data-p="org"]').click();
+    }else{
+      alert('指令：批准视频 / 驳回视频 / 查看待办 / 工作流状态 / 组织架构');
+    }
+  }catch(e){alert('执行失败');}
+  title.textContent=orig;
+  document.getElementById('cmd-input').value='';
+}
+function voiceCmd(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert('当前浏览器不支持语音输入，请用 Chrome');return;}
+  const btn=document.getElementById('mic-btn');
+  const rec=new SR();
+  rec.lang='zh-CN';rec.interimResults=false;rec.maxAlternatives=1;
+  btn.style.background='#dc2626';btn.textContent='⏺';
+  rec.onresult=e=>{
+    const text=e.results[0][0].transcript;
+    document.getElementById('cmd-input').value=text;
+    btn.style.background='#1e3a5f';btn.textContent='🎤';
+    sendCmd();
+  };
+  rec.onerror=e=>{
+    btn.style.background='#1e3a5f';btn.textContent='🎤';
+    if(e.error==='not-allowed'){
+      alert('语音输入需要 HTTPS 或麦克风权限。\n当前是 HTTP，Chrome 不允许。\n请用文字输入，或联系管理员配置 HTTPS。');
+    }else if(e.error!=='aborted'){
+      alert('语音识别失败: '+e.error);
+    }
+  };
+  rec.onend=()=>{btn.style.background='#1e3a5f';btn.textContent='🎤';};
+  try{rec.start();}catch(e){alert('麦克风启动失败');}
+}
+function speakPending(){
+  const btn=event&&event.target?event.target:null;
+  const origBtn=btn?btn.textContent:'';
+  function restore(){if(btn)btn.textContent=origBtn;}
+  try{
+    if(!('speechSynthesis' in window)){alert('当前浏览器不支持语音播报，请用 Chrome / Edge');return;}
+    const a=cache.appr||{approvals:[],count:0};
+    let text;
+    if(!a.count){text='ViralLoop 提醒：目前没有待办事项，一切正常。';}
+    else{
+      const vs=a.approvals.filter(x=>x.type==='video').map(x=>x.title.slice(0,20)).join('、');
+      const qs=a.approvals.filter(x=>x.type!=='video').length;
+      text=`ViralLoop 提醒：有 ${a.count} 项待办。`;
+      if(vs)text+=`视频终审：${vs}。`;
+      if(qs)text+=`${qs} 个 Ask Studio 问题等待回答。`;
+      text+='请及时处理。';
+    }
+    if(btn)btn.textContent='🔊 播报中…';
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='zh-CN';u.rate=1.0;u.volume=1;
+    function pickVoice(){
+      const voices=speechSynthesis.getVoices();
+      const zh=voices.find(v=>v.lang&&v.lang.toLowerCase().replace('_','-').startsWith('zh'));
+      if(zh){u.voice=zh;}
+    }
+    pickVoice();
+    u.onend=restore;u.onerror=e=>{restore();console.warn('TTS error',e.error);};
+    // 兜底：2秒后强制恢复按钮
+    setTimeout(restore,8000);
+    if(!speechSynthesis.getVoices().length){
+      // 等 voices 加载
+      let done=false;
+      speechSynthesis.onvoiceschanged=()=>{if(done)return;done=true;pickVoice();speechSynthesis.cancel();speechSynthesis.speak(u);};
+      setTimeout(()=>{if(done)return;done=true;speechSynthesis.cancel();speechSynthesis.speak(u);},1200);
+    }else{
+      speechSynthesis.speak(u);
+    }
+  }catch(e){restore();alert('语音播报出错: '+e.message);}
+}
+loadAll();setInterval(loadAll,30000);
+</script>
+</body>
+</html>

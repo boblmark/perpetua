@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """Perpetua 流水线遥测：统一记录七个阶段的真实执行情况。
 
-阶段：
-  trend    趋势抓取（脚本，无需 AI）
-  select   选题（需 AI：Marvis）
-  score    打分（脚本/API，无需 AI）
-  generate 生成视频（需 AI：Marvis/视频模型）
-  publish  发布（Marvis 直传 YouTube，机械操作）
-  analyze  数据分析（脚本，无需 AI）
-  optimize 发布后优化（脚本，无需 AI）
-
-7 个阶段中只有 select 和 generate 严格需要 AI。
+阶段（2026-10-07 扩展：独立管线不再依赖 Marvis）：
+  trend            趋势抓取（脚本，无需 AI）
+  select           选题（旧：Marvis；新：auto_pipeline）
+  score            打分（脚本/API，无需 AI）
+  topic_select     独立管线选题（auto_pipeline：趋势→打分→去重）
+  generate         生成视频（视频模型）
+  postprocess      生成后处理（loop 检查/字幕烧录）
+  qc               上传前质检（pre_upload_qc，fail-closed）
+  pending_approval 待人工审批（awaiting_approval.json）
+  upload           上传发布（youtube_upload，全部硬门禁）
+  publish          发布（旧：Marvis 直传；保留兼容）
+  audit            绕过审计（bypass_audit，每2h）
+  analyze          数据分析（脚本，无需 AI）
+  optimize         发布后优化（脚本，无需 AI）
 """
+import sys
+sys.path.insert(0, "/home/hatch/data/perpetua")
+from json_safe import atomic_write_json
 import json, os
 from datetime import datetime, timezone
 
@@ -19,16 +26,22 @@ BASE = "/home/hatch/data/perpetua"
 RUNS_FILE = f"{BASE}/pipeline_runs.json"
 MAX_RUNS = 500  # 只保留最近 500 条
 
-STAGES = ["trend", "select", "score", "generate", "publish", "analyze", "optimize"]
+STAGES = ["trend", "select", "review", "generate", "qc", "publish", "postop", "evolve"]
 
 STAGE_INFO = {
-    "trend":    {"zh": "趋势抓取", "needs_ai": False},
-    "select":   {"zh": "AI 选题", "needs_ai": True},
-    "score":    {"zh": "爆款打分", "needs_ai": False},
-    "generate": {"zh": "视频生成", "needs_ai": True},
-    "publish":  {"zh": "发布", "needs_ai": False},
-    "analyze":  {"zh": "数据分析", "needs_ai": False},
-    "optimize": {"zh": "发布后优化", "needs_ai": False},
+    "trend":            {"zh": "趋势抓取", "needs_ai": False},
+    "select":           {"zh": "AI 选题", "needs_ai": True},
+    "score":            {"zh": "爆款打分", "needs_ai": False},
+    "topic_select":     {"zh": "管线选题", "needs_ai": False},
+    "generate":         {"zh": "视频生成", "needs_ai": True},
+    "postprocess":      {"zh": "生成后处理", "needs_ai": False},
+    "qc":               {"zh": "上传前质检", "needs_ai": False},
+    "pending_approval": {"zh": "待人工审批", "needs_ai": False},
+    "upload":           {"zh": "上传发布", "needs_ai": False},
+    "publish":          {"zh": "发布(旧)", "needs_ai": False},
+    "audit":            {"zh": "绕过审计", "needs_ai": False},
+    "analyze":          {"zh": "数据分析", "needs_ai": False},
+    "optimize":         {"zh": "发布后优化", "needs_ai": False},
 }
 
 def now_iso():
@@ -44,7 +57,7 @@ def _load():
 
 def _save(d):
     d["runs"] = d["runs"][-MAX_RUNS:]
-    json.dump(d, open(RUNS_FILE, "w"), ensure_ascii=False, indent=2)
+    atomic_write_json(RUNS_FILE, d)
 
 def log(tenant_id, stage, status="ok", detail="", count=0):
     """记录一次阶段执行。status: ok / working / error / idle"""
@@ -59,7 +72,7 @@ def log(tenant_id, stage, status="ok", detail="", count=0):
     return True
 
 def status(tenant_id="default"):
-    """返回该租户七个阶段的最新状态"""
+    """返回该租户各阶段的最新状态"""
     d = _load()
     out = {}
     for s in STAGES:

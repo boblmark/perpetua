@@ -1,0 +1,15 @@
+[Unit]
+Description=Perpetua MCP Server (compiled binary)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/perpetua/bin/perpetua-mcp
+Restart=always
+RestartSec=10
+Environment=PERPETUA_DATA=/home/hatch/data
+StandardOutput=append:/home/hatch/data/mcp-server.out.log
+StandardError=append:/home/hatch/data/mcp-server.out.log
+
+[Install]
+WantedBy=multi-user.target

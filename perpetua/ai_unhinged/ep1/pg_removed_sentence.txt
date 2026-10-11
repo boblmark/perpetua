@@ -1,0 +1,3 @@
+Deleted self-admission sentence (conservative default, restorable during private review):
+
+Here's the problem: case eighty-six shows up twice in our own library, with two different dogs. The numbering is already broken, and nobody at this channel has noticed until now.

@@ -1,0 +1,15 @@
+[Unit]
+Description=Perpetua MCP Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/hatch/data/mcp_server
+ExecStart=/usr/bin/python3 server.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/hatch/data/mcp_server/mcp-server.out.log
+StandardError=append:/home/hatch/data/mcp_server/mcp-server.out.log
+
+[Install]
+WantedBy=default.target

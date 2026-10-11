@@ -1,0 +1,30 @@
+直接用你自己的内部模型跑集群，做一期《Karen vs AI》新分镜批量生产。
+
+背景：我们在运营一个 YouTube Shorts 频道 "Mark Bobl | Karen vs AI"（@KarenVsAI），内容是 8 秒竖屏 AI 搞笑短剧：一个 entitled 的中年女性顾客（Karen 原型）与各种 AI 智能设备发生冲突，设备用卡通式、无血腥的滑稽手段即时报复她。
+
+## 任务
+并发搜索 2026 年最新趋势，创作 15 个奇葩 AI 智能设备 + 完整 8 秒分镜。设备不能重复以下已用过的：
+自助收银机、私人车道升降柱、得来速窗口、电车超充桩、智能门铃/快递箱、太阳能咪表、智能购物车、酒店送物机器人、机场人脸登机闸机、洗车房收费机、无人驾驶出租车、智能马桶、割草机器人、健身魔镜跑步机、智能垃圾桶、棉花糖机械臂、泳池救生水炮、机场行李称重带。
+
+## 每个分镜必须包含（Excel 一行）
+1. Agent ID（Writer-19 起顺延）
+2. Smart AI Device（英文设备名 + 中文注释）
+3. Episode Title（英文剧集标题，悬念型）
+4. Viral Trend Anchor（2026）（蹭的当下趋势）
+5. Camera Framing（9:16 构图说明）
+6. 0.0-3.5s: Entitled Escalation（Karen 作恶升级的具体动作+台词）
+7. 3.5-4.5s: Single Trigger（单一物理触发点，只能有一个）
+8. 4.5-5.8s: 1.2s Deadpan Pause（设备面无表情停顿+一句冷笑话 TTS 台词）
+9. 5.8-8.0s: Instant Karma + Bystander（卡通式报复+路人围观反应）
+10. Diegetic Audio Design（现场音设计，无背景音乐）
+11. Veo 3.1 English Prompt（完整英文生成 prompt）
+12-16. Jury-01~05 打分：Hook / Pause / Physics / Audio / Loop（每项 0-100）
+17. Total Score（总分）
+18. Est. Loop APV (%)（预估循环完播率）
+19. Ruthless Jury Critique（毒舌评委锐评，一针见血指出最弱一环）
+
+## 硬约束
+- 参与者必须全是虚构成年人，绝无未成年人、无真实名人、无真实品牌名
+- 报复手段只能是卡通式 slapstick（喷水、弹飞、糊奶油），无血腥、无真实伤害
+- 只输出 Excel 文件（.xlsx），sheet 名用 All_18_Storyboards_Veo3
+- 账号、粉丝量、播放量等任何数字必须真实可查，编造的数字会在二次核验时被剔除

@@ -1,0 +1,14 @@
+[Unit]
+Description=Perpetua Console 8080 Tunnel
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/hatch/data/perpetua/vps_console/tunnel_8080.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/hatch/data/perpetua/vps_console/tunnel_8080.log
+StandardError=append:/home/hatch/data/perpetua/vps_console/tunnel_8080.log
+
+[Install]
+WantedBy=multi-user.target

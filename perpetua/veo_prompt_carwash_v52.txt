@@ -1,0 +1,22 @@
+Vertical 9:16 short video, exactly 8 seconds. Raw car-wash CCTV aesthetic: high contrast, wet reflective surfaces, fluorescent tunnel lighting. Small timestamp text in top-left corner reading "CAM 05 - 18:03:12".
+
+Characters: Karen, a middle-aged woman with blonde bob hair, oversized sunglasses pushed up on her head, wearing a pink tracksuit top, standing beside her car at the entrance of an AI car wash tunnel. The car wash entrance has a glowing blue sensor arch and a small screen showing a calm robot face.
+
+CRITICAL FRAMING RULES (follow exactly):
+- FRAME 1 (the very first frame): a SHARP, CLEAR, perfectly still extreme close-up of Karen's furious face filling the frame — eyes wide, mouth open mid-shout. Her face must be instantly recognizable as a human face: frontal, well-lit, in focus. This single frame is a portrait.
+- FRAMES 2-30: the instant the video starts moving, EXPLOSION — Karen LUNGES at the lens, camera WHIP-PANS with heavy motion blur, her palm SLAMS toward the camera. Violent handheld chaos from the second frame onward. Large pixel displacement everywhere.
+- FINAL FRAME (last frame): motion freezes dead on Karen's shocked wide-eyed face in the EXACT same extreme close-up framing, angle, lighting and face position as FRAME 1 — as if the video snapped back to its start. First frame and last frame near-identical for a perfect seamless loop.
+
+TIMELINE:
+- 0-1.5s: portrait frame, then instant violent lunge + whip-pan + palm slam. Maximum motion energy.
+- 1.5-4s: Karen storms to the payment kiosk, jabs at the screen, waves her arms refusing to pay. Camera orbits shakily.
+- 4-6.5s: Karen kicks the sensor arch and tries to push her car through the gate without paying. Warning lights flash red. Aggressive zoom punch-ins, motion climbing.
+- 6.5-7.5s CLIMAX — PEAK VIOLENCE: the AI car wash UNLEASHES a hurricane blast of high-pressure water and foam point-blank into Karen. A wall of water fills the screen, her head SNAPS back, hair whips across the lens, sunglasses fly at the camera.
+- 7.5-8s: hard freeze to the loop-close portrait frame (soaked, stunned). Abrupt clean end.
+
+On-screen text (white with black outline, top area only):
+- At start: "SHE REFUSED TO PAY"
+- At climax: "BIG MISTAKE"
+- At end: "WASH: ACTIVATED"
+
+Audio: The video OPENS with a violent hard transient — a metal gate CLANG layered with Karen's scream "I'M NOT PAYING!" at FULL VOLUME from the very first frame. Zero fade-in, zero silence at start. Her voice stays loud and furious throughout, rising toward the climax. At 6.5s a distorted robotic voice booms "PAYMENT... REQUIRED" over a water-blast roar. Abrupt total silence on the final freeze frame. No music.

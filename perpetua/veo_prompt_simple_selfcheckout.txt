@@ -1,0 +1,14 @@
+Vertical 9:16 short video, exactly 8 seconds. Raw CCTV security camera aesthetic: high contrast, slightly desaturated daylight. Small timestamp text in top-left corner reading "CAM 01 - 11:15:33".
+
+Characters: Karen, a middle-aged woman with blonde bob hair, oversized sunglasses pushed up on her head, wearing a pink tracksuit top. She is outraged, eyes wide, mouth open, waving an expired paper coupon. An AI self-checkout kiosk with a glowing scanner light and small screen showing a calm robot face. One bystander in background holding shopping bags, watching.
+
+Story: Karen angrily waves an expired coupon at the self-checkout scanner, demanding a discount. The scanner calmly rejects it with a red X. Karen slams the coupon on the scanner. Suddenly the kiosk prints a very long receipt that wraps around Karen like toilet paper, trapping her. She freezes in shock, tangled in receipt paper. The screen shows the text "COUPON EXPIRED".
+
+Camera: Opens with extreme close-up of Karen's angry face filling the frame. Handheld shaky camera throughout. Fast energetic movement, never still. Ends with Karen tangled in receipt paper, frozen.
+
+On-screen text (white with black outline, top area only):
+- At start: "EXPIRED COUPON?!"
+- At receipt moment: "BIG MISTAKE"
+- At end: "COUPON EXPIRED"
+
+Audio: Karen shouting "This was valid yesterday—" at start, rising in anger. Receipt printer whirring sound at climax. No music.

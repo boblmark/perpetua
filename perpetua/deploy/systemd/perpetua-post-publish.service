@@ -1,0 +1,8 @@
+[Unit]
+Description=Perpetua post-publish optimizer (every 6h)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/hatch/data/youtube/post_publish_optimizer.py
+StandardOutput=append:/home/hatch/data/youtube/post_publish_optimizer.log
+StandardError=append:/home/hatch/data/youtube/post_publish_optimizer.log

@@ -1,0 +1,15 @@
+[Unit]
+Description=Perpetua Standalone Console (port 8080)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/hatch/data/perpetua/vps_console/console_server.py
+Restart=always
+RestartSec=10
+Environment=CONSOLE_PORT=8080
+StandardOutput=append:/home/hatch/data/perpetua/vps_console/console.out.log
+StandardError=append:/home/hatch/data/perpetua/vps_console/console.out.log
+
+[Install]
+WantedBy=multi-user.target

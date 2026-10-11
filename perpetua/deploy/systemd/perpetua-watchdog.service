@@ -1,0 +1,6 @@
+[Unit]
+Description=Perpetua Watchdog (MCP server + tunnel keepalive)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/hatch/data/mcp_server/watchdog.py
