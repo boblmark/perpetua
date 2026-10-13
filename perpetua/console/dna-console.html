@@ -341,7 +341,7 @@ h2.section{font-size:16px;font-weight:700;margin:24px 0 12px;display:flex;align-
           <div>
             <div style="color:#6b7280;font-size:12px;margin-bottom:6px">视频模型</div>
             <select id="model-select" style="width:100%;padding:8px;background:#11161f;border:1px solid #2a3a5a;border-radius:6px;color:#e6e6e6">
-              <option>H3（默认）</option><option>MiniMax</option><option>wan2.2-i2v 图生视频</option>
+              <option value="h3">H3（默认）</option><option value="minimax">MiniMax</option><option value="wan2.2-i2v">wan2.2-i2v 图生视频</option>
             </select>
           </div>
           <div>
@@ -539,7 +539,8 @@ const logMsgs = [
   ['📊 实验', 'ok', 'EXP-014 数据点 +1'],
   ['⚠️ 告警', 'warn', '抖音 0 播放 · 建议调整发布时间'],
 ];
-let logIdx = 0;
+// 2026-10-13 修复：此处原有重复的 `let logIdx = 0;`，与第 510 行同作用域重复声明，
+// 导致整个 <script> 块 SyntaxError 被浏览器丢弃（心跳/信号/日志流全部失效）。
 setInterval(() => {
   const box = document.querySelector('.log-box');
   if (box) {
@@ -595,10 +596,14 @@ window.addEventListener('DOMContentLoaded', () => {
 // 所有数据来自真实后端 API，非 mockup
 
 // --- 导航点击 → 滚动定位 ---
+// 2026-10-13 修正：h2.section 实际只有 5 个，原索引 0-6 越界错位。
+// 0=流水线(含九平台/审批队列) 1=实验科学(含目标函数) 2=人工干预 3=DNA进化日志 4=实时日志
 const NAV_MAP = {
-  '视频工厂': 0, '数据看板': 1, '分发矩阵': 1, '审批中心': 2,
-  '实验科学': 3, '进化日志': 4, '人工干预': 5, '实时日志': 6,
-  '对话': -1, '记忆': -1, '目标': 3, '点子': 5, '技能': -1,
+  '视频工厂': 0, '数据看板': 0, '分发矩阵': 0, '审批中心': 0,
+  '实验科学': 1, '目标': 1,
+  '人工干预': 2, '点子': 2,
+  '进化日志': 3, '实时日志': 4,
+  '对话': -1, '记忆': -1, '技能': -1,
   '连接': -1, '设置': -1, '终端': -1
 };
 
@@ -618,10 +623,12 @@ function initNav() {
           return;
         }
       }
-      // TODO: BRAIN 功能将与本界面融为一体（对话/记忆/技能内嵌，不跳转）
-      // 当前暂用提示占位，集成设计待定
-      if (['对话','记忆','技能','连接','设置','终端'].some(k => label.includes(k))) {
-        alert('「' + label + '」即将与本界面融为一体，敬请期待');
+      // BRAIN 功能：内嵌面板，与界面融为一体（无感知，不跳转）
+      if (label.includes('对话')) { openBrainPanel('chat'); return; }
+      if (label.includes('记忆')) { openBrainPanel('memory'); return; }
+      if (label.includes('技能')) { openBrainPanel('skills'); return; }
+      if (['连接','设置'].some(k => label.includes(k))) {
+        alert('「' + label + '」即将上线，敬请期待');
       }
     });
   });
@@ -671,30 +678,48 @@ function updateStageNumber(stageName, val) {
 
 async function loadApproval() {
   try {
-    const r = await fetch('/api/dna/approval');
+    // 真终审队列：awaiting_approval.json（与 /api/oa/approve 操作同源 → 闭环成立）
+    const r = await fetch('/api/oa/approvals');
     const d = await r.json();
-    if (d.error || !d.items) return;
+    const items = d.approvals || [];
+    const count = d.count || items.length;
     // 更新标题
     const sub = document.getElementById('approval-subtitle');
-    if (sub) sub.textContent = `${d.total} 待审 · 真实队列`;
+    if (sub) sub.textContent = `${count} 待审 · 真实终审队列`;
     // 渲染真实审批项
     const list = document.getElementById('approval-list');
     if (list) {
-      if (!d.items.length) {
+      if (!items.length) {
         list.innerHTML = '<div style="text-align:center;color:#6b7280;padding:20px">暂无待审项</div>';
       } else {
-        list.innerHTML = d.items.slice(0, 5).map(item => `
-          <div class="approval-item" data-topic="${(item.topic||'').replace(/"/g,'&quot;')}">
-            <div class="a-thumb">🎬</div>
+        const tagFor = t => {
+          const map = {video: ['视频终审', '#3b82f6'], retitle: ['改标题', '#eab308']};
+          const pair = map[t] || ['Ask 评审', '#a855f7'];
+          const label = pair[0], color = pair[1];
+          return `<span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;background:${color}22;color:${color};border:1px solid ${color}55;margin-right:6px">${label}</span>`;
+        };
+        list.innerHTML = items.slice(0, 5).map(it => {
+          const title = it.title || it.topic || '(无标题)';
+          const key = (it.title || it.topic || '').replace(/"/g, '&quot;');
+          const actionable = (it.type === 'video' || it.type === 'retitle');
+          const meta = it.type === 'retitle'
+            ? `📹 ${it.video_id || '-'} · ${it.reason || ''}`
+            : `选题: ${it.topic || '-'} · ${(it.created || '').slice(0, 16)}`;
+          return `
+          <div class="approval-item" data-title="${key}">
+            <div class="a-thumb">${it.type === 'retitle' ? '📝' : '🎬'}</div>
             <div class="a-info">
-              <div class="a-title">${item.topic || '未知选题'}</div>
-              <div class="a-meta">状态: ${item.status || '?'} · 评分: ${item.score ?? '?'} · 时段: ${item.slot || '-'}</div>
+              <div class="a-title">${tagFor(it.type)}${title}</div>
+              <div class="a-meta">${meta}</div>
             </div>
             <div class="a-actions">
-              <button class="btn-sm btn-approve" data-action="approve">通过</button>
-              <button class="btn-sm btn-reject" data-action="reject">驳回</button>
+              ${actionable
+                ? `<button class="btn-sm btn-approve" data-action="approve">通过</button>
+                   <button class="btn-sm btn-reject" data-action="reject">驳回</button>`
+                : '<span style="font-size:11px;color:#6b7280">⏳ 待 Ask Studio</span>'}
             </div>
-          </div>`).join('');
+          </div>`;
+        }).join('');
         initApprovalButtons(); // 重新绑定
       }
     }
@@ -702,22 +727,27 @@ async function loadApproval() {
     document.querySelectorAll('.nav-item').forEach(item => {
       if (item.textContent.includes('审批中心')) {
         const badge = item.querySelector('.badge');
-        if (badge) badge.textContent = d.total;
+        if (badge) badge.textContent = count;
       }
     });
     // 查看全部
     const viewAll = document.getElementById('approval-view-all');
     if (viewAll) {
-      viewAll.textContent = `查看全部 ${d.total} 条 →`;
+      viewAll.textContent = `查看全部 ${count} 条 →`;
       viewAll.onclick = (e) => {
         e.preventDefault();
-        const all = d.items.map((it, i) =>
-          `${i+1}. ${it.topic} [${it.status}] 评分:${it.score ?? '?'}`).join('\n');
-        alert(`全部待审 (${d.total} 条):\n\n${all}`);
+        const all = items.map((it, i) => {
+          const t = it.title || it.topic || '(无标题)';
+          const k = it.type === 'retitle' ? `[改标题] ${it.video_id || ''}`
+                    : it.type === 'video' ? `[视频终审] ${it.topic || ''}`
+                    : `[${it.type || '?'}]`;
+          return `${i+1}. ${t}  ${k}`;
+        }).join('\n');
+        alert(`全部待审 (${count} 条):\n\n${all}`);
       };
     }
-    console.log('[真实] 审批队列已加载:', d.total, '条');
-  } catch(e) { console.log('[真实] 审批 API 不可达'); }
+    console.log('[真实] 终审队列已加载:', count, '条');
+  } catch(e) { console.log('[真实] 审批 API 不可达', e); }
 }
 
 async function loadExperiment() {
@@ -736,53 +766,45 @@ async function loadExperiment() {
 
 // --- 审批按钮（支持动态渲染） ---
 function initApprovalButtons() {
-  document.querySelectorAll('#approval-list .btn-approve[data-action="approve"]').forEach(btn => {
-    if (btn.dataset.wired) return;
-    btn.dataset.wired = '1';
-    btn.addEventListener('click', async () => {
-      const item = btn.closest('.approval-item');
-      const topic = item ? item.dataset.topic : '未知';
-      if (!confirm(`确认通过「${topic}」？`)) return;
-      btn.disabled = true;
-      btn.textContent = '处理中...';
-      try {
-        // 调用真实审批 API（待 approve_video.py 接口化，当前先标记状态）
-        const r = await fetch('/api/dna/approve', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({topic, action: 'approve'})
-        });
-        const d = await r.json();
-        if (d.ok) {
-          btn.textContent = '✓ 已通过';
-          btn.style.background = '#166534';
-          if (item) item.style.opacity = '0.5';
-        } else {
-          btn.textContent = '通过';
+  // 统一绑定：批准 → /api/oa/approve，驳回 → /api/oa/reject（body {title}，与展示同源）
+  const wire = (sel, isApprove) => {
+    document.querySelectorAll(sel).forEach(btn => {
+      if (btn.dataset.wired) return;
+      btn.dataset.wired = '1';
+      const verb = isApprove ? '通过' : '驳回';
+      btn.addEventListener('click', async () => {
+        const item = btn.closest('.approval-item');
+        const title = item ? (item.dataset.title || '') : '';
+        if (!title) { alert('无法识别该条目（缺少标题）'); return; }
+        if (!confirm(`确认${verb}「${title.slice(0, 40)}」？`)) return;
+        btn.disabled = true;
+        btn.textContent = '处理中...';
+        try {
+          const r = await fetch(isApprove ? '/api/oa/approve' : '/api/oa/reject', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title})
+          });
+          const d = await r.json();
+          if (d.ok) {
+            btn.textContent = isApprove ? '✓ 已通过' : '✓ 已驳回';
+            btn.style.background = isApprove ? '#166534' : '#7f1d1d';
+            if (item) item.style.opacity = '0.5';
+          } else {
+            btn.textContent = verb;
+            btn.disabled = false;
+            alert('操作失败: ' + (d.error || '未知错误'));
+          }
+        } catch(e) {
+          btn.textContent = verb;
           btn.disabled = false;
-          alert('审批失败: ' + (d.error || '未知错误'));
+          alert('请求失败: ' + e.message);
         }
-      } catch(e) {
-        // API 未实现时降级为本地标记
-        btn.textContent = '✓ 已通过(本地)';
-        btn.style.background = '#166534';
-        if (item) item.style.opacity = '0.5';
-        console.log('[审批] API 未就绪，本地标记:', topic);
-      }
+      });
     });
-  });
-  document.querySelectorAll('#approval-list .btn-reject[data-action="reject"]').forEach(btn => {
-    if (btn.dataset.wired) return;
-    btn.dataset.wired = '1';
-    btn.addEventListener('click', async () => {
-      const item = btn.closest('.approval-item');
-      const topic = item ? item.dataset.topic : '未知';
-      if (!confirm(`确认驳回「${topic}」？`)) return;
-      btn.disabled = true;
-      btn.textContent = '✓ 已驳回';
-      if (item) item.style.opacity = '0.5';
-    });
-  });
+  };
+  wire('#approval-list .btn-approve[data-action="approve"]', true);
+  wire('#approval-list .btn-reject[data-action="reject"]', false);
   // 兼容旧的硬编码按钮（已移除，但保留逻辑）
   document.querySelectorAll('.btn-approve').forEach(btn => {
     if (btn.textContent.includes('通过') && !btn.dataset.wired && !btn.dataset.action) {
@@ -904,6 +926,22 @@ async function loadEvolution() {
   } catch(e) { console.log('[真实] 进化 API 不可达'); }
 }
 
+// --- 真实信号拉取（2026-10-13 补：此前被调用但从未定义，点刷新必抛 ReferenceError）---
+async function fetchRealSignals() {
+  try {
+    const r = await fetch('/api/dna/signals');
+    const d = await r.json();
+    const s = d.signals || {};
+    const stale = d.stale || {};
+    const el = document.getElementById('sig-viral-rate');
+    if (el && s.viral_rate != null) {
+      el.textContent = Number(s.viral_rate).toFixed(1) + '%';
+      el.style.opacity = stale.viral_rate ? '0.5' : '1';
+    }
+    console.log('[真实] 信号已刷新', s);
+  } catch(e) { console.log('[真实] 信号 API 不可达'); }
+}
+
 // --- 刷新按钮 ---
 function initRefresh() {
   const btn = Array.from(document.querySelectorAll('.btn-primary'))
@@ -1004,14 +1042,15 @@ async function loadPlatforms() {
     const r = await fetch('/api/dna/platforms');
     const d = await r.json();
     if (!d.platforms) return;
-    const container = document.querySelector('.platform-grid');
+    // 2026-10-13 修复：HTML 实际容器是 .platforms，此前查 .platform-grid 恒为 null → 静默 return
+    const container = document.querySelector('.platforms');
     if (!container) return;
     container.innerHTML = d.platforms.map(p => {
       const avatar = p.avatar
         ? `<img src="${p.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'">`
         : `<span style="font-size:24px">🌐</span>`;
-      const dot = p.status === 'active' ? 'green' : 'yellow';
-      return `<div class="platform-card" data-platform="${p.key}" style="cursor:pointer">
+      const dot = p.status === 'ok' ? 'green' : 'yellow';
+      return `<div class="platform" data-platform="${p.key}" style="cursor:pointer" title="${p.name}">
         <div style="display:flex;align-items:center;gap:8px">
           ${avatar}
           <div><div style="font-weight:600">${p.name}</div>
@@ -1021,7 +1060,7 @@ async function loadPlatforms() {
       </div>`;
     }).join('');
     // 平台卡片点击 → 显示该平台视频列表（待实现详情页）
-    container.querySelectorAll('.platform-card').forEach(card => {
+    container.querySelectorAll('.platform[data-platform]').forEach(card => {
       card.addEventListener('click', () => {
         const key = card.dataset.platform;
         const p = d.platforms.find(x => x.key === key);
@@ -1074,5 +1113,138 @@ function initGenerate() {
 }
 
 </script>
+<!-- BRAIN 内嵌面板：对话/记忆/技能，与控制台融为一体 -->
+<style>
+#brain-panel{position:fixed;top:0;right:-480px;width:480px;max-width:95vw;height:100vh;background:#0f1419;border-left:1px solid #2a3a5a;z-index:9999;transition:right .3s;display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,.5)}
+#brain-panel.open{right:0}
+#brain-panel .bp-head{padding:14px 16px;border-bottom:1px solid #2a3a5a;display:flex;align-items:center;justify-content:space-between}
+#brain-panel .bp-tabs{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid #2a3a5a}
+#brain-panel .bp-tab{padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;color:#9ca3af;background:transparent;border:none}
+#brain-panel .bp-tab.active{background:#1a2332;color:#fff}
+#brain-panel .bp-body{flex:1;overflow-y:auto;padding:12px}
+#brain-panel .bp-foot{padding:12px;border-top:1px solid #2a3a5a;display:flex;gap:8px}
+#brain-panel .bp-foot input{flex:1;padding:10px;background:#11161f;border:1px solid #2a3a5a;border-radius:8px;color:#e5e7eb}
+#brain-panel .bp-foot button{padding:10px 18px;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer}
+.bp-msg{margin:8px 0;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.6;max-width:90%}
+.bp-msg.user{background:#1e3a5f;margin-left:auto;color:#fff}
+.bp-msg.assistant{background:#1a2332;color:#e5e7eb}
+.bp-item{padding:10px;border:1px solid #2a3a5a;border-radius:8px;margin:8px 0;font-size:13px;cursor:pointer}
+.bp-item:hover{border-color:#3b82f6}
+.bp-close{background:transparent;border:none;color:#9ca3af;font-size:20px;cursor:pointer}
+</style>
+<div id="brain-panel">
+  <div class="bp-head">
+    <div style="font-weight:700;font-size:15px">🧠 智能大脑 <span style="font-size:11px;color:#6b7280;font-weight:400">nanoMuse 内嵌</span></div>
+    <button class="bp-close" onclick="closeBrainPanel()">✕</button>
+  </div>
+  <div class="bp-tabs">
+    <button class="bp-tab active" data-tab="chat">💬 对话</button>
+    <button class="bp-tab" data-tab="memory">🧠 记忆</button>
+    <button class="bp-tab" data-tab="skills">🔧 技能</button>
+  </div>
+  <div class="bp-body" id="bp-body"><div style="text-align:center;color:#6b7280;padding:40px">加载中...</div></div>
+  <div class="bp-foot" id="bp-foot" style="display:none">
+    <input id="bp-input" placeholder="输入消息..." onkeydown="if(event.key==='Enter')sendBrainMsg()">
+    <button onclick="sendBrainMsg()">发送</button>
+  </div>
+</div>
+<script>
+let brainTab = 'chat', brainThreadId = null;
+
+// 打开面板
+function openBrainPanel(tab) {
+  brainTab = tab || 'chat';
+  document.getElementById('brain-panel').classList.add('open');
+  document.querySelectorAll('.bp-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === brainTab);
+  });
+  loadBrainTab();
+}
+function closeBrainPanel() {
+  document.getElementById('brain-panel').classList.remove('open');
+}
+// tab 切换
+document.querySelectorAll('.bp-tab').forEach(t => {
+  t.addEventListener('click', () => {
+    brainTab = t.dataset.tab;
+    document.querySelectorAll('.bp-tab').forEach(x => x.classList.toggle('active', x === t));
+    loadBrainTab();
+  });
+});
+
+async function loadBrainTab() {
+  const body = document.getElementById('bp-body');
+  const foot = document.getElementById('bp-foot');
+  body.innerHTML = '<div style="text-align:center;color:#6b7280;padding:40px">加载中...</div>';
+  foot.style.display = 'none';
+  try {
+    if (brainTab === 'chat') await loadBrainChat(body, foot);
+    else if (brainTab === 'memory') await loadBrainMemory(body);
+    else if (brainTab === 'skills') await loadBrainSkills(body);
+  } catch(e) {
+    body.innerHTML = '<div style="color:#ef4444;padding:20px">加载失败: ' + e.message + '</div>';
+  }
+}
+
+async function loadBrainChat(body, foot) {
+  foot.style.display = 'flex';
+  const r = await fetch('/api/dna/brain/threads');
+  const threads = await r.json();
+  if (!threads.length) { body.innerHTML = '暂无对话'; return; }
+  brainThreadId = threads[0].id;
+  const ev = await (await fetch(`/api/dna/brain/threads/${brainThreadId}/events`)).json();
+  const msgs = (ev.events || ev || []).filter(e => e.type === 'message' || e.role);
+  body.innerHTML = msgs.slice(-20).map(m => {
+    const role = m.role || (m.type === 'user' ? 'user' : 'assistant');
+    const text = (m.text || m.content || JSON.stringify(m)).slice(0, 500);
+    return `<div class="bp-msg ${role}">${text.replace(/</g,'&lt;')}</div>`;
+  }).join('') || '<div style="color:#6b7280">暂无消息</div>';
+  body.scrollTop = body.scrollHeight;
+}
+
+async function sendBrainMsg() {
+  const input = document.getElementById('bp-input');
+  const text = input.value.trim();
+  if (!text || !brainThreadId) return;
+  input.value = '';
+  const body = document.getElementById('bp-body');
+  body.innerHTML += `<div class="bp-msg user">${text.replace(/</g,'&lt;')}</div>`;
+  body.scrollTop = body.scrollHeight;
+  try {
+    await fetch(`/api/dna/brain/threads/${brainThreadId}/send`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text})
+    });
+    body.innerHTML += '<div class="bp-msg assistant" style="color:#6b7280">已发送，等待回复...</div>';
+    setTimeout(() => loadBrainTab(), 3000);
+  } catch(e) {
+    body.innerHTML += '<div class="bp-msg assistant" style="color:#ef4444">发送失败</div>';
+  }
+}
+
+async function loadBrainMemory(body) {
+  const r = await fetch('/api/dna/brain/memory');
+  const d = await r.json();
+  const items = d.memories || d.items || d || [];
+  if (!items.length || !Array.isArray(items)) {
+    body.innerHTML = '<div style="color:#6b7280;padding:20px">暂无记忆<br><pre style="font-size:11px">' + JSON.stringify(d).slice(0,300) + '</pre></div>';
+    return;
+  }
+  body.innerHTML = items.slice(0, 30).map(m =>
+    `<div class="bp-item"><div style="font-weight:600">${(m.title || m.key || '记忆').slice(0,40)}</div><div style="color:#9ca3af;font-size:12px;margin-top:4px">${(m.content || m.value || JSON.stringify(m)).slice(0,120)}</div></div>`
+  ).join('');
+}
+
+async function loadBrainSkills(body) {
+  const r = await fetch('/api/dna/brain/skills');
+  const d = await r.json();
+  const items = d.skills || d || [];
+  const arr = Array.isArray(items) ? items : Object.keys(items).map(k => ({name: k, ...items[k]}));
+  body.innerHTML = arr.map(s =>
+    `<div class="bp-item"><div style="font-weight:600">🔧 ${s.name}</div><div style="color:#9ca3af;font-size:12px;margin-top:4px">${(s.description || '').slice(0,100)} · ${s.enabled === false ? '❌ 已禁用' : '✅ 已启用'}</div></div>`
+  ).join('') || '<div style="color:#6b7280">暂无技能</div>';
+}
+</script>
+
 </body>
 </html>

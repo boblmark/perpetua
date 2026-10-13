@@ -70,11 +70,30 @@ def _read_sources():
     if isinstance(evo_state, dict) and evo_state.get("detail"):
         version = "night-ok" if evo_state.get("status") == "ok" else "night-failed"
     return {
-        "viral_rate": snap.get("viral_rate_24h"),
-        "published": snap.get("published_24h"),
-        "causal_db_size": causal_stats.get("total_rows"),
+        # 2026-10-13 修复：dashboard_snapshot.json 的实际字段是 viralityRate / videosToday，
+        # 原字段名 viral_rate_24h / published_24h 根本不存在 → 信号永久为 null。
+        # 保留旧名优先，向后兼容两种写法。
+        "viral_rate": snap.get("viral_rate_24h", snap.get("viralityRate")),
+        "published": snap.get("published_24h", snap.get("videosToday")),
+        # causal_db_stats.json 在生产环境不存在 → 回退为直接读 causal.db 计数
+        "causal_db_size": causal_stats.get("total_rows", _causal_db_size()),
         "evolution_version": version,
     }
+
+
+def _causal_db_size():
+    """causal_db_stats.json 缺失时的兜底：直接读 causal.db 行数。"""
+    import sqlite3
+    p = os.path.join(BASE_DIR, "causal.db")
+    if not os.path.exists(p):
+        return None
+    try:
+        conn = sqlite3.connect(p)
+        n = conn.execute("SELECT COUNT(*) FROM videos").fetchone()[0]
+        conn.close()
+        return n
+    except Exception:
+        return None
 
 
 def get_hourly_snapshot():
