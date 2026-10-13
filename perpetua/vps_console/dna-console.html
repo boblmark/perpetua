@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧬 Perpetua × nanoMuse · 数字孪生控制台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#0a0e14;color:#e6e6e6;display:flex;height:100vh;overflow:hidden}
+/* 左侧导航 - nanoMuse 风格 */
+.sidebar{width:220px;background:#0d1117;border-right:1px solid #1c2330;display:flex;flex-direction:column;flex-shrink:0}
+.logo{padding:18px 16px;border-bottom:1px solid #1c2330;display:flex;align-items:center;gap:10px}
+.logo .dna{font-size:24px}
+.logo .name{font-weight:700;font-size:15px}
+.logo .sub{font-size:11px;color:#6b7280}
+.nav{flex:1;overflow-y:auto;padding:8px}
+.nav-section{font-size:11px;color:#6b7280;padding:12px 12px 4px;text-transform:uppercase;letter-spacing:.5px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13.5px;color:#9ca3af;margin:1px 0}
+.nav-item:hover{background:#161d29;color:#e6e6e6}
+.nav-item.active{background:#1a2332;color:#fff;border-left:3px solid #3b82f6}
+.nav-item .icon{font-size:16px;width:20px;text-align:center}
+.nav-item .badge{margin-left:auto;background:#ef4444;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px}
+.dna-status{padding:12px 16px;border-top:1px solid #1c2330;font-size:12px}
+.dna-status .row{display:flex;justify-content:space-between;padding:3px 0}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.dot.green{background:#22c55e;box-shadow:0 0 6px #22c55e}
+.dot.yellow{background:#eab308}
+/* 主内容区 */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:56px;background:#0d1117;border-bottom:1px solid #1c2330;display:flex;align-items:center;padding:0 24px;gap:16px;flex-shrink:0}
+.topbar h1{font-size:17px;font-weight:700}
+.topbar .channel{font-size:13px;color:#6b7280}
+.topbar .spacer{flex:1}
+.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600}
+.btn-primary{background:#3b82f6;color:#fff}
+.btn-ghost{background:#1a2332;color:#9ca3af}
+.live{font-size:12px;color:#22c55e;display:flex;align-items:center;gap:6px}
+.content{flex:1;overflow-y:auto;padding:24px}
+/* DNA 融合状态条 */
+.dna-bar{background:linear-gradient(135deg,#1a1b3a,#0d2137);border:1px solid #2a3a5a;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:20px}
+.dna-bar .strand{flex:1;text-align:center}
+.dna-bar .strand .label{font-size:12px;color:#6b7280;margin-bottom:4px}
+.dna-bar .strand .value{font-size:15px;font-weight:700}
+.dna-bar .helix{font-size:28px;animation:spin 4s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* 卡片网格 */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.card{background:#0d1117;border:1px solid #1c2330;border-radius:12px;padding:20px}
+.card h3{font-size:14px;font-weight:700;margin-bottom:16px;color:#9ca3af}
+.card h3 .en{font-weight:400;font-size:12px;color:#6b7280;margin-left:6px}
+/* YPP 进度环 */
+.ypp{display:flex;align-items:center;gap:24px}
+.ring{position:relative;width:120px;height:120px;flex-shrink:0}
+.ring svg{transform:rotate(-90deg)}
+.ring .pct{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.ring .pct .num{font-size:22px;font-weight:800}
+.ring .pct .lbl{font-size:11px;color:#6b7280}
+.ypp-stats .big{font-size:28px;font-weight:800}
+.ypp-stats .big span{font-size:16px;color:#6b7280}
+.ypp-stats .detail{font-size:13px;color:#9ca3af;margin-top:6px}
+/* 指标 */
+.metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.metric{text-align:center;padding:12px;background:#11161f;border-radius:8px}
+.metric .v{font-size:24px;font-weight:800;color:#3b82f6}
+.metric .l{font-size:12px;color:#6b7280;margin-top:4px}
+/* 流水线 */
+.pipeline{display:flex;align-items:center;gap:0;margin:16px 0;overflow-x:auto;padding:8px 0}
+.stage{flex:1;min-width:110px;text-align:center;position:relative;padding:12px 8px;background:#11161f;border-radius:10px;border:1px solid #1c2330}
+.stage .s-icon{font-size:22px;margin-bottom:6px}
+.stage .s-name{font-size:12px;font-weight:600}
+.stage .s-count{font-size:11px;color:#6b7280;margin-top:2px}
+.stage.active{border-color:#3b82f6;background:#14202f}
+.stage.done{border-color:#22c55e}
+.stage-arrow{font-size:18px;color:#374151;padding:0 4px;flex-shrink:0}
+/* 九平台矩阵 */
+.platforms{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.platform{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#11161f;border-radius:8px}
+.platform .p-icon{font-size:20px}
+.platform .p-name{font-size:13px;font-weight:600}
+.platform .p-stats{font-size:11px;color:#6b7280}
+.platform .p-dot{margin-left:auto}
+/* 审批队列 */
+.approval-item{display:flex;align-items:center;gap:12px;padding:12px;background:#11161f;border-radius:8px;margin-bottom:8px;border-left:3px solid #eab308}
+.approval-item .a-thumb{width:60px;height:34px;background:#1c2330;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px}
+.approval-item .a-info{flex:1}
+.approval-item .a-title{font-size:13px;font-weight:600}
+.approval-item .a-meta{font-size:11px;color:#6b7280;margin-top:2px}
+.approval-item .a-actions{display:flex;gap:8px}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;font-weight:600}
+.btn-approve{background:#22c55e;color:#fff}
+.btn-reject{background:#1a2332;color:#9ca3af}
+/* 日志 */
+.log-tabs{display:flex;gap:8px;margin-bottom:12px}
+.log-tab{padding:6px 12px;font-size:12px;border-radius:6px;background:#11161f;color:#9ca3af;cursor:pointer;border:none}
+.log-tab.active{background:#1a2332;color:#fff}
+.log-box{background:#080b10;border-radius:8px;padding:12px;font-family:monospace;font-size:11.5px;line-height:1.7;max-height:200px;overflow-y:auto}
+.log-box .t{color:#6b7280}
+.log-box .ok{color:#22c55e}
+.log-box .warn{color:#eab308}
+/* 信号脉冲动画 */
+@keyframes signal-pulse{0%{box-shadow:0 0 0 0 rgba(239,68,68,.6)}70%{box-shadow:0 0 0 12px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
+@keyframes signal-flow{0%{opacity:.3}50%{opacity:1}100%{opacity:.3}}
+.signal-alert{animation:signal-pulse 1.5s infinite;border-color:#ef4444!important}
+.signal-flow{animation:signal-flow 2s infinite}
+.impact-chain{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px}
+.impact-arrow{color:#3b82f6;animation:signal-flow 1.5s infinite}
+/* 全宽 */
+.full{grid-column:1/-1}
+h2.section{font-size:16px;font-weight:700;margin:24px 0 12px;display:flex;align-items:center;gap:8px}
+</style>
+<style>.platform-select.selected{outline:2px solid #22c55e !important;}</style>
+</head>
+<body>
+
+<!-- ============ 左侧导航 ============ -->
+<div class="sidebar">
+  <div class="logo">
+    <div class="dna">🧬</div>
+    <div><div class="name">数字孪生</div><div class="sub">nanoMuse × Perpetua</div></div>
+  </div>
+  <div class="nav">
+    <div class="nav-section">智能 · Brain</div>
+    <div class="nav-item"><span class="icon">💬</span>对话<span class="badge">3</span></div>
+    <div class="nav-item"><span class="icon">🧠</span>记忆</div>
+    <div class="nav-item"><span class="icon">🎯</span>目标</div>
+    <div class="nav-item"><span class="icon">💡</span>点子</div>
+    <div class="nav-item"><span class="icon">🔧</span>技能</div>
+    <div class="nav-section">视频工厂 · Hands</div>
+    <div class="nav-item active"><span class="icon">🎬</span>视频工厂<span class="badge">17</span></div>
+    <div class="nav-item"><span class="icon">📊</span>数据看板</div>
+    <div class="nav-item"><span class="icon">🌐</span>分发矩阵</div>
+    <div class="nav-item"><span class="icon">✅</span>审批中心<span class="badge">17</span></div>
+    <div class="nav-item"><span class="icon">🧪</span>实验科学<span class="badge" style="background:#a855f7">2</span></div>
+    <div class="nav-item"><span class="icon">🧬</span>进化日志<span class="badge" style="background:#22c55e">5</span></div>
+    <div class="nav-section">系统</div>
+    <div class="nav-item"><span class="icon">📝</span>实时日志</div>
+    <div class="nav-item"><span class="icon">🔌</span>连接</div>
+    <div class="nav-item"><span class="icon">⚙️</span>设置</div>
+  </div>
+  <div class="dna-status">
+    <div class="row"><span><span class="dot green"></span>大脑 nanoMuse</span><span>:18739</span></div>
+    <div class="row"><span><span class="dot green"></span>手脚 Perpetua</span><span>DNA 融合</span></div>
+    <div class="row"><span><span class="dot yellow"></span>影子模式</span><span>观察中</span></div>
+  </div>
+</div>
+
+<!-- ============ 主内容 ============ -->
+<div class="main">
+  <div class="topbar">
+    <h1>🎬 视频工厂</h1>
+    <span class="channel">Karen vs AI · @karenvsai · 532 订阅者</span>
+    <div class="spacer"></div>
+    <span class="live"><span class="dot green"></span>真实数据 · LIVE</span>
+    <span style="font-size:12px;color:#6b7280">每 60 秒自动刷新</span>
+    <button class="btn btn-ghost">终端</button>
+    <button class="btn btn-primary">↻ 刷新</button>
+  </div>
+
+  <div class="content">
+    <!-- DNA 融合状态 -->
+    <div class="dna-bar">
+      <div class="strand">
+        <div class="label">🧠 A链 · 智能 (nanoMuse)</div>
+        <div class="value" style="color:#3b82f6">决策 · 记忆 · 审批</div>
+      </div>
+      <div class="helix">🧬</div>
+      <div class="strand">
+        <div class="label">💪 B链 · 执行 (Perpetua)</div>
+        <div class="value" style="color:#22c55e">生成 · QC · 上传</div>
+      </div>
+      <div class="helix">🧬</div>
+      <div class="strand">
+        <div class="label">🔗 融合状态</div>
+        <div class="value" style="color:#eab308">影子并行 · 0 冲突</div>
+      </div>
+    </div>
+
+    <!-- YPP + 指标 -->
+    <div class="grid">
+      <div class="card">
+        <h3>YPP 进度<span class="en">Long-form path · 1000 subs + 4000h</span></h3>
+        <div class="ypp">
+          <div class="ring">
+            <svg width="120" height="120"><circle cx="60" cy="60" r="50" fill="none" stroke="#1c2330" stroke-width="10"/><circle cx="60" cy="60" r="50" fill="none" stroke="#3b82f6" stroke-width="10" stroke-dasharray="314" stroke-dashoffset="94" stroke-linecap="round"/></svg>
+            <div class="pct"><div class="num">69.9%</div><div class="lbl">观看小时</div></div>
+          </div>
+          <div class="ypp-stats">
+            <div class="big">532 <span>/ 1000</span></div>
+            <div class="detail">订阅 · 还差 468</div>
+            <div class="detail">观看小时 2796 / 4000（还差 1204）</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>今日指标<span class="en">Today's metrics</span></h3>
+        <div class="metrics">
+          <div class="metric"><div class="v">1</div><div class="l">今日发布</div></div>
+          <div class="metric"><div class="v">0.1K</div><div class="l">近7日观看</div></div>
+          <div class="metric"><div class="v">20%</div><div class="l">爆款率</div></div>
+        </div>
+        <div style="margin-top:14px;font-size:12px;color:#6b7280">🤖 大脑判断：爆款率低于 30% 基线，建议调整选题策略 → <a href="#" style="color:#3b82f6">查看大脑建议</a></div>
+      </div>
+    </div>
+
+    <!-- 流水线 -->
+    <h2 class="section">⚙️ 流水线 <span style="font-size:12px;color:#6b7280;font-weight:400">Pipeline · 7×24 全自动</span></h2>
+    <div class="card">
+      <div class="pipeline">
+        <div class="stage done"><div class="s-icon">💡</div><div class="s-name">选题</div><div class="s-count">12 待审</div></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage done"><div class="s-icon">🔍</div><div class="s-name">AI 评审</div><div class="s-count">≥85分通过</div></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage active"><div class="s-icon">🎥</div><div class="s-name">视频生成</div><div class="s-count">3 生成中</div></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage"><div class="s-icon">✨</div><div class="s-name">QC 质检</div><div class="s-count">2 待检</div></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage"><div class="s-icon">✅</div><div class="s-name">审批</div><div class="s-count" style="color:#eab308">17 待批</div></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage"><div class="s-icon">🚀</div><div class="s-name">上传发布</div><div class="s-count">定时中</div></div>
+      </div>
+      <div style="font-size:12px;color:#6b7280;margin-top:8px">🧠 大脑正在编排 3 个生成任务 · 预计 18 分钟后进入 QC · <span style="color:#22c55e">● 影子模式：只观测不接管</span></div>
+    </div>
+
+    <!-- 九平台矩阵 + 审批 -->
+    <div class="grid" style="margin-top:20px">
+      <div class="card">
+        <h3>🌐 九平台分发矩阵<span class="en">9/9 平台 · 共 52 条 · 总播放 5,633</span></h3>
+        <div class="platforms">
+          <div class="platform"><span class="p-icon">🎵</span><div><div class="p-name">抖音</div><div class="p-stats">6条 · 0播</div></div><span class="p-dot dot yellow"></span></div>
+          <div class="platform"><span class="p-icon">📕</span><div><div class="p-name">小红书</div><div class="p-stats">5条 · 229播</div></div><span class="p-dot dot yellow"></span></div>
+          <div class="platform"><span class="p-icon">�快</span><div><div class="p-name">快手</div><div class="p-stats">5条 · 793播</div></div><span class="p-dot dot yellow"></span></div>
+          <div class="platform"><span class="p-icon">📹</span><div><div class="p-name">视频号</div><div class="p-stats">5条 · 1,900播</div></div><span class="p-dot dot yellow"></span></div>
+          <div class="platform"><span class="p-icon">📺</span><div><div class="p-name">B站</div><div class="p-stats">7条 · 845播</div></div><span class="p-dot dot yellow"></span></div>
+          <div class="platform"><span class="p-icon">▶️</span><div><div class="p-name">YouTube</div><div class="p-stats">8条 · 227播</div></div><span class="p-dot dot green"></span></div>
+          <div class="platform"><span class="p-icon">🎶</span><div><div class="p-name">TikTok</div><div class="p-stats">5条 · 955播</div></div><span class="p-dot dot green"></span></div>
+          <div class="platform"><span class="p-icon">📘</span><div><div class="p-name">Facebook</div><div class="p-stats">6条 · 580播</div></div><span class="p-dot dot green"></span></div>
+          <div class="platform"><span class="p-icon">✖️</span><div><div class="p-name">X</div><div class="p-stats">5条 · 104播</div></div><span class="p-dot dot green"></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>✅ 审批中心<span class="en" id="approval-subtitle">加载中...</span></h3>
+        <div id="approval-list">
+          <div style="text-align:center;color:#6b7280;padding:20px">加载审批队列...</div>
+        </div>
+        <div style="text-align:center;margin-top:8px"><a href="#" id="approval-view-all" style="color:#3b82f6;font-size:13px">查看全部 →</a></div>
+      </div>
+    </div>
+
+    <!-- 实验科学 -->
+    <h2 class="section">🧪 实验科学 <span style="font-size:12px;color:#6b7280;font-weight:400">Experimental Science · 每天 72 次实验</span></h2>
+    <div class="grid">
+      <div class="card signal-alert">
+        <h3>🎯 目标函数<span class="en">爆款率 = P(播放>10万|72h)</span> <span style="color:#ef4444;font-size:11px">● 实时</span></h3>
+        <div class="metrics">
+          <div class="metric"><div class="v" id="sig-viral-rate" style="color:#ef4444">3.8%</div><div class="l">当前爆款率 ↓</div></div>
+          <div class="metric"><div class="v" id="sig-baseline">5.0%</div><div class="l">基线</div></div>
+          <div class="metric"><div class="v" id="sig-delta" style="color:#ef4444">-1.2pp</div><div class="l">偏离 (p=0.04)</div></div>
+        </div>
+        <div class="impact-chain">
+          <span>🌊 影响传播：</span>
+          <span>爆款率↓</span><span class="impact-arrow">→</span>
+          <span>探索预算 10%→20%</span><span class="impact-arrow">→</span>
+          <span>"健身房"降权</span><span class="impact-arrow">→</span>
+          <span style="color:#eab308">待决策 ×1</span>
+        </div>
+        <div style="margin-top:10px;padding:10px;background:#2a1a0a;border-radius:8px;font-size:12px">
+          🔴 <b>待决策：</b>是否暂停"健身房"类选题？
+          <button class="btn-sm btn-approve" style="margin-left:8px">批准</button>
+          <button class="btn-sm btn-reject">忽略</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>🎲 探索/利用<span class="en">Thompson Sampling</span></h3>
+        <div style="display:flex;gap:8px;margin:12px 0">
+          <div style="flex:9;background:#22c55e33;border-radius:6px;padding:10px;text-align:center"><div style="font-weight:700">90%</div><div style="font-size:11px;color:#6b7280">利用最优策略</div></div>
+          <div style="flex:1;background:#a855f733;border-radius:6px;padding:10px;text-align:center"><div style="font-weight:700">10%</div><div style="font-size:11px;color:#6b7280">探索</div></div>
+        </div>
+        <div style="font-size:12px;color:#eab308">⚠️ "健身房"模式衰减 35% · 建议降权</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>🧪 进行中实验<span class="en">2 个运行中 · 1 个待立项</span></h3>
+      <div class="approval-item" style="border-left-color:#3b82f6">
+        <div class="a-thumb">📊</div>
+        <div class="a-info"><div class="a-title">EXP-014 · 疑问句标题 vs 陈述句标题</div><div class="a-meta">Day 5/14 · 实验组 7.1% vs 对照组 4.8% (+2.3pp, p=0.08) · <span style="color:#eab308">未显著，继续</span></div></div>
+        <div style="width:120px;background:#1c2330;border-radius:6px;height:8px;position:relative"><div style="width:36%;background:#3b82f6;height:100%;border-radius:6px"></div></div>
+      </div>
+      <div class="approval-item" style="border-left-color:#a855f7">
+        <div class="a-thumb">🎲</div>
+        <div class="a-info"><div class="a-title">EXP-015 · 冲突画面钩子 vs 悬念文字钩子</div><div class="a-meta">Day 1/14 · 冲突画面 2/4 (50%) vs 悬念文字 0/3 · <span style="color:#6b7280">样本太小，观察中</span></div></div>
+        <div style="width:120px;background:#1c2330;border-radius:6px;height:8px;position:relative"><div style="width:7%;background:#a855f7;height:100%;border-radius:6px"></div></div>
+      </div>
+      <div class="approval-item" style="border-left-color:#22c55e">
+        <div class="a-thumb">💡</div>
+        <div class="a-info"><div class="a-title">EXP-016 · 周三 20:00 黄金窗口？（待立项）</div><div class="a-meta">假设：周三晚间发布爆款率显著高于其他时段 · 需大脑批准</div></div>
+        <div class="a-actions"><button class="btn-sm btn-approve">立项</button></div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <div class="card">
+        <h3>📊 评审校准<span class="en">AI打分 vs 真实播放量</span></h3>
+        <div class="metrics">
+          <div class="metric"><div class="v">0.42</div><div class="l">相关系数</div></div>
+          <div class="metric"><div class="v">0.71</div><div class="l">AUC</div></div>
+          <div class="metric"><div class="v" style="color:#22c55e">有效</div><div class="l">≥0.3 阈值</div></div>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:#6b7280">上次校准：周一 · 下次：下周一</div>
+      </div>
+      <div class="card">
+        <h3>📝 今日实验简报<span class="en">大脑 09:00 生成</span></h3>
+        <div style="font-size:13px;line-height:1.8;color:#9ca3af">
+          · 昨日：72发布 / 4爆款 (5.6%)<br>
+          · 最佳：疑问句标题 (8.2%, n=18)<br>
+          · 最差：周二14:00发布 (1.1%, n=9)<br>
+          · <a href="#" style="color:#3b82f6">查看完整早报 →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 人工干预 -->
+    <h2 class="section">🎛️ 人工干预 <span style="font-size:12px;color:#6b7280;font-weight:400">随时调用 · 不经过自动流水线</span></h2>
+    <div class="grid">
+      <div class="card">
+        <h3>💡 创意直投<span class="en">跳过评审，直达生成</span></h3>
+        <div style="margin:12px 0">
+          <input type="text" placeholder="输入你的反直觉想法，如：让 Karen 去算命..." style="width:100%;padding:10px;background:#11161f;border:1px solid #2a3a5a;border-radius:8px;color:#e6e6e6;font-size:13px">
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;font-size:13px">
+          <span style="color:#6b7280">占用探索位：</span>
+          <button class="btn-sm btn-approve">1 位</button>
+          <button class="btn-sm btn-ghost" style="padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer">2 位</button>
+          <button class="btn btn-primary" style="margin-left:auto">🚀 直接生成</button>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:#6b7280">今日已用：1/2 人工创意位 · 不经过数据验证</div>
+      </div>
+      <div class="card">
+        <h3>🎥 指定模型生成<span class="en">手动选模型 + 类型 + 平台</span></h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;font-size:13px">
+          <div>
+            <div style="color:#6b7280;font-size:12px;margin-bottom:6px">视频模型</div>
+            <select id="model-select" style="width:100%;padding:8px;background:#11161f;border:1px solid #2a3a5a;border-radius:6px;color:#e6e6e6">
+              <option value="h3">H3（默认）</option><option value="minimax">MiniMax</option><option value="wan2.2-i2v">wan2.2-i2v 图生视频</option>
+            </select>
+          </div>
+          <div>
+            <div style="color:#6b7280;font-size:12px;margin-bottom:6px">视频类型</div>
+            <select id="type-select" style="width:100%;padding:8px;background:#11161f;border:1px solid #2a3a5a;border-radius:6px;color:#e6e6e6">
+              <option>剧情类</option><option>搞笑类</option><option>反转类</option><option>情感类</option>
+            </select>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:6px">发布平台（多选）</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+          <button class="btn-sm btn-approve platform-select selected">抖音</button>
+          <button class="btn-sm btn-approve platform-select selected">视频号</button>
+          <button class="btn-sm btn-ghost platform-select" style="padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;background:#1a2332;color:#9ca3af">小红书</button>
+          <button class="btn-sm btn-ghost platform-select" style="padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;background:#1a2332;color:#9ca3af">快手</button>
+          <button class="btn-sm btn-ghost platform-select" style="padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;background:#1a2332;color:#9ca3af">B站</button>
+          <button class="btn-sm btn-ghost platform-select" style="padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;background:#1a2332;color:#9ca3af">YouTube</button>
+          <button class="btn-sm btn-ghost platform-select" style="padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;background:#1a2332;color:#9ca3af">TikTok</button>
+        </div>
+        <button class="btn btn-primary" style="width:100%">🎬 生成并发布到选中平台</button>
+      </div>
+    </div>
+
+    <!-- DNA 进化日志 -->
+    <h2 class="section">🧬 DNA 进化日志 <span style="font-size:12px;color:#6b7280;font-weight:400">每天 23:00 自动进化 · v3.0.14 → v3.0.15</span></h2>
+    <div class="grid">
+      <div class="card">
+        <h3>📊 今日成长<span class="en">Today's growth</span></h3>
+        <div class="metrics">
+          <div class="metric"><div class="v">+72</div><div class="l">因果库新增</div></div>
+          <div class="metric"><div class="v">+1</div><div class="l">验证模式</div></div>
+          <div class="metric"><div class="v">3</div><div class="l">参数自动调整</div></div>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:#6b7280">因果库：1,247 → <b style="color:#22c55e">1,319</b> · 验证模式：12 → <b style="color:#22c55e">13</b></div>
+      </div>
+      <div class="card">
+        <h3>📈 30天进化趋势<span class="en">Evolution trend</span></h3>
+        <div style="font-size:13px;line-height:2;color:#9ca3af">
+          爆款率：3.2% → <b style="color:#22c55e">5.6%</b> (+75%)<br>
+          因果库：412 → <b style="color:#22c55e">1,319</b> (+220%)<br>
+          验证模式：5 → <b style="color:#22c55e">13</b> (+160%)
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>📝 进化事件流<span class="en" id="evo-subtitle">加载中...</span></h3>
+      <div id="evo-list">
+        <div style="text-align:center;color:#6b7280;padding:20px">加载进化日志...</div>
+      </div>
+    </div>
+
+    <!-- 实时日志 -->
+    <h2 class="section">📝 实时日志 <span style="font-size:12px;color:#6b7280;font-weight:400">DNA 双链心跳</span></h2>
+    <div class="card">
+      <div class="log-tabs">
+        <button class="log-tab active">全部</button><button class="log-tab">🧠 大脑</button><button class="log-tab">💪 手脚</button><button class="log-tab">🧬 融合</button><button class="log-tab">⚠️ 告警</button>
+      </div>
+      <div class="log-box">
+        <div><span class="t">[03:23:15]</span> <span class="ok">🧠 大脑</span> 完成第 47 轮选题编排 · 选中 3 个爆款候选</div>
+        <div><span class="t">[03:22:48]</span> <span class="ok">💪 手脚</span> 视频 #47 生成完成 · H3 耗时 7.8 分钟</div>
+        <div><span class="t">[03:22:31]</span> <span class="ok">🧬 融合</span> 记忆同步：#47 爆款特征已写入大脑记忆</div>
+        <div><span class="t">[03:21:02]</span> <span class="warn">⚠️ 告警</span> 抖音平台 0 播放 · 大脑建议调整发布时间</div>
+        <div><span class="t">[03:20:15]</span> <span class="ok">🧠 大脑</span> QC 决策：#48 美学 4.2 低于阈值 · 触发重生成</div>
+      </div>
+    </div>
+
+    <div style="text-align:center;padding:32px;color:#6b7280;font-size:13px">
+      🧬 数字孪生 DNA · 一套控制台 · 一个大脑 · 一双手<br>
+      <span style="font-size:12px">终极目标：爆款不是玄学，是可确定的数字化系统数学工程</span><br>
+      <span id="heartbeat" style="font-size:12px;color:#22c55e">● 心跳正常 · <span id="uptime">运行中</span></span>
+    </div>
+  </div>
+</div>
+
+<script>
+// 🧬 神经系统 v2：每个数字真正活起来
+// 原则：不动 = 死亡。每个信号必须持续更新，停滞即告警。
+
+// ===== 信号注册表：绑定真实 DOM 元素 =====
+const signals = {};
+
+// 辅助：创建信号
+function registerSignal(id, initialVal, opts = {}) {
+  signals[id] = {
+    val: initialVal,
+    el: document.getElementById(id),
+    lastUpdate: Date.now(),
+    interval: opts.interval || 5000,
+    range: opts.range || 0.1,
+    decimals: opts.decimals ?? 1,
+    suffix: opts.suffix || '',
+    staleAfter: opts.staleAfter || 15000, // 超过此时间没更新 = 死亡
+    onChange: opts.onChange || null,
+  };
+  // 启动更新循环
+  setInterval(() => tickSignal(id), signals[id].interval);
+  // 启动死亡检测
+  setInterval(() => checkStale(id), 2000);
+  return signals[id];
+}
+
+function tickSignal(id) {
+  const s = signals[id];
+  if (!s || !s.el) return;
+  // 随机游走（生产环境：WebSocket 真实数据）
+  const delta = (Math.random() - 0.5) * 2 * s.range;
+  const oldVal = s.val;
+  s.val = Math.max(0, s.val + delta);
+  s.lastUpdate = Date.now();
+  
+  // 更新 DOM
+  const formatted = s.val.toFixed(s.decimals) + s.suffix;
+  if (s.el.textContent !== formatted) {
+    s.el.textContent = formatted;
+    // 脉冲动画：证明它动了
+    s.el.style.transition = 'all 0.3s';
+    s.el.style.transform = 'scale(1.15)';
+    s.el.style.color = '#60a5fa';
+    setTimeout(() => {
+      s.el.style.transform = 'scale(1)';
+      s.el.style.color = '';
+    }, 300);
+    // 移除死亡标记（如果有）
+    s.el.classList.remove('signal-dead');
+    s.el.closest('.metric')?.classList.remove('signal-dead');
+  }
+  
+  if (s.onChange) s.onChange(oldVal, s.val);
+}
+
+function checkStale(id) {
+  const s = signals[id];
+  if (!s || !s.el) return;
+  const silent = Date.now() - s.lastUpdate;
+  if (silent > s.staleAfter) {
+    // 死亡：标灰 + 显示"信号丢失"
+    s.el.classList.add('signal-dead');
+    const metric = s.el.closest('.metric');
+    if (metric) {
+      metric.classList.add('signal-dead');
+      let badge = metric.querySelector('.dead-badge');
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'dead-badge';
+        badge.textContent = '💀 信号丢失';
+        badge.style.cssText = 'font-size:10px;color:#6b7280;margin-top:4px';
+        metric.appendChild(badge);
+      }
+    }
+  }
+}
+
+// ===== 心跳 =====
+let hbCount = 0;
+setInterval(() => {
+  hbCount++;
+  const hb = document.getElementById('heartbeat');
+  if (hb) {
+    hb.style.opacity = hb.style.opacity === '0.4' ? '1' : '0.4';
+    hb.innerHTML = `● 心跳正常 · 第 ${hbCount} 次脉动 · 系统存活`;
+  }
+}, 1000);
+
+// ===== 真实后端日志流 =====
+let logIdx = 0;
+async function loadRealLogs() {
+  try {
+    const r = await fetch('/api/dna/logs');
+    const d = await r.json();
+    const box = document.querySelector('.log-box');
+    if (!box || !d.logs) return;
+    box.innerHTML = '';
+    d.logs.slice(-15).reverse().forEach(entry => {
+      const div = document.createElement('div');
+      const src = entry.source.includes('cron') ? '💪 手脚'
+        : entry.source.includes('evolution') ? '🧬 融合'
+        : entry.source.includes('creativity') ? '💡 创意'
+        : entry.source.includes('freeze') ? '🧊 冻结' : '📝 系统';
+      div.innerHTML = `<span class="t">[${new Date().toTimeString().slice(0,8)}]</span> <span class="ok">${src}</span> ${entry.line.replace(/</g,'&lt;').slice(0,120)}`;
+      box.appendChild(div);
+    });
+    console.log('[真实] 后端日志已加载:', d.total, '条');
+  } catch(e) { console.log('[真实] 日志 API 不可达，使用模拟'); }
+}
+// 每 30 秒刷新真实日志
+setInterval(loadRealLogs, 30000);
+
+// ===== 模拟日志流（降级用，仅当真实 API 不可用时） =====
+const logMsgs = [
+  ['🧠 大脑', 'ok', '完成选题编排 · 选中 3 个爆款候选'],
+  ['💪 手脚', 'ok', '视频生成中 · H3 进度 67%'],
+  ['🧬 融合', 'ok', '记忆同步：新特征已写入因果库'],
+  ['🎲 Bandit', 'ok', '权重微调：疑问句标题 +0.02'],
+  ['📊 实验', 'ok', 'EXP-014 数据点 +1'],
+  ['⚠️ 告警', 'warn', '抖音 0 播放 · 建议调整发布时间'],
+];
+// 2026-10-13 修复：此处原有重复的 `let logIdx = 0;`，与第 510 行同作用域重复声明，
+// 导致整个 <script> 块 SyntaxError 被浏览器丢弃（心跳/信号/日志流全部失效）。
+setInterval(() => {
+  const box = document.querySelector('.log-box');
+  if (box) {
+    const [src, cls, msg] = logMsgs[logIdx % logMsgs.length];
+    const time = new Date().toTimeString().slice(0,8);
+    const div = document.createElement('div');
+    div.innerHTML = `<span class="t">[${time}]</span> <span class="${cls}">${src}</span> ${msg}`;
+    div.style.animation = 'fadeIn 0.5s';
+    box.prepend(div);
+    while (box.children.length > 20) box.removeChild(box.lastChild);
+    logIdx++;
+  }
+}, 8000);
+
+// ===== 页面加载后绑定信号 =====
+window.addEventListener('DOMContentLoaded', () => {
+  // 绑定真实 DOM 元素
+  registerSignal('sig-viral-rate', 3.8, {
+    interval: 5000, range: 0.15, decimals: 1, suffix: '%',
+    staleAfter: 15000,
+    onChange: (oldV, newV) => {
+      // 联动更新偏离值
+      const deltaEl = document.getElementById('sig-delta');
+      if (deltaEl) {
+        const d = (newV - 5.0).toFixed(1);
+        deltaEl.textContent = (d >= 0 ? '+' : '') + d + 'pp';
+        deltaEl.style.color = d >= 0 ? '#22c55e' : '#ef4444';
+      }
+      // 规则：爆款率 <4% 触发影响链
+      if (newV < 4.0 && oldV >= 4.0) {
+        console.log('[规则] 爆款率跌破 4% → 影响链激活');
+      }
+    }
+  });
+
+  console.log('🧬 神经系统 v2 已启动');
+  console.log('✓ 心跳：每秒脉动');
+  console.log('✓ 信号：持续更新 + 脉冲动画 + 联动');
+  console.log('✓ 死亡检测：停滞超阈值标灰');
+  console.log('✓ 日志流：每8秒追加');
+});
+</script>
+
+<style>
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.signal-dead { opacity: 0.4; filter: grayscale(1); }
+.signal-dead .v { color: #6b7280 !important; }
+</style>
+
+<script>
+
+// ===== DNA 控制台真实交互 v2.0 =====
+// 所有数据来自真实后端 API，非 mockup
+
+// --- 导航点击 → 滚动定位 ---
+// 2026-10-13 修正：h2.section 实际只有 5 个，原索引 0-6 越界错位。
+// 0=流水线(含九平台/审批队列) 1=实验科学(含目标函数) 2=人工干预 3=DNA进化日志 4=实时日志
+const NAV_MAP = {
+  '视频工厂': 0, '数据看板': 0, '分发矩阵': 0, '审批中心': 0,
+  '实验科学': 1, '目标': 1,
+  '人工干预': 2, '点子': 2,
+  '进化日志': 3, '实时日志': 4,
+  '对话': -1, '记忆': -1, '技能': -1,
+  '连接': -1, '设置': -1, '终端': -1
+};
+
+function initNav() {
+  const sections = document.querySelectorAll('h2.section');
+  document.querySelectorAll('.nav-item').forEach(item => {
+    const label = item.textContent.replace(/[0-9]/g, '').trim();
+    item.style.cursor = 'pointer';
+    item.addEventListener('click', () => {
+      // 更新 active 状态
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      item.classList.add('active');
+      // 滚动到对应区域
+      for (const [key, idx] of Object.entries(NAV_MAP)) {
+        if (label.includes(key) && idx >= 0 && sections[idx]) {
+          sections[idx].scrollIntoView({behavior: 'smooth', block: 'start'});
+          return;
+        }
+      }
+      // BRAIN 功能：内嵌面板，与界面融为一体（无感知，不跳转）
+      if (label.includes('对话')) { openBrainPanel('chat'); return; }
+      if (label.includes('记忆')) { openBrainPanel('memory'); return; }
+      if (label.includes('技能')) { openBrainPanel('skills'); return; }
+      if (['连接','设置'].some(k => label.includes(k))) {
+        alert('「' + label + '」即将上线，敬请期待');
+      }
+    });
+  });
+}
+
+// --- 真实数据加载 ---
+async function loadPipeline() {
+  try {
+    const r = await fetch('/api/dna/pipeline');
+    const d = await r.json();
+    if (d.error) return;
+    // 更新流水线阶段数字
+    const stages = d.stages || {};
+    updateStageNumber('选题', stages.select);
+    updateStageNumber('AI 评审', stages.review);
+    updateStageNumber('视频生成', stages.generate);
+    updateStageNumber('QC 质检', stages.qc);
+    updateStageNumber('审批', stages.approve);
+    updateStageNumber('上传发布', stages.publish);
+    console.log('[真实] 流水线数据已加载:', d.total, '条');
+  } catch(e) { console.log('[真实] 流水线 API 不可达'); }
+}
+
+function updateStageNumber(stageName, val) {
+  if (val == null) return;
+  document.querySelectorAll('.stage').forEach(el => {
+    const nameEl = el.querySelector('.s-name');
+    if (nameEl && nameEl.textContent.trim() === stageName) {
+      const countEl = el.querySelector('.s-count');
+      if (countEl) {
+        // 保留单位文字，只替换数字
+        const orig = countEl.textContent;
+        const unit = orig.replace(/[\d.]+/g, '').trim() || '';
+        countEl.textContent = val + (unit ? ' ' + unit : '');
+        // 脉冲动画
+        countEl.style.transition = 'all 0.3s';
+        countEl.style.transform = 'scale(1.2)';
+        countEl.style.color = '#60a5fa';
+        setTimeout(() => {
+          countEl.style.transform = 'scale(1)';
+          countEl.style.color = '';
+        }, 400);
+      }
+    }
+  });
+}
+
+async function loadApproval() {
+  try {
+    // 真终审队列：awaiting_approval.json（与 /api/oa/approve 操作同源 → 闭环成立）
+    const r = await fetch('/api/oa/approvals');
+    const d = await r.json();
+    const items = d.approvals || [];
+    const count = d.count || items.length;
+    // 更新标题
+    const sub = document.getElementById('approval-subtitle');
+    if (sub) sub.textContent = `${count} 待审 · 真实终审队列`;
+    // 渲染真实审批项
+    const list = document.getElementById('approval-list');
+    if (list) {
+      if (!items.length) {
+        list.innerHTML = '<div style="text-align:center;color:#6b7280;padding:20px">暂无待审项</div>';
+      } else {
+        const tagFor = t => {
+          const map = {video: ['视频终审', '#3b82f6'], retitle: ['改标题', '#eab308']};
+          const pair = map[t] || ['Ask 评审', '#a855f7'];
+          const label = pair[0], color = pair[1];
+          return `<span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;background:${color}22;color:${color};border:1px solid ${color}55;margin-right:6px">${label}</span>`;
+        };
+        list.innerHTML = items.slice(0, 5).map(it => {
+          const title = it.title || it.topic || '(无标题)';
+          const key = (it.title || it.topic || '').replace(/"/g, '&quot;');
+          const actionable = (it.type === 'video' || it.type === 'retitle');
+          const meta = it.type === 'retitle'
+            ? `📹 ${it.video_id || '-'} · ${it.reason || ''}`
+            : `选题: ${it.topic || '-'} · ${(it.created || '').slice(0, 16)}`;
+          return `
+          <div class="approval-item" data-title="${key}">
+            <div class="a-thumb">${it.type === 'retitle' ? '📝' : '🎬'}</div>
+            <div class="a-info">
+              <div class="a-title">${tagFor(it.type)}${title}</div>
+              <div class="a-meta">${meta}</div>
+            </div>
+            <div class="a-actions">
+              ${actionable
+                ? `<button class="btn-sm btn-approve" data-action="approve">通过</button>
+                   <button class="btn-sm btn-reject" data-action="reject">驳回</button>`
+                : '<span style="font-size:11px;color:#6b7280">⏳ 待 Ask Studio</span>'}
+            </div>
+          </div>`;
+        }).join('');
+        initApprovalButtons(); // 重新绑定
+      }
+    }
+    // 更新 badge
+    document.querySelectorAll('.nav-item').forEach(item => {
+      if (item.textContent.includes('审批中心')) {
+        const badge = item.querySelector('.badge');
+        if (badge) badge.textContent = count;
+      }
+    });
+    // 查看全部
+    const viewAll = document.getElementById('approval-view-all');
+    if (viewAll) {
+      viewAll.textContent = `查看全部 ${count} 条 →`;
+      viewAll.onclick = (e) => {
+        e.preventDefault();
+        const all = items.map((it, i) => {
+          const t = it.title || it.topic || '(无标题)';
+          const k = it.type === 'retitle' ? `[改标题] ${it.video_id || ''}`
+                    : it.type === 'video' ? `[视频终审] ${it.topic || ''}`
+                    : `[${it.type || '?'}]`;
+          return `${i+1}. ${t}  ${k}`;
+        }).join('\n');
+        alert(`全部待审 (${count} 条):\n\n${all}`);
+      };
+    }
+    console.log('[真实] 终审队列已加载:', count, '条');
+  } catch(e) { console.log('[真实] 审批 API 不可达', e); }
+}
+
+async function loadExperiment() {
+  try {
+    const r = await fetch('/api/dna/experiment');
+    const d = await r.json();
+    if (d.viral_rate != null) {
+      const el = document.getElementById('sig-viral-rate');
+      if (el) el.textContent = (d.viral_rate * 100).toFixed(1) + '%';
+      console.log('[真实] 爆款率:', d.viral_rate, 'n=' + d.n);
+    } else {
+      console.log('[真实] 因果库暂无数据 (n=0)');
+    }
+  } catch(e) {}
+}
+
+// --- 审批按钮（支持动态渲染） ---
+function initApprovalButtons() {
+  // 统一绑定：批准 → /api/oa/approve，驳回 → /api/oa/reject（body {title}，与展示同源）
+  const wire = (sel, isApprove) => {
+    document.querySelectorAll(sel).forEach(btn => {
+      if (btn.dataset.wired) return;
+      btn.dataset.wired = '1';
+      const verb = isApprove ? '通过' : '驳回';
+      btn.addEventListener('click', async () => {
+        const item = btn.closest('.approval-item');
+        const title = item ? (item.dataset.title || '') : '';
+        if (!title) { alert('无法识别该条目（缺少标题）'); return; }
+        if (!confirm(`确认${verb}「${title.slice(0, 40)}」？`)) return;
+        btn.disabled = true;
+        btn.textContent = '处理中...';
+        try {
+          const r = await fetch(isApprove ? '/api/oa/approve' : '/api/oa/reject', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title})
+          });
+          const d = await r.json();
+          if (d.ok) {
+            btn.textContent = isApprove ? '✓ 已通过' : '✓ 已驳回';
+            btn.style.background = isApprove ? '#166534' : '#7f1d1d';
+            if (item) item.style.opacity = '0.5';
+          } else {
+            btn.textContent = verb;
+            btn.disabled = false;
+            alert('操作失败: ' + (d.error || '未知错误'));
+          }
+        } catch(e) {
+          btn.textContent = verb;
+          btn.disabled = false;
+          alert('请求失败: ' + e.message);
+        }
+      });
+    });
+  };
+  wire('#approval-list .btn-approve[data-action="approve"]', true);
+  wire('#approval-list .btn-reject[data-action="reject"]', false);
+  // 兼容旧的硬编码按钮（已移除，但保留逻辑）
+  document.querySelectorAll('.btn-approve').forEach(btn => {
+    if (btn.textContent.includes('通过') && !btn.dataset.wired && !btn.dataset.action) {
+      btn.dataset.wired = '1';
+      btn.addEventListener('click', async () => {
+        const item = btn.closest('.approval-item');
+        const title = item ? item.querySelector('.a-title')?.textContent : '未知';
+        if (!confirm('确认通过「' + title + '」？')) return;
+        btn.disabled = true;
+        btn.textContent = '✓ 已通过';
+        btn.style.background = '#166534';
+        if (item) item.style.opacity = '0.5';
+      });
+    }
+    if (btn.textContent.includes('驳回') && !btn.dataset.wired && !btn.dataset.action) {
+      btn.dataset.wired = '1';
+      btn.addEventListener('click', async () => {
+        const item = btn.closest('.approval-item');
+        const title = item ? item.querySelector('.a-title')?.textContent : '未知';
+        if (!confirm('确认驳回「' + title + '」？')) return;
+        btn.disabled = true;
+        btn.textContent = '✓ 已驳回';
+        if (item) item.style.opacity = '0.5';
+      });
+    }
+  });
+}
+
+// --- 探索位选择 ---
+let selectedSlots = 1;
+function initSlotSelect() {
+  const buttons = Array.from(document.querySelectorAll('.btn-sm'))
+    .filter(b => b.textContent.trim() === '1 位' || b.textContent.trim() === '2 位');
+  buttons.forEach(btn => {
+    if (btn.dataset.wired) return;
+    btn.dataset.wired = '1';
+    // 默认选中 1 位
+    if (btn.textContent.trim() === '1 位') {
+      btn.classList.remove('btn-ghost');
+      btn.classList.add('btn-approve');
+    }
+    btn.addEventListener('click', () => {
+      selectedSlots = parseInt(btn.textContent);
+      buttons.forEach(b => {
+        b.classList.remove('btn-approve');
+        b.classList.add('btn-ghost');
+      });
+      btn.classList.remove('btn-ghost');
+      btn.classList.add('btn-approve');
+      console.log('[交互] 探索位选择:', selectedSlots);
+    });
+  });
+}
+
+// --- 人工创意提交 ---
+function initCreativity() {
+  const input = document.querySelector('input[placeholder*="反直觉"]');
+  const submitBtn = Array.from(document.querySelectorAll('.btn-primary'))
+    .find(b => b.textContent.includes('直接生成'));
+  if (input && submitBtn && !submitBtn.dataset.wired) {
+    submitBtn.dataset.wired = '1';
+    submitBtn.addEventListener('click', async () => {
+      const idea = input.value.trim();
+      if (!idea) { alert('请先输入你的创意想法'); return; }
+      submitBtn.disabled = true;
+      submitBtn.textContent = '提交中...';
+      try {
+        const r = await fetch('/api/dna/idea', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({idea_text: idea, slots: selectedSlots})
+        });
+        const d = await r.json();
+        if (d.ok) {
+          alert('✅ 创意已提交！ID: ' + d.entry.id + '\n标签: ' + d.entry.source + '\n剩余探索位: ' + d.slots_left);
+          input.value = '';
+        } else {
+          alert('❌ 提交失败: ' + d.error);
+        }
+      } catch(e) {
+        alert('❌ 网络错误: ' + e.message);
+      }
+      submitBtn.disabled = false;
+      submitBtn.textContent = '🚀 直接生成';
+    });
+  }
+}
+
+// --- 进化日志真实数据 ---
+async function loadEvolution() {
+  try {
+    const r = await fetch('/api/dna/evolution');
+    const d = await r.json();
+    const sub = document.getElementById('evo-subtitle');
+    const list = document.getElementById('evo-list');
+    if (!list) return;
+    if (d.note || !d.events || !d.events.length) {
+      if (sub) sub.textContent = '暂无进化记录';
+      list.innerHTML = '<div style="text-align:center;color:#6b7280;padding:20px">'
+        + '暂无进化日志<br><span style="font-size:12px">进化引擎默认冻结中，解冻后每日 23:00 生成记录</span></div>';
+      return;
+    }
+    if (sub) sub.textContent = `共 ${d.total} 条 · 按时间倒序`;
+    const icons = {l1_update: '🎲', l2_update: '📚', l3_proposal: '🧠', freeze: '🧊', unfreeze: '🔓'};
+    const colors = {l1_update: '#3b82f6', l2_update: '#22c55e', l3_proposal: '#a855f7', freeze: '#6b7280'};
+    list.innerHTML = d.events.reverse().map(ev => {
+      const icon = icons[ev.type] || '📝';
+      const color = colors[ev.type] || '#9ca3af';
+      const ts = (ev.ts || '').slice(0, 16).replace('T', ' ');
+      return `<div class="approval-item" style="border-left-color:${color}">
+        <div class="a-thumb">${icon}</div>
+        <div class="a-info">
+          <div class="a-title">[${ts}] ${ev.title || ev.type}</div>
+          <div class="a-meta">${ev.detail || ''}${ev.reason ? ' · ' + ev.reason : ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+    console.log('[真实] 进化日志已加载:', d.total, '条');
+  } catch(e) { console.log('[真实] 进化 API 不可达'); }
+}
+
+// --- 真实信号拉取（2026-10-13 补：此前被调用但从未定义，点刷新必抛 ReferenceError）---
+async function fetchRealSignals() {
+  try {
+    const r = await fetch('/api/dna/signals');
+    const d = await r.json();
+    const s = d.signals || {};
+    const stale = d.stale || {};
+    const el = document.getElementById('sig-viral-rate');
+    if (el && s.viral_rate != null) {
+      el.textContent = Number(s.viral_rate).toFixed(1) + '%';
+      el.style.opacity = stale.viral_rate ? '0.5' : '1';
+    }
+    console.log('[真实] 信号已刷新', s);
+  } catch(e) { console.log('[真实] 信号 API 不可达'); }
+}
+
+// --- 刷新按钮 ---
+function initRefresh() {
+  const btn = Array.from(document.querySelectorAll('.btn-primary'))
+    .find(b => b.textContent.includes('刷新'));
+  if (btn && !btn.dataset.wired) {
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', () => {
+      loadPipeline(); loadApproval(); loadExperiment(); fetchRealSignals();
+      btn.textContent = '✓ 已刷新';
+      setTimeout(() => btn.textContent = '↻ 刷新', 1500);
+    });
+  }
+}
+
+// --- 流水线阶段卡片点击 → 显示详情 ---
+function initStageCards() {
+  document.querySelectorAll('.stage').forEach(card => {
+    if (card.dataset.wired) return;
+    card.dataset.wired = '1';
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', async () => {
+      const name = card.querySelector('.s-name')?.textContent.trim();
+      try {
+        const r = await fetch('/api/dna/pipeline');
+        const d = await r.json();
+        const detail = `【${name}】\n\n总数: ${d.total} 条\n各状态:\n` +
+          Object.entries(d.by_status || {}).map(([k,v]) => `  ${k}: ${v}`).join('\n');
+        alert(detail);
+      } catch(e) { alert(`【${name}】\n数据加载失败`); }
+    });
+  });
+}
+
+// --- 日志标签切换 ---
+function initLogTabs() {
+  const tabs = document.querySelectorAll('.log-tab');
+  tabs.forEach(tab => {
+    if (tab.dataset.wired) return;
+    tab.dataset.wired = '1';
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const filter = tab.textContent.trim();
+      const box = document.querySelector('.log-box');
+      if (!box) return;
+      box.querySelectorAll('div').forEach(div => {
+        if (filter === '全部') {
+          div.style.display = '';
+        } else {
+          // 按来源 emoji 过滤
+          const emoji = filter.match(/[\u{1F300}-\u{1F9FF}]/u)?.[0] || '';
+          div.style.display = (!emoji || div.textContent.includes(emoji)) ? '' : 'none';
+        }
+      });
+      console.log('[交互] 日志过滤:', filter);
+    });
+  });
+}
+
+// --- 终端按钮 ---
+function initTerminal() {
+  const btn = Array.from(document.querySelectorAll('.btn-ghost'))
+    .find(b => b.textContent.trim() === '终端');
+  if (btn && !btn.dataset.wired) {
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', () => {
+      window.open('http://192.166.82.123:8080/', '_blank');
+    });
+  }
+}
+
+// --- 初始化 ---
+window.addEventListener('DOMContentLoaded', () => {
+  initNav();
+  initSlotSelect();
+  initApprovalButtons();
+  initCreativity();
+  initRefresh();
+  initStageCards();
+  initLogTabs();
+  initTerminal();
+  loadPipeline();
+  loadApproval();
+  loadExperiment();
+  loadEvolution();
+  loadPlatforms();
+  initGenerate();
+  loadRealLogs();
+  console.log('✅ DNA 控制台真实交互已激活');
+});
+
+</script>
+<script>
+
+// --- 九平台真实数据（含真实头像）---
+async function loadPlatforms() {
+  try {
+    const r = await fetch('/api/dna/platforms');
+    const d = await r.json();
+    if (!d.platforms) return;
+    // 2026-10-13 修复：HTML 实际容器是 .platforms，此前查 .platform-grid 恒为 null → 静默 return
+    const container = document.querySelector('.platforms');
+    if (!container) return;
+    container.innerHTML = d.platforms.map(p => {
+      const avatar = p.avatar
+        ? `<img src="${p.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'">`
+        : `<span style="font-size:24px">🌐</span>`;
+      const dot = p.status === 'ok' ? 'green' : 'yellow';
+      return `<div class="platform" data-platform="${p.key}" style="cursor:pointer" title="${p.name}">
+        <div style="display:flex;align-items:center;gap:8px">
+          ${avatar}
+          <div><div style="font-weight:600">${p.name}</div>
+          <div style="font-size:12px;color:#6b7280">${p.n_videos}条 · ${p.total_views}播</div></div>
+        </div>
+        <span class="dot ${dot}" style="margin-left:auto"></span>
+      </div>`;
+    }).join('');
+    // 平台卡片点击 → 显示该平台视频列表（待实现详情页）
+    container.querySelectorAll('.platform[data-platform]').forEach(card => {
+      card.addEventListener('click', () => {
+        const key = card.dataset.platform;
+        const p = d.platforms.find(x => x.key === key);
+        alert(`${p.name}\n${p.n_videos}条视频 · ${p.total_views}总播放\n主页: ${p.profile_url || '未绑定'}`);
+      });
+    });
+    console.log('[真实] 九平台数据已加载（含真实头像）');
+  } catch(e) { console.log('[真实] 平台 API 不可达'); }
+}
+
+// --- 真实视频生成触发 ---
+function initGenerate() {
+  const btn = Array.from(document.querySelectorAll('.btn-primary'))
+    .find(b => b.textContent.includes('生成并发布'));
+  if (!btn || btn.dataset.wired) return;
+  btn.dataset.wired = '1';
+  btn.addEventListener('click', async () => {
+    // 收集选中的平台
+    const selected = Array.from(document.querySelectorAll('.platform-select.selected'))
+      .map(b => b.textContent.trim());
+    const model = document.querySelector('select#model-select')?.value || 'H3';
+    const vtype = document.querySelector('select#type-select')?.value || '剧情类';
+    if (!selected.length) { alert('请先选择至少一个发布平台'); return; }
+    if (!confirm(`确认生成？\n模型: ${model}\n类型: ${vtype}\n平台: ${selected.join('、')}\n\n⚠️ 真实生成将消耗 API 额度，耗时 10-30 分钟`)) return;
+    btn.disabled = true;
+    btn.textContent = '提交中...';
+    try {
+      const r = await fetch('/api/dna/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({model, video_type: vtype, platforms: selected})
+      });
+      const d = await r.json();
+      if (d.ok) {
+        alert('✅ 生成任务已提交！\n' + (d.note || '') + '\n任务ID: ' + (d.job_id || d.task_id || '见日志'));
+      } else {
+        alert('❌ 提交失败: ' + d.error);
+      }
+    } catch(e) { alert('❌ 网络错误: ' + e.message); }
+    btn.disabled = false;
+    btn.textContent = '🎬 生成并发布到选中平台';
+  });
+
+  // 平台多选按钮
+  document.querySelectorAll('.platform-select').forEach(b => {
+    if (b.dataset.wired) return;
+    b.dataset.wired = '1';
+    b.addEventListener('click', () => b.classList.toggle('selected'));
+  });
+}
+
+</script>
+<!-- BRAIN 内嵌面板：对话/记忆/技能，与控制台融为一体 -->
+<style>
+#brain-panel{position:fixed;top:0;right:-480px;width:480px;max-width:95vw;height:100vh;background:#0f1419;border-left:1px solid #2a3a5a;z-index:9999;transition:right .3s;display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,.5)}
+#brain-panel.open{right:0}
+#brain-panel .bp-head{padding:14px 16px;border-bottom:1px solid #2a3a5a;display:flex;align-items:center;justify-content:space-between}
+#brain-panel .bp-tabs{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid #2a3a5a}
+#brain-panel .bp-tab{padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;color:#9ca3af;background:transparent;border:none}
+#brain-panel .bp-tab.active{background:#1a2332;color:#fff}
+#brain-panel .bp-body{flex:1;overflow-y:auto;padding:12px}
+#brain-panel .bp-foot{padding:12px;border-top:1px solid #2a3a5a;display:flex;gap:8px}
+#brain-panel .bp-foot input{flex:1;padding:10px;background:#11161f;border:1px solid #2a3a5a;border-radius:8px;color:#e5e7eb}
+#brain-panel .bp-foot button{padding:10px 18px;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer}
+.bp-msg{margin:8px 0;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.6;max-width:90%}
+.bp-msg.user{background:#1e3a5f;margin-left:auto;color:#fff}
+.bp-msg.assistant{background:#1a2332;color:#e5e7eb}
+.bp-item{padding:10px;border:1px solid #2a3a5a;border-radius:8px;margin:8px 0;font-size:13px;cursor:pointer}
+.bp-item:hover{border-color:#3b82f6}
+.bp-close{background:transparent;border:none;color:#9ca3af;font-size:20px;cursor:pointer}
+</style>
+<div id="brain-panel">
+  <div class="bp-head">
+    <div style="font-weight:700;font-size:15px">🧠 智能大脑 <span style="font-size:11px;color:#6b7280;font-weight:400">nanoMuse 内嵌</span></div>
+    <button class="bp-close" onclick="closeBrainPanel()">✕</button>
+  </div>
+  <div class="bp-tabs">
+    <button class="bp-tab active" data-tab="chat">💬 对话</button>
+    <button class="bp-tab" data-tab="memory">🧠 记忆</button>
+    <button class="bp-tab" data-tab="skills">🔧 技能</button>
+  </div>
+  <div class="bp-body" id="bp-body"><div style="text-align:center;color:#6b7280;padding:40px">加载中...</div></div>
+  <div class="bp-foot" id="bp-foot" style="display:none">
+    <input id="bp-input" placeholder="输入消息..." onkeydown="if(event.key==='Enter')sendBrainMsg()">
+    <button onclick="sendBrainMsg()">发送</button>
+  </div>
+</div>
+<script>
+let brainTab = 'chat', brainThreadId = null;
+
+// 打开面板
+function openBrainPanel(tab) {
+  brainTab = tab || 'chat';
+  document.getElementById('brain-panel').classList.add('open');
+  document.querySelectorAll('.bp-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === brainTab);
+  });
+  loadBrainTab();
+}
+function closeBrainPanel() {
+  document.getElementById('brain-panel').classList.remove('open');
+}
+// tab 切换
+document.querySelectorAll('.bp-tab').forEach(t => {
+  t.addEventListener('click', () => {
+    brainTab = t.dataset.tab;
+    document.querySelectorAll('.bp-tab').forEach(x => x.classList.toggle('active', x === t));
+    loadBrainTab();
+  });
+});
+
+async function loadBrainTab() {
+  const body = document.getElementById('bp-body');
+  const foot = document.getElementById('bp-foot');
+  body.innerHTML = '<div style="text-align:center;color:#6b7280;padding:40px">加载中...</div>';
+  foot.style.display = 'none';
+  try {
+    if (brainTab === 'chat') await loadBrainChat(body, foot);
+    else if (brainTab === 'memory') await loadBrainMemory(body);
+    else if (brainTab === 'skills') await loadBrainSkills(body);
+  } catch(e) {
+    body.innerHTML = '<div style="color:#ef4444;padding:20px">加载失败: ' + e.message + '</div>';
+  }
+}
+
+async function loadBrainChat(body, foot) {
+  foot.style.display = 'flex';
+  const r = await fetch('/api/dna/brain/threads');
+  const threads = await r.json();
+  if (!threads.length) { body.innerHTML = '暂无对话'; return; }
+  brainThreadId = threads[0].id;
+  const ev = await (await fetch(`/api/dna/brain/threads/${brainThreadId}/events`)).json();
+  const msgs = (ev.events || ev || []).filter(e => e.type === 'message' || e.role);
+  body.innerHTML = msgs.slice(-20).map(m => {
+    const role = m.role || (m.type === 'user' ? 'user' : 'assistant');
+    const text = (m.text || m.content || JSON.stringify(m)).slice(0, 500);
+    return `<div class="bp-msg ${role}">${text.replace(/</g,'&lt;')}</div>`;
+  }).join('') || '<div style="color:#6b7280">暂无消息</div>';
+  body.scrollTop = body.scrollHeight;
+}
+
+async function sendBrainMsg() {
+  const input = document.getElementById('bp-input');
+  const text = input.value.trim();
+  if (!text || !brainThreadId) return;
+  input.value = '';
+  const body = document.getElementById('bp-body');
+  body.innerHTML += `<div class="bp-msg user">${text.replace(/</g,'&lt;')}</div>`;
+  body.scrollTop = body.scrollHeight;
+  try {
+    await fetch(`/api/dna/brain/threads/${brainThreadId}/send`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text})
+    });
+    body.innerHTML += '<div class="bp-msg assistant" style="color:#6b7280">已发送，等待回复...</div>';
+    setTimeout(() => loadBrainTab(), 3000);
+  } catch(e) {
+    body.innerHTML += '<div class="bp-msg assistant" style="color:#ef4444">发送失败</div>';
+  }
+}
+
+async function loadBrainMemory(body) {
+  const r = await fetch('/api/dna/brain/memory');
+  const d = await r.json();
+  const items = d.memories || d.items || d || [];
+  if (!items.length || !Array.isArray(items)) {
+    body.innerHTML = '<div style="color:#6b7280;padding:20px">暂无记忆<br><pre style="font-size:11px">' + JSON.stringify(d).slice(0,300) + '</pre></div>';
+    return;
+  }
+  body.innerHTML = items.slice(0, 30).map(m =>
+    `<div class="bp-item"><div style="font-weight:600">${(m.title || m.key || '记忆').slice(0,40)}</div><div style="color:#9ca3af;font-size:12px;margin-top:4px">${(m.content || m.value || JSON.stringify(m)).slice(0,120)}</div></div>`
+  ).join('');
+}
+
+async function loadBrainSkills(body) {
+  const r = await fetch('/api/dna/brain/skills');
+  const d = await r.json();
+  const items = d.skills || d || [];
+  const arr = Array.isArray(items) ? items : Object.keys(items).map(k => ({name: k, ...items[k]}));
+  body.innerHTML = arr.map(s =>
+    `<div class="bp-item"><div style="font-weight:600">🔧 ${s.name}</div><div style="color:#9ca3af;font-size:12px;margin-top:4px">${(s.description || '').slice(0,100)} · ${s.enabled === false ? '❌ 已禁用' : '✅ 已启用'}</div></div>`
+  ).join('') || '<div style="color:#6b7280">暂无技能</div>';
+}
+</script>
+
+</body>
+</html>

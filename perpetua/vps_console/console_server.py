@@ -3,13 +3,14 @@
 1:1 复刻 Muse Dashboard artifact 的 6 个后端 action：
   chat / exec_terminal / getdashboardsnapshot / getpipelinelogs / getpipelinestatus / refreshdashboardsnapshot
 """
+import hmac
 import json
 import os
 import re
 import subprocess
 import time
 from datetime import datetime, timezone, timedelta
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 DATA = "/home/hatch/data"
@@ -20,6 +21,8 @@ if "/home/hatch/data/perpetua" not in _sys.path:
 import queue_db
 TOKEN_FILE = os.path.join(DATA, "mcp_server", ".token")
 AUDIT_LOG = os.path.join(DATA, "perpetua", "terminal_audit.log")
+# 2026-10-13 安全加固：/api/exec 令牌文件（服务端私有，绝不下发前端）
+EXEC_TOKEN_PATH = "/home/hatch/.perpetua_exec_token"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SNAPSHOT_FILE = os.path.join(DATA, "perpetua", "dashboard_snapshot.json")
 PIPELINE_FILE = os.path.join(DATA, "perpetua", "pipeline_runs.json")
@@ -611,6 +614,39 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/oa":
             self.serve_file("oa.html", "text/html; charset=utf-8")
             return
+        if path == "/dna-console":
+            self.serve_file("dna-console.html", "text/html; charset=utf-8")
+            return
+        if path == "/api/dna/signals":
+            self.serve_file("../signal_latest.json", "application/json; charset=utf-8")
+            return
+        if path == "/api/dna/pipeline":
+            self.api_dna("api_pipeline_stages")
+            return
+        if path == "/api/dna/approval":
+            self.api_dna("api_approval_queue")
+            return
+        if path == "/api/dna/experiment":
+            self.api_dna("api_experiment_stats")
+            return
+        if path == "/api/dna/evolution":
+            self.api_dna("api_evolution_log")
+            return
+        if path == "/api/dna/idea" and self.command == "POST":
+            self.api_dna_post("idea")
+            return
+        if path == "/api/dna/platforms":
+            self.api_dna_platforms()
+            return
+        if path == "/api/dna/generate" and self.command == "POST":
+            self.api_dna_generate()
+            return
+        if path == "/api/dna/logs":
+            self.api_dna_logs()
+            return
+        if path.startswith("/api/dna/brain"):
+            self.api_dna_brain_proxy(path)
+            return
         if path == "/qr-douyin":
             self.serve_qr_douyin_page()
             return
@@ -652,6 +688,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.api_publish_plan()
             elif path == "/api/generation_progress":
                 self.api_generation_progress()
+            elif path == "/api/live_model":
+                self.api_live_model_get()
             elif path == "/api/kb/search":
                 self.api_kb_search(qs)
             elif path == "/api/postop_status":
@@ -735,6 +773,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/matrix_sync":
             self.api_matrix_sync()
             return
+        if parsed.path == "/api/live_model":
+            self.api_live_model_set(payload)
+            return
             return
         if parsed.path == "/api/snapshot/refresh":
             self.api_snapshot_refresh()
@@ -759,6 +800,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/oa/leads":
             self.api_oa_growth("lead_upsert", payload)
+            return
+        # DNA POST 路由
+        if parsed.path == "/api/dna/approve":
+            self.api_dna_approve(payload)
+            return
+        if parsed.path == "/api/dna/idea":
+            self.api_dna_post("idea", payload)
+            return
+        if parsed.path == "/api/dna/generate":
+            self.api_dna_generate(payload)
+            return
+        if parsed.path.startswith("/api/dna/brain"):
+            # BRAIN 代理需要原始 body，重新读取
+            import urllib.request as _urllib
+            self.api_dna_brain_proxy_post(parsed.path, payload)
             return
         if parsed.path == "/api/oa/distribution/add":
             self.api_oa_growth("dist_add", payload)
@@ -833,6 +889,248 @@ tick();
         self.send_header("Pragma", "no-cache")
         self.end_headers()
         self.wfile.write(body)
+
+    def api_dna(self, fn_name):
+        import subprocess, json as _json
+        try:
+            out = subprocess.run(
+                ["python3", "dna_api.py", fn_name],
+                cwd="/home/hatch/data/perpetua",
+                capture_output=True, text=True, timeout=60)
+            body = out.stdout.encode("utf-8") if out.stdout.strip() else b'{"error":"empty"}'
+        except Exception as e:
+            body = _json.dumps({"error": str(e)}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def api_dna_post(self, action, payload=None):
+        import json as _json
+        # do_POST 已解析 payload；do_GET 兼容旧调用时再读
+        if payload is None:
+            length = int(self.headers.get("Content-Length", 0))
+            data = _json.loads(self.rfile.read(length) or b"{}")
+        else:
+            data = payload
+        _sys.path.insert(0, "/home/hatch/data/perpetua")
+        try:
+            if action == "idea":
+                from human_creativity import submit_idea
+                result = submit_idea(
+                    data.get("idea_text", ""),
+                    slots=int(data.get("slots", 1)),
+                    caller="human")
+            else:
+                result = {"ok": False, "error": "unknown action"}
+        except Exception as e:
+            result = {"ok": False, "error": str(e)}
+        body = _json.dumps(result, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def api_dna_platforms(self):
+        import subprocess, json as _json
+        try:
+            out = subprocess.run(
+                ["python3", "dna_platform.py"],
+                cwd="/home/hatch/data/perpetua",
+                capture_output=True, text=True, timeout=30)
+            body = out.stdout.encode("utf-8") if out.stdout.strip() else b'{"error":"empty"}'
+        except Exception as e:
+            body = _json.dumps({"error": str(e)}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def api_dna_generate(self, payload=None):
+        """真实视频生成触发：通过 human_creativity.manual_override 提交任务。"""
+        import json as _json
+        _sys.path.insert(0, "/home/hatch/data/perpetua")
+        if payload is None:
+            length = int(self.headers.get("Content-Length", 0))
+            data = _json.loads(self.rfile.read(length) or b"{}")
+        else:
+            data = payload
+        try:
+            from human_creativity import manual_override
+            # 2026-10-13 修复：check_safety_interlock() 返回 tuple (engaged, reason)，
+            # 原写法 interlock.get(...) 会抛 'tuple' object has no attribute 'get'。
+            # 安全互锁校验由 manual_override() 内部完成，此处不再重复判断。
+            result = manual_override(
+                model=data.get("model", "h3"),
+                video_type=data.get("video_type", "剧情类"),
+                platforms=data.get("platforms", []),
+                caller="human",
+                note=data.get("note", "console-triggered"))
+            if result.get("ok"):
+                result["note"] = "任务已提交到生成队列，实际生成经 dispatcher→muse-main，需 10-30 分钟"
+        except Exception as e:
+            result = {"ok": False, "error": str(e)}
+        body = _json.dumps(result, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def api_dna_approve(self, payload=None):
+        """人工终审：批准 / 驳回待审视频（转发 approve_video.py，2026-10-13 补齐）。
+
+        payload: {"topic": str, "action": "approve"|"reject", "reason": str(可选)}
+        """
+        import json as _json
+        data = payload or {}
+        topic = (data.get("topic") or "").strip()
+        action = (data.get("action") or "approve").strip().lower()
+        reason = (data.get("reason") or "").strip()
+        if not topic:
+            result = {"ok": False, "error": "topic 不能为空"}
+        elif action not in ("approve", "reject"):
+            result = {"ok": False, "error": "action 只能为 approve 或 reject"}
+        else:
+            cmd = [_sys.executable, "approve_video.py", action, topic]
+            if action == "reject" and reason:
+                cmd.append(reason)
+            try:
+                out = subprocess.run(cmd, cwd="/home/hatch/data/perpetua",
+                                     capture_output=True, text=True, timeout=60)
+                try:
+                    parsed = _json.loads(out.stdout) if out.stdout.strip() else {}
+                except ValueError:
+                    parsed = {"raw": out.stdout.strip()[:500]}
+                if out.returncode == 0:
+                    # approve_video.py 对不存在的 topic 会返回 {"ok": false, ...}
+                    # 但进程退出码仍为 0；必须按内层 ok 字段判定，否则会把失败伪装成成功。
+                    inner_ok = parsed.get("ok") if isinstance(parsed, dict) else None
+                    if inner_ok is False:
+                        result = {"ok": False, "action": action, "topic": topic,
+                                  "error": parsed.get("error") or "topic 不存在或操作失败",
+                                  "detail": parsed}
+                    else:
+                        result = {"ok": True, "action": action, "topic": topic, "detail": parsed}
+                else:
+                    err = (out.stderr or out.stdout or "").strip()[:300]
+                    result = {"ok": False, "action": action, "topic": topic,
+                              "error": err or "approve_video.py 执行失败"}
+            except Exception as e:
+                result = {"ok": False, "error": str(e)}
+        body = _json.dumps(result, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def api_dna_logs(self):
+        """真实后端日志：聚合 cron.log + evolution 日志 + 审计日志。"""
+        import json as _json, os
+        logs = []
+        # 1. SOP cron 日志
+        for lp in ["/home/hatch/data/perpetua/sop_state/cron.log",
+                   "/home/hatch/data/perpetua/evolution_log.jsonl",
+                   "/home/hatch/data/perpetua/human_creativity_audit.jsonl"]:
+            try:
+                if os.path.exists(lp):
+                    lines = open(lp, encoding="utf-8").read().strip().split("\n")
+                    for l in lines[-15:]:
+                        if l.strip():
+                            logs.append({"source": os.path.basename(lp), "line": l[:200]})
+            except: pass
+        # 2. 进化冻结审计
+        try:
+            fp = "/home/hatch/data/perpetua/evolution_freeze_audit.jsonl"
+            if os.path.exists(fp):
+                lines = open(fp, encoding="utf-8").read().strip().split("\n")
+                for l in lines[-5:]:
+                    if l.strip(): logs.append({"source": "freeze", "line": l[:200]})
+        except: pass
+        body = _json.dumps({"logs": logs[-30:], "total": len(logs)}, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def api_dna_brain_proxy(self, path):
+        """BRAIN 代理：转发到 nanoMuse :18739，实现控制台内嵌无感知。"""
+        import json as _json, urllib.request, urllib.error
+        NANO = "http://127.0.0.1:18739"
+        # 路径映射：/api/dna/brain/threads -> /api/threads
+        nano_path = path.replace("/api/dna/brain", "/api", 1)
+        # 保留 query string
+        if "?" in self.path:
+            nano_path += "?" + self.path.split("?", 1)[1]
+        url = NANO + nano_path
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length) if length else None
+        try:
+            req = urllib.request.Request(url, data=body, method=self.command)
+            if body:
+                req.add_header("Content-Type", self.headers.get("Content-Type", "application/json"))
+            # nanoMuse 认证：读取 server_token
+            try:
+                with open("/home/hatch/.nanomuse/server_token") as f:
+                    token = f.read().strip()
+                req.add_header("Authorization", "Bearer " + token)
+            except: pass
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = resp.read()
+                ctype = resp.headers.get("Content-Type", "application/json")
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except urllib.error.HTTPError as e:
+            err = e.read()
+            self.send_response(e.code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(err)))
+            self.end_headers()
+            self.wfile.write(err)
+        except Exception as e:
+            err = _json.dumps({"error": str(e)}).encode()
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(err)))
+            self.end_headers()
+            self.wfile.write(err)
+
+    def api_dna_brain_proxy_post(self, path, payload):
+        """BRAIN POST 代理（do_POST 入口）。"""
+        import json as _json, urllib.request, urllib.error
+        NANO = "http://127.0.0.1:18739"
+        nano_path = path.replace("/api/dna/brain", "/api", 1)
+        url = NANO + nano_path
+        body = _json.dumps(payload).encode("utf-8")
+        try:
+            req = urllib.request.Request(url, data=body, method="POST")
+            req.add_header("Content-Type", "application/json")
+            try:
+                with open("/home/hatch/.nanomuse/server_token") as f:
+                    req.add_header("Authorization", "Bearer " + f.read().strip())
+            except: pass
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = resp.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except Exception as e:
+            err = _json.dumps({"error": str(e)}).encode()
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(err)))
+            self.end_headers()
+            self.wfile.write(err)
 
     def serve_file(self, filename, ctype):
         try:
@@ -974,6 +1272,46 @@ tick();
         json_resp(self, {"items": out, "count": len(out),
                          "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                     time.gmtime())})
+
+    def api_live_model_get(self):
+        """读取实时语音/视频模型配置（2026-10-12 新增）"""
+        import os
+        cfg_path = "/home/hatch/data/nanomuse-migration/perception/server/live_model_config.yaml"
+        defaults = {
+            "live_model": "gemini-2.0-flash-exp",
+            "video_fps": 1,
+            "video_quality": 70,
+            "audio_sample_rate": 16000,
+        }
+        try:
+            import yaml
+            if os.path.exists(cfg_path):
+                with open(cfg_path, encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+                defaults.update(cfg)
+        except Exception as e:
+            defaults["error"] = str(e)
+        json_resp(self, defaults)
+
+    def api_live_model_set(self, payload):
+        """更新实时语音/视频模型配置（2026-10-12 新增）"""
+        import os
+        cfg_path = "/home/hatch/data/nanomuse-migration/perception/server/live_model_config.yaml"
+        allowed = {"live_model", "video_fps", "video_quality", "audio_sample_rate"}
+        try:
+            import yaml
+            cfg = {}
+            if os.path.exists(cfg_path):
+                with open(cfg_path, encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+            for k in allowed:
+                if k in payload:
+                    cfg[k] = payload[k]
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(cfg, f, allow_unicode=True)
+            json_resp(self, {"ok": True, "config": cfg})
+        except Exception as e:
+            json_resp(self, {"ok": False, "error": str(e)})
 
     def api_kb_search(self, qs):
         """知识库语义检索（2026-10-11 新增）：查 OpenViking MCP 向量库。
@@ -1282,7 +1620,8 @@ tick();
                          "summary": {"total_views": total_views, "total_videos": total_videos,
                                      "platform_count": len(platforms)},
                          "trends": trends,
-                         "stale_hours": stale_hours})
+                         "stale_hours": stale_hours,
+                         "login_warnings": [k for k,v in stale_hours.items() if v > 12]})
 
     def api_matrix_sync(self):
         """矩阵手动同步触发（2026-10-11 重做）：持久 job 文件状态机。
@@ -2008,7 +2347,30 @@ tick();
         })
 
     # ---- 终端 ----
+    def _check_exec_token(self):
+        """校验 /api/exec 调用方令牌（2026-10-13 安全加固）。
+
+        令牌存服务端文件，不下发前端；接受 X-Exec-Token 或 Authorization: Bearer。
+        """
+        try:
+            with open(EXEC_TOKEN_PATH, encoding="utf-8") as f:
+                expect = f.read().strip()
+        except OSError:
+            return False
+        if not expect:
+            return False
+        got = (self.headers.get("X-Exec-Token") or "").strip()
+        if not got:
+            auth = self.headers.get("Authorization") or ""
+            if auth.lower().startswith("bearer "):
+                got = auth[7:].strip()
+        return hmac.compare_digest(got, expect)
+
     def api_exec(self, command):
+        if not self._check_exec_token():
+            json_resp(self, {"error": "unauthorized",
+                             "hint": "需要 X-Exec-Token 头（令牌见服务端 /home/hatch/.perpetua_exec_token）"}, 401)
+            return
         command = (command or "").strip()
         if not command:
             json_resp(self, {"error": "empty command"}, 400)
@@ -2195,8 +2557,10 @@ tick();
 
 def main():
     port = int(os.environ.get("CONSOLE_PORT", "8080"))
-    srv = HTTPServer(("127.0.0.1", port), Handler)
-    print(f"Perpetua console v2 on 127.0.0.1:{port}", flush=True)
+    host = os.environ.get("CONSOLE_HOST", "0.0.0.0")
+    srv = ThreadingHTTPServer((host, port), Handler)
+    srv.daemon_threads = True  # 主进程退出时工作线程不阻塞
+    print(f"Perpetua console v2 (threaded) on {host}:{port}", flush=True)
     srv.serve_forever()
 
 

@@ -242,6 +242,7 @@ table.tm td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-alig
 </style>
 </head>
 <body>
+<div id="loginWarnBar" style="display:none;background:#7f1d1d;color:#fecaca;padding:10px 16px;font-size:14px;border-bottom:1px solid #ef4444"></div>
 <div class="page" id="app">
 <div class="loading"><div class="spinner"></div>正在加载控制台 · Loading control plane</div>
 </div>
@@ -297,12 +298,20 @@ function switchTab(id){
   if(id==='matrix'){renderMatrix()}
   if(id==='logs'){loadLogs(true)}
   if(id==='overview'){renderSnapSections()}
+  if(id==='settings'){loadLiveModel()}
   if(id==='kb'){kbLoadStats()}
   if(id==='tenants'){renderTenantTable();renderSnapSections()}
 }
 let PIPE_TIMER=null, LOG_TIMER=null, SNAP_TIMER=null;
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
 function mimg(u){if(!u)return '';return u.indexOf('/api/imgcache/')===0?u:('/api/matrix_img?url='+encodeURIComponent(u));}
+function imgErr(el){var w=el.style.width||'64px',h=el.style.height||'36px';
+var d=document.createElement('div');
+d.style.cssText='width:'+w+';height:'+h+';display:flex;align-items:center;justify-content:center;background:var(--bg2);border-radius:4px;font-size:18px;cursor:pointer;flex-shrink:0';
+d.title='图片加载失败，点击重试';d.textContent='🖼️';
+d.onclick=function(){var i=document.createElement('img');i.src=el.src;i.style.cssText=el.style.cssText;i.setAttribute('referrerpolicy','no-referrer');i.onerror=function(){imgErr(i)};d.replaceWith(i);};
+el.replaceWith(d);}
+function retryLoad(fnName){if(typeof window[fnName]==='function'){window[fnName]();}else{location.reload();}}
 async function api(path,opt={}){
   const r=await fetch(path,{...(opt||{}),headers:{...(opt.headers||{}),...auth()}});
   if(r.status===401){document.getElementById('app').innerHTML='<div class="loading">Token 无效，请刷新页面重试</div>';throw new Error('401');}
@@ -317,6 +326,36 @@ function saveSettings(silent){
   api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(SETTINGS)}).catch(()=>{});
   if(!silent)toast('配置已保存 · Settings saved');
 }
+// 实时语音/视频模型配置（2026-10-12）
+async function loadLiveModel(){
+  try{
+    const cfg=await api('/api/live_model');
+    document.getElementById('liveModel').value=cfg.live_model||'';
+    document.getElementById('liveVideoFps').value=cfg.video_fps||1;
+    document.getElementById('liveVideoQ').value=cfg.video_quality||70;
+    document.getElementById('liveVideoQBig').textContent=cfg.video_quality||70;
+    document.getElementById('liveModelStatus').textContent='已加载 · Loaded';
+  }catch(e){
+    document.getElementById('liveModelStatus').textContent='加载失败 · Failed';
+  }
+}
+async function saveLiveModel(){
+  const payload={
+    live_model:document.getElementById('liveModel').value.trim(),
+    video_fps:parseInt(document.getElementById('liveVideoFps').value)||1,
+    video_quality:parseInt(document.getElementById('liveVideoQ').value)||70,
+  };
+  try{
+    const r=await api('/api/live_model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(r.ok)toast('模型配置已保存，重启 perception_server 生效 · Saved');
+    else toast('保存失败 · Failed: '+(r.error||''));
+  }catch(e){toast('保存失败 · Failed');}
+}
+document.addEventListener('input',e=>{
+  if(e.target&&e.target.id==='liveVideoQ'){
+    document.getElementById('liveVideoQBig').textContent=e.target.value;
+  }
+});
 async function boot(){
   loadSettings();
   try{
@@ -487,6 +526,17 @@ function render(){
     ${toggleRow('ask_studio_auto','Ask Studio 自动问询','Ask Studio auto-ask')}
     <div class="settings-foot"><span class="hint">设置保存在此设备 · Saved on this device</span><button class="btn primary" onclick="saveSettings()">保存配置 · Save</button></div>
   </div>
+  <div class="settings-block card" id="liveModelCard">
+    <div class="settings-head"><h3>实时语音/视频模型 <span class="en">· Live Model</span></h3><span class="hint" id="liveModelStatus">加载中…</span></div>
+    <div class="set-row"><label>模型 · Model</label>
+      <div class="set-flex"><input type="text" id="liveModel" placeholder="gemini-2.0-flash-exp" style="flex:1"></div>
+      <div class="set-hint">如 gemini-2.0-flash-exp，改完重启 perception_server 生效</div></div>
+    <div class="set-row"><label>视频帧率 · Video FPS</label>
+      <div class="set-flex"><input type="number" id="liveVideoFps" min="1" max="5" value="1" style="width:80px"></div></div>
+    <div class="set-row"><label>视频质量 · Video quality</label>
+      <div class="set-flex"><input type="range" id="liveVideoQ" min="30" max="95" value="70"><span class="set-big" id="liveVideoQBig">70</span></div></div>
+    <div class="settings-foot"><button class="btn primary" onclick="saveLiveModel()">保存模型配置 · Save</button></div>
+  </div>
   </section>`;
   if(!localStorage.getItem(LS_WARN))document.getElementById('warnBar').style.display='flex';
   bindTermInput(); renderLogTabs(); loadLogs(); renderPipeline(); renderTenantTable(); renderSnapSections();
@@ -541,7 +591,7 @@ function renderSnapSections(){
 function toggleRow(key,cn,en){
   return `<div class="toggle-row"><div>${cn}<div class="en hint">${en}</div></div><label class="switch ${SETTINGS[key]?'on':''}"><input type="checkbox" ${SETTINGS[key]?'checked':''} onchange="setCfg('${key}',this.checked)"><span class="tr"></span></label></div>`;
 }
-async function renderPlatformOverview(){
+async function renderPlatformOverview(){window.renderPlatformOverview=renderPlatformOverview;
   const el=document.getElementById('platOverview');if(!el)return;
   try{
     const d=await api('/api/platform_matrix');
@@ -563,14 +613,14 @@ async function renderPlatformOverview(){
       const tr=trends[k]||0;
       const trHtml=tr>0?`<span style="color:#4ade80">▲${tr}</span>`:tr<0?`<span style="color:#f87171">▼${-tr}</span>`:'';
       const staleTag=sh>6?`<span style="color:#f87171;font-size:10px"> ${sh}h未同步</span>`:'';
-      const av=p.avatar?`<img src="${mimg(p.avatar)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'">`:'';
+      const av=p.avatar?`<img src="${mimg(p.avatar)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" onerror="imgErr(this)">`:'';
       return `<div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg2);border-radius:8px">
         ${av}<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600"><span style="color:${dot}">●</span> ${names[k]||k}${staleTag}</div>
         <div style="font-size:11px;color:var(--muted)">${vids.length}条 · ${totalViews.toLocaleString()}播 ${trHtml}</div></div></div>`;
     }).join('');
     const upd=document.getElementById('platUpd');
     if(upd){const ds=Object.values(ps).map(p=>p.synced_at||'').filter(Boolean).sort().pop();upd.textContent=ds?('更新 '+timeAgo(ds)):'';}
-  }catch(e){el.innerHTML='<div class="hint">加载失败</div>';}
+  }catch(e){el.innerHTML='<div class="hint">加载失败 <button onclick="retryLoad(\'renderPlatformOverview\')" style="font-size:12px;margin-left:8px">↻ 重试</button></div>';}
 }
 function setCfg(k,v){SETTINGS[k]=v;if(k==='daily_target'){const e=document.getElementById('cfgTargetBig');if(e)e.textContent=v}if(k==='virality_threshold'){const e=document.getElementById('cfgThrBig');if(e)e.textContent=v}document.querySelectorAll('.switch').forEach(()=>{});saveSettings(true);renderToggles();}
 function renderToggles(){document.querySelectorAll('.toggle-row .switch input').forEach(inp=>{const k=inp.getAttribute('onchange').match(/'(\w+)'/)[1];inp.checked=!!SETTINGS[k];inp.closest('.switch').classList.toggle('on',!!SETTINGS[k])})}
@@ -592,11 +642,11 @@ async function renderPipeline(silent){
         <div class="stage-foot">${st.freshness==='live'?'<span class="ok">正常 · OK</span> / ':''}${esc(ago)}</div>
       </div>`;
     }).join('');
-  }catch(e){if(!silent){const g=document.getElementById('pipeGrid');if(g)g.innerHTML='<div class="hint">加载失败</div>'}}
+  }catch(e){if(!silent){const g=document.getElementById('pipeGrid');if(g)g.innerHTML='<div class="hint">加载失败 <button onclick="retryLoad(\'renderPipeline\')" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}}
   renderPolicyGate(silent);renderDouyin(silent);renderDistributor(silent);
 }
 async function renderPolicyGate(silent){
-  const card=document.getElementById('policyCard');if(!card)return;
+  const card=document.getElementById('policyCard');if(!card)return;window.renderPolicyGate=renderPolicyGate;
   try{
     const d=await api('/api/policy_gate');
     const cnt=document.getElementById('policyCnt');
@@ -609,10 +659,10 @@ async function renderPolicyGate(silent){
       <div><div class="ypp-num" style="font-size:24px">${d.flag_total}</div><div class="ypp-sub">累计 FLAG</div></div>
       <div><div class="ypp-num" style="font-size:24px">${d.manual_pending}</div><div class="ypp-sub">待人工复核</div></div></div>
       ${rows?'<div style="margin-top:4px">'+rows+'</div>':'<div class="hint">暂无 FLAG 记录 · 门运行正常</div>'}`;
-  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败</div>'}
+  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}
 }
 async function renderDouyin(silent){
-  const card=document.getElementById('douyinCard');if(!card)return;
+  const card=document.getElementById('douyinCard');if(!card)return;window.renderDouyin=renderDouyin;
   try{
     const d=await api('/api/douyin');
     const cnt=document.getElementById('douyinCnt');
@@ -627,10 +677,10 @@ async function renderDouyin(silent){
         ${e.failed?`<b style="color:#f87171">失败 ${e.failed}</b>`:''}</div>
         <div class="ypp-bar" style="margin-top:0"><i style="width:${pct}%"></i></div></div>`}).join('');
     card.innerHTML=bars||'<div class="hint">暂无数据</div>';
-  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败</div>'}
+  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}
 }
 async function renderDistributor(silent){
-  const card=document.getElementById('distCard');if(!card)return;
+  const card=document.getElementById('distCard');if(!card)return;window.renderDistributor=renderDistributor;
   try{
     const d=await api('/api/distributor');
     const cnt=document.getElementById('distCnt');
@@ -646,7 +696,7 @@ async function renderDistributor(silent){
       <div><div class="ypp-num" style="font-size:24px;color:#4ade80">${d.gate.accept}</div><div class="ypp-sub">门禁通过</div></div>
       <div><div class="ypp-num" style="font-size:24px;color:#f87171">${d.gate.reject}</div><div class="ypp-sub">门禁拦截</div></div></div>
       ${rows?'<div style="margin-top:4px">'+rows+'</div>':'<div class="hint">暂无门禁决策记录</div>'}`;
-  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败</div>'}
+  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}
 }
 async function matrixSyncNow(btn){
   btn.disabled=true;btn.textContent='同步中…';
@@ -673,11 +723,15 @@ async function matrixSyncNow(btn){
   }catch(e){toast('同步触发失败')}
   btn.disabled=false;btn.textContent='⟳ 立即同步';
 }
-async function renderMatrix(silent){
+async function renderMatrix(silent){window.renderMatrix=renderMatrix;
   const card=document.getElementById('matrixCard');if(!card)return;
   try{
     const d=await api('/api/platform_matrix');
-    if(!d.ok){if(!silent)card.innerHTML='<div class="hint">加载失败</div>';return;}
+    const staleH=d.stale_hours||{};
+    const loginWarn=d.login_warnings||{};
+    const warnBar=document.getElementById('loginWarnBar');
+    if(warnBar){if(loginWarn.length){warnBar.style.display='block';warnBar.innerHTML='⚠️ 登录态可能过期（'+loginWarn.length+' 个平台超12h未同步）：'+loginWarn.join('、')+'，请检查登录';}else{warnBar.style.display='none';}}
+    if(!d.ok){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>';return;}
     const ps=d.platforms||{};
     const order=(Array.isArray(d.order)&&d.order.length===9)?d.order:['douyin','xiaohongshu','kuaishou','shipinhao','bilibili','youtube','facebook','tiktok','x'];
     const synced=order.filter(k=>ps[k]&&ps[k].status==='ok').length;
@@ -689,7 +743,7 @@ async function renderMatrix(silent){
       const p=ps[k]||{};
       const st=p.status==='ok'?'#4ade80':(p.status==='error'?'#f87171':'#fbbf24');
       const vids=(p.videos||[]).slice(0,5).map(v=>`<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:center">
-        ${v.cover?`<img src="${mimg(v.cover)}" referrerpolicy="no-referrer" style="width:64px;height:36px;object-fit:cover;border-radius:4px" loading="lazy" onerror="this.style.display='none'">`:''}
+        ${v.cover?`<img src="${mimg(v.cover)}" referrerpolicy="no-referrer" style="width:64px;height:36px;object-fit:cover;border-radius:4px" loading="lazy" onerror="imgErr(this)">`:''}
         <div style="flex:1;min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.pinned?'📌 ':''}${v.url?`<a href="${esc(v.url)}" target="_blank" style="color:inherit">${esc(v.title||'—')}</a>`:esc(v.title||'—')}</div>
         <div class="hint">${v.views!=null?'▶'+Number(v.views).toLocaleString()+' ':''}${v.likes!=null?'♥'+Number(v.likes).toLocaleString():''}</div></div></div>`).join('');
       const cmts=(p.comments||[]).slice(0,5).map((c,i)=>`<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
@@ -700,12 +754,12 @@ async function renderMatrix(silent){
         ${c.replied?'':`<a href="javascript:void(0)" onclick="document.getElementById('mr-${k}-${i}').style.display='block';this.style.display='none'" style="font-size:12px">回复</a>`}
       </div>`).join('');
       return `<div style="border:1px solid var(--border);border-radius:8px;min-width:0;overflow:hidden;display:flex;flex-direction:column;max-height:640px">
-        ${p.cover?`<img src="${mimg(p.cover)}" referrerpolicy="no-referrer" style="width:100%;height:84px;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">`:''}
+        ${p.cover?`<img src="${mimg(p.cover)}" referrerpolicy="no-referrer" style="width:100%;height:84px;object-fit:cover;flex-shrink:0" loading="lazy" onerror="imgErr(this)">`:''}
         <div style="padding:10px 10px 0;flex-shrink:0">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-          ${p.avatar?`<img src="${mimg(p.avatar)}" referrerpolicy="no-referrer" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">`:''}
+          ${p.avatar?`<img src="${mimg(p.avatar)}" referrerpolicy="no-referrer" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="imgErr(this)">`:''}
           <div style="flex:1;min-width:0"><b>${esc(p.name||k)}</b> <span style="font-size:11px;color:${st}">●</span>
-          <div class="hint" style="font-size:11px">${esc(p.channel||'')}${p.cluster?' · '+esc(p.cluster):''} · ${ago(p.synced_at)}</div></div>
+          <div class="hint" style="font-size:11px">${esc(p.channel||'')}${p.cluster?' · '+esc(p.cluster):''} · ${ago(p.synced_at)}${(staleH[k]||0)>6?` <span style="color:#f87171">· ${staleH[k]}h未同步</span>`:''}</div></div>
         </div>
         ${p.description?`<div style="font-size:12px;color:var(--muted);margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(p.description)}</div>`:''}
         </div>
@@ -738,7 +792,7 @@ async function renderMatrix(silent){
     }catch(e){}
     card.innerHTML=queueHtml+`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${tiles}</div>
       <div class="hint" style="margin-top:6px;font-size:11px">更新于 ${esc((d.updated_at||'').slice(0,19).replace('T',' '))} · 回复经人工批准后发出（09:00/21:00 批量）</div>`;
-  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败</div>'}
+  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}
 }
 async function brandingSubmit(platform){
   const desc=(document.getElementById('bd-'+platform)||{}).value||'';
@@ -964,12 +1018,25 @@ async function runTerm(){
   if(termBusy)return;
   const inp=document.getElementById('termIn'),cmd=inp.value.trim();
   if(!cmd)return;
+  // 2026-10-13 安全加固：/api/exec 需访问令牌（内容见服务端 /home/hatch/.perpetua_exec_token）
+  let tk=localStorage.getItem('perpetua-exec-token-v1')||'';
+  if(!tk){
+    tk=(prompt('终端需要访问令牌\n（服务器 /home/hatch/.perpetua_exec_token 的内容）')||'').trim();
+    if(!tk){termPrint('<div class="exit-bad">已取消：未提供令牌</div>');return;}
+    localStorage.setItem('perpetua-exec-token-v1',tk);
+  }
   termHist.push(cmd);termHi=termHist.length;inp.value='';termBusy=true;
   termPrint(`<div class="cmd"><span class="prompt">perpetua:/home/hatch/data$</span> ${esc(cmd)}</div>`);
   termPrint(`<div class="running" id="termRun">running…</div>`);
   try{
-    const r=await api('/api/exec',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})});
+    const resp=await fetch('/api/exec',{method:'POST',headers:{'Content-Type':'application/json','X-Exec-Token':tk},body:JSON.stringify({command:cmd})});
     document.getElementById('termRun')?.remove();
+    if(resp.status===401){
+      localStorage.removeItem('perpetua-exec-token-v1');
+      termPrint('<div class="exit-bad">令牌无效，已清除，请重新输入</div>');
+      termBusy=false;return;
+    }
+    const r=await resp.json();
     if(r.blocked)termPrint(`<pre style="color:var(--red)">${esc(r.output)}</pre><div class="exit-bad">exit 126 · BLOCKED</div>`);
     else{termPrint(`<pre>${esc(r.output||'(无输出)')}${r.truncated?'\n...[truncated]':''}</pre><div class="${r.exit_code===0?'exit-ok':'exit-bad'}">exit ${r.exit_code}</div>`)}
 }catch(e){document.getElementById('termRun')?.remove();termPrint(`<div class="exit-bad">请求失败</div>`)}
