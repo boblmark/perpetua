@@ -478,7 +478,8 @@ def dynamic_review_budget_cap():
     except Exception:
         queue = []
     demand = sum(1 for i in queue
-                 if i.get("status") in ("selected", "rewrite_round1", "rewrite_round2")
+                 if i.get("status") in ("selected", "review_failed",
+                                        "rewrite_round1", "rewrite_round2")
                  and not i.get("urgent"))
     return max(DYNAMIC_BUDGET_FLOOR, min(DYNAMIC_BUDGET_CEIL, int(demand * 1.25) + 2))
 

@@ -1,0 +1,105 @@
+扫描 cron 文件: 118
+agent 平台任务: 97
+翻译成功: 92
+跳过: 5
+
+== 跳过明细 ==
+  ask-studio-health-check: disabled
+  pilot1-collect: disabled
+  semantica-tunnel-keepalive: disabled
+  v51-midnight-upload: disabled
+  arena-dispatch-retry: disabled
+
+== 任务清单 ==
+  agent-browser-keepalive: interval:5m owner=goal:karenvsai prompt=580字 timeout=270s
+  agents-md-lesson-sweep: daily:00:30 owner=goal:karenvsai prompt=1235字 timeout=900s
+  ai-trend-radar: daily:07:49 owner=goal:karenvsai prompt=703字 timeout=900s
+  aistudio-monthly-spec: monthly:1-10:49 owner=goal:karenvsai prompt=1120字 timeout=900s
+  anomaly-watchdog: interval:30m owner=goal:karenvsai prompt=430字 timeout=900s
+  arena-jury-auto: interval:6h owner=goal:karenvsai prompt=606字 timeout=900s
+  ask-studio-daily: daily:08:49 owner=goal:karenvsai prompt=1610字 timeout=900s
+  ask-studio-queue-processor: interval:30m owner=goal:karenvsai prompt=2635字 timeout=900s
+  brain-council-main-scan: interval:15m owner=goal:automatic-collaboration-channel-with-tencent-marvis prompt=2306字 timeout=870s
+  branding-request-watch: interval:30m owner=goal:karenvsai prompt=436字 timeout=900s
+  bypass-audit-watch: interval:2h owner=goal:karenvsai prompt=580字 timeout=900s
+  commander-chat-processor: interval:2m owner=goal:karenvsai prompt=623字 timeout=180s
+  comment-topic-miner: weekly:1-09:00 owner=goal:karenvsai prompt=353字 timeout=900s
+  competitor-breakout-watch: interval:6h owner=goal:karenvsai prompt=551字 timeout=900s
+  competitor-weekly-collect: weekly:1-09:00 owner=goal:karenvsai prompt=285字 timeout=900s
+  competitor-weekly-review: weekly:1-09:00 owner=goal:karenvsai prompt=328字 timeout=900s
+  council-auto-executor: interval:10m owner=goal:karenvsai prompt=624字 timeout=570s
+  council-auto-watch: interval:30m owner=goal:karenvsai prompt=346字 timeout=900s
+  daily-65-report: daily:08:49 owner=goal:karenvsai prompt=298字 timeout=900s
+  daily-evolution: daily:23:30 owner=goal:karenvsai prompt=504字 timeout=900s
+  daily-evolution-council: daily:23:45 owner=goal:karenvsai prompt=686字 timeout=900s
+  daily-topic-feedback: daily:09:00 owner=goal:karenvsai prompt=462字 timeout=900s
+  dead-data-sweep: interval:1h owner=goal:karenvsai prompt=297字 timeout=900s
+  dead-state-watchdog: interval:30m owner=goal:karenvsai prompt=295字 timeout=900s
+  decision-watchdog: interval:1h owner=goal:post-incident-agent-safety-hardening prompt=292字 timeout=900s
+  dispatch-lifeline-watch: interval:10m owner=goal:karenvsai prompt=409字 timeout=570s
+  douyin-anomaly-watch: daily:09:49 owner=goal:douyin-top-10-channel-buildout prompt=1092字 timeout=900s
+  douyin-competitor-breakout-watch: daily:09:49 owner=goal:karenvsai prompt=725字 timeout=900s
+  douyin-own-video-monitor: daily:08:49 owner=goal:douyin-top-10-channel-buildout prompt=1144字 timeout=900s
+  ep1-sniper-48h-review: runonce owner=goal:youtube-ypp prompt=610字 timeout=900s
+  ep1-sniper-7d-review: runonce owner=goal:youtube-ypp prompt=430字 timeout=900s
+  evaluator-48h-hourly: interval:1h owner=goal:karenvsai prompt=559字 timeout=900s
+  facebook-cli-watch: interval:1h owner=goal:karenvsai prompt=386字 timeout=900s
+  facebook-reels-browser-post: daily:20:00 owner=goal:karenvsai prompt=807字 timeout=900s
+  facebook-vm-monitor: interval:6h owner=goal:karenvsai prompt=409字 timeout=900s
+  gemini-semantic-review: interval:30m owner=goal:karenvsai prompt=2713字 timeout=900s
+  geminigen-oauth-retry: interval:6h owner=goal:geminigen-cgb2025-funded-account-recovery prompt=487字 timeout=900s
+  handoff-package-refresh: daily:04:49 owner=- prompt=235字 timeout=900s
+  heartbeat: interval:30m owner=- prompt=46字 timeout=900s
+  https-ready-notify: interval:10m owner=- prompt=307字 timeout=570s
+  kb-staging-review: interval:30m owner=goal:karenvsai prompt=552字 timeout=900s
+  lmarena-weekly-jury: weekly:1-10:49 owner=goal:karenvsai prompt=900字 timeout=900s
+  local-chrome-keepalive: interval:5m owner=- prompt=258字 timeout=270s
+  marvis-upload-audit: interval:6h owner=goal:youtube-ypp prompt=488字 timeout=900s
+  matrix-sync-ondemand: interval:5m owner=goal:karenvsai prompt=2659字 timeout=270s
+  mcp-media-job-processor: interval:10m owner=goal:automatic-collaboration-channel-with-tencent-marvis prompt=3158字 timeout=570s
+  mcp-watchdog: interval:5m owner=goal:automatic-collaboration-channel-with-tencent-marvis prompt=206字 timeout=270s
+  morning-topic-replenish: daily:08:00 owner=goal:karenvsai prompt=707字 timeout=900s
+  musemain-autodispatch: interval:30m owner=goal:karenvsai prompt=436字 timeout=900s
+  musemain-fallback-daemon: interval:5m owner=goal:karenvsai prompt=476字 timeout=270s
+  nano-webui-18737-keepalive: interval:5m owner=- prompt=418字 timeout=270s
+  nanomuse-mcp-tunnel-keepalive: interval:5m owner=- prompt=348字 timeout=270s
+  nanomuse-serve-keepalive: interval:5m owner=- prompt=348字 timeout=270s
+  notebook-weekly-sync: weekly:0-09:00 owner=goal:karenvsai prompt=717字 timeout=900s
+  oa-voice-reminder: interval:30m owner=goal:karenvsai prompt=1321字 timeout=900s
+  oa-watchdog: interval:5m owner=goal:karenvsai prompt=185字 timeout=270s
+  pending-pickup-watchdog: interval:30m owner=goal:karenvsai prompt=566字 timeout=900s
+  perception-server-keepalive: interval:5m owner=- prompt=320字 timeout=270s
+  perpetua-dashboard-refresh: interval:30m owner=space:perpetua-dashboard prompt=80字 timeout=900s
+  perpetua-deep-dive-weekly: daily:23:49 owner=goal:karenvsai prompt=923字 timeout=900s
+  perpetua-pipeline-orchestrator: interval:30m owner=goal:karenvsai prompt=411字 timeout=900s
+  perpetua-windows-build-watch: interval:10m owner=- prompt=145字 timeout=570s
+  pipeline-failed-cleanup: daily:06:49 owner=goal:karenvsai prompt=389字 timeout=900s
+  platform-browser-fallback-watch: interval:5m owner=goal:karenvsai prompt=235字 timeout=270s
+  platform-matrix-sync: interval:1h owner=goal:karenvsai prompt=3002字 timeout=900s
+  platform-session-keepalive: interval:6h owner=goal:karenvsai prompt=2353字 timeout=900s
+  publish-health-watch: interval:30m owner=goal:karenvsai prompt=294字 timeout=900s
+  relay-18080-keepalive: interval:5m owner=goal:karenvsai prompt=427字 timeout=270s
+  retention-closed-loop: daily:03:49 owner=goal:karenvsai prompt=536字 timeout=900s
+  semantica-nightly-ingest: daily:02:00 owner=goal:karenvsai prompt=2001字 timeout=900s
+  sequel-candidates-refresh: daily:07:49 owner=goal:karenvsai prompt=433字 timeout=900s
+  sheet-daily-maintainer: daily:23:49 owner=goal:youtube-ypp prompt=532字 timeout=900s
+  sqlite-hourly-backup: interval:1h owner=goal:karenvsai prompt=117字 timeout=900s
+  strategy-c-scout: interval:6h owner=goal:perpetua-cross-platform-auto-distributor prompt=542字 timeout=900s
+  teaser-validation: interval:30m owner=goal:karenvsai prompt=645字 timeout=900s
+  tianshu-console-keepalive: interval:5m owner=- prompt=499字 timeout=270s
+  title-spec-30day-tripwire: runonce owner=goal:karenvsai prompt=312字 timeout=900s
+  trend-spike-watch: interval:1h owner=goal:karenvsai prompt=360字 timeout=900s
+  tunnel-18738-keepalive: interval:5m owner=- prompt=149字 timeout=270s
+  tunnel-18901-keepalive: interval:5m owner=- prompt=774字 timeout=270s
+  tunnel-8734-keepalive: interval:5m owner=goal:automatic-collaboration-channel-with-tencent-marvis prompt=299字 timeout=270s
+  tunnel-nano-keepalive: interval:5m owner=- prompt=344字 timeout=270s
+  verb-pool-weekly-review: weekly:1-09:49 owner=goal:karenvsai prompt=956字 timeout=900s
+  viralloop-oa-refresh: interval:30s owner=space:viralloop-oa prompt=80字 timeout=900s
+  viralloop-page-retry: interval:4h owner=goal:viralloop-company-facebook-page-setup prompt=1610字 timeout=900s
+  vps-daily-cleanup: daily:04:49 owner=goal:karenvsai prompt=419字 timeout=900s
+  vps-traffic-watch: daily:09:49 owner=goal:karenvsai prompt=436字 timeout=900s
+  wechat-daily-digest: daily:22:00 owner=- prompt=325字 timeout=900s
+  youtube-align-weekly: weekly:1-09:49 owner=goal:karenvsai prompt=502字 timeout=900s
+  ypp-daily-tracker: daily:20:49 owner=goal:youtube-ypp prompt=876字 timeout=900s
+  zbj-quota-monitor: daily:09:49 owner=goal:zbj-seller-workbench-category-expansion prompt=286字 timeout=900s
+  zero-view-watch: interval:2h owner=goal:karenvsai prompt=362字 timeout=900s
