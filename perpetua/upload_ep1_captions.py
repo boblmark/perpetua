@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Upload EP1 English captions to x-os38-ph_Y via YouTube captions API (multipart/related).
+"""Upload EP1 English captions to x-os38-ph_Y via YouTube captions API (resumable upload).
 Reuses /home/hatch/data/youtube/yt_upload.py auth + relay pattern. No new deps.
 Reversible: the inserted track can be removed with captions.delete.
+注（2026-10-16 实测）：multipart/related 一步上传在此账号恒报 400 invalid metadata，
+改用 resumable 两步（init→PUT）一次成功。
 """
 import json, os, sys, urllib.request, urllib.error
 
@@ -11,7 +13,7 @@ from yt_upload import _load, _refresh
 from relay import urlopen as _urlopen
 
 VIDEO_ID = "x-os38-ph_Y"
-SRT = "/home/hatch/data/perpetua/ai_unhinged/ep1/build/ep1.srt"
+SRT = "/home/hatch/data/perpetua/ep1_qc/ep1_subtitles.srt"  # 2026-10-14 QC 版（349 条），替代 10-10 build 旧版
 
 def api(token, url, method="GET", data=None, headers=None):
     h = {"Authorization": f"Bearer {token}"}
@@ -52,18 +54,28 @@ def main():
     meta = json.dumps({"snippet": {"videoId": VIDEO_ID, "language": "en",
                                    "name": "English", "isDraft": False}}).encode()
     srt_bytes = open(SRT, "rb").read()
-    boundary = "CAPSEP_9f3a2b1c"
-    body = (b"--" + boundary.encode() + b"\r\n"
-            b"Content-Type: application/json; charset=UTF-8\r\n\r\n" + meta + b"\r\n"
-            b"--" + boundary.encode() + b"\r\n"
-            b"Content-Type: application/x-subrip\r\n\r\n" + srt_bytes + b"\r\n"
-            b"--" + boundary.encode() + b"--\r\n")
+    # resumable 两步上传：先 init 拿 session URI，再 PUT 文件体
     try:
-        res = api(tok, "https://www.googleapis.com/upload/youtube/v3/captions?part=snippet",
-                  method="POST", data=body,
-                  headers={"Content-Type": f"multipart/related; boundary={boundary}"})
-    except RuntimeError as e:
-        print(json.dumps({"ok": False, "stage": "insert", "error": str(e)[:800],
+        init_req = urllib.request.Request(
+            "https://www.googleapis.com/upload/youtube/v3/captions?part=snippet&uploadType=resumable",
+            data=meta, method="POST",
+            headers={"Authorization": f"Bearer {tok}",
+                     "Content-Type": "application/json; charset=UTF-8",
+                     "X-Upload-Content-Type": "text/plain",
+                     "X-Upload-Content-Length": str(len(srt_bytes))})
+        with _urlopen(init_req, timeout=60) as ir:
+            session_uri = ir.headers.get("Location")
+        if not session_uri:
+            raise RuntimeError("resumable init 未返回 Location")
+        put_req = urllib.request.Request(
+            session_uri, data=srt_bytes, method="PUT",
+            headers={"Content-Type": "text/plain",
+                     "Content-Length": str(len(srt_bytes))})
+        with _urlopen(put_req, timeout=120) as pr:
+            res = json.load(pr)
+    except (urllib.error.HTTPError, RuntimeError) as e:
+        err = e.read().decode(errors="replace")[:800] if isinstance(e, urllib.error.HTTPError) else str(e)[:800]
+        print(json.dumps({"ok": False, "stage": "insert", "error": err,
                           "tracks_before": existing}))
         return
     verify = api(tok, f"https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId={VIDEO_ID}")["items"]

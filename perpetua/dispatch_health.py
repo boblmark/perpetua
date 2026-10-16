@@ -160,6 +160,11 @@ def check_geminigen():
           ".catch(e=>'ERR:'+e.message)")
     b64 = base64.b64encode(js.encode()).decode()
     out, rc = ssh(f"{base} eval -b {b64}", timeout=40)
+    if rc != 0 or out.startswith("SSH_ERR"):
+        # 探针偶发 eval 失败（2026-10-16 实测：连续两次失败后第三次 OK，服务本身健康），
+        # 重试一次再判，避免把检查器抖动误报成 SUSPECT。
+        _time.sleep(5)
+        out, rc = ssh(f"{base} eval -b {b64}", timeout=40)
     out = out.strip().strip('"')
     if rc != 0 or out.startswith("SSH_ERR"):
         return _suspect("check_geminigen", "geminigen", f"探针 eval 失败: {out[:80]}",
