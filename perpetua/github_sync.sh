@@ -45,10 +45,14 @@ if [ "$DRY" = "--dry-run" ]; then
   python3 "$SRC/github_push_api.py" "$REPO" "auto-sync $DATE" --dry-run
   exit 0
 fi
+# 失败标记：推送失败时立 flag，下次 install-package-sync 即使无代码漂移也会重试推送
+PENDING_FLAG="$SRC/.github_push_pending"
 NEW_SHA=$(python3 "$SRC/github_push_api.py" "$REPO" "auto-sync $DATE") || {
-  echo "[github] API 推送失败，本地镜像已就绪，下次重试"
+  echo "[github] API 推送失败，本地镜像已就绪，已立 flag 下次重试"
+  touch "$PENDING_FLAG"
   exit 1
 }
+rm -f "$PENDING_FLAG"
 if [ "$NEW_SHA" = "NO_CHANGES" ]; then
   # plan 行已由 push 脚本打印
   exit 0
