@@ -6,6 +6,9 @@
 # 触发：build_install_package.sh 构建末尾自动调用；也可手动 ./github_sync.sh [--dry-run]
 # 幂等：远端已是最新时零写操作。
 set -e
+# 定锚 cwd：调用方（build_install_package.sh）可能刚删掉自己的 TMPDIR，
+# 此时 cwd 悬空，Python 启动会 FileNotFoundError。先落到安全目录。
+cd /home/hatch 2>/dev/null || cd /
 SRC=/home/hatch/data/perpetua
 REPO=$SRC/repo
 MIRROR=$REPO/perpetua
