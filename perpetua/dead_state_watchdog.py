@@ -209,7 +209,9 @@ def check_pipeline_stuck():
     # transient 失败：review_timeout, review_error, generate_failed, qc_failed, qc_error
     #   → 超 2 小时未动 → review_timeout 自动重送，其他告警
     TRANSIENT = {"review_timeout", "review_error", "generate_failed",
-                 "qc_failed", "qc_error", "selected", "generating"}
+                 "qc_failed", "qc_error", "selected", "job_submitted"}
+    # 注："generating" 已移除——全库无任何写入点（2026-10-16 P1-3），列入 TRANSIENT
+    # 只是死条目；"job_submitted" 新增——dispatcher 在途任务无看门狗覆盖。
     issues = []
     auto_fixed = []
     q = queue_db.pipeline_load()  # D20261011-001 P1: pipeline_queue 已迁 SQLite
@@ -246,7 +248,10 @@ def check_pipeline_stuck():
         if not updated:
             continue
         age_h = (now() - updated).total_seconds() / 3600
-        if age_h < 2:
+        # 2026-10-16 P1-3：job_submitted 用 6h 门限（dispatcher 任务正常数分钟~数小时；
+        # 2h 对它太激进），其他 TRANSIENT 保持 2h
+        _min_age = 6 if st == "job_submitted" else 2
+        if age_h < _min_age:
             continue
         topic = it.get("topic", "?")
         # 2026-10-09：selected + 6h 内触发过评审 = 等评审结果中，不是卡死，跳过
@@ -257,10 +262,21 @@ def check_pipeline_stuck():
                 continue
         if st == "review_timeout":
             # 自动重送：重置为 selected，清除超时标记，下一轮 review 会重新处理
+            # 2026-10-16 P2-2 修（四脑议会 anti-idle）：auto_resubmitted 上限 3，
+            # 超限转归档 + issues 告警（经调用方进 inbox），不再无限重送
+            _resub = int(it.get("auto_resubmitted", 0) or 0)
+            if _resub >= 3:
+                it["status"] = "archived"
+                it["archive_reason"] = "review_resubmit_cap:3次自动重送仍无评审答案"
+                it["updated_at"] = now().isoformat()
+                issues.append(
+                    f"pipeline_queue 归档：{topic} 评审自动重送已达 3 次上限仍无答案，转人工")
+                changed = True
+                continue
             it["status"] = "selected"
             it.pop("review_timeout_at", None)
             it["updated_at"] = now().isoformat()
-            it["auto_resubmitted"] = it.get("auto_resubmitted", 0) + 1
+            it["auto_resubmitted"] = _resub + 1
             changed = True
             auto_fixed.append(f"{topic}（review_timeout {age_h:.1f}h → 已自动重送评审）")
         else:

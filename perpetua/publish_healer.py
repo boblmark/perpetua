@@ -157,19 +157,68 @@ def _run_collect():
 
 
 def _retry_stuck_generating(items):
-    """transient 生成卡死打回 PENDING 重试。返回打回的 topic 列表。"""
+    """卡死生成项打回重试。返回打回的 topic 列表。
+
+    2026-10-16 P0 修（四脑议会 anti-idle）：原先打回 status="pending"，但 pipeline_queue
+    的 "pending" 没有任何生产阶段读取 → 静默丢片。现按精确状态打回已有消费者：
+    generating → review_passed（主流程，评审已过；生成侧 retry_count<2 兜底）；
+    teaser_generating → teaser_validation（走 teaser 自己的提交流，不进主评审）。
+    红队 KILL 对冲：已有 video_id/teaser_video_id 的永不打回（防重复上传）；同一条目
+    第 3 次打回转升级。
+    """
     import queue_db
-    # 用 _row_key 定位行：load 出来的 dict 带 _row_key（v2 upsert 保证）
     retried = []
+    escalated = []
     changed = [dict(x) for x in items]
     for x in changed:
-        if x.get("status") in ("generating", "teaser_generating"):
-            x["status"] = "pending"
-            x["note"] = (x.get("note") or "") + " [healer: stuck>6h 打回重试]"
-            retried.append(x.get("topic"))
-    if retried:
+        st = x.get("status")
+        if st not in ("generating", "teaser_generating"):
+            continue
+        jid = x.get("job_id") or x.get("topic", "")
+        # 已发布过的永不打回：状态可能丢了，重生成=重复上传
+        if x.get("video_id") or x.get("teaser_video_id"):
+            escalated.append(jid)
+            _healer_escalate_item(
+                x, "healer_retarget_refused_published",
+                "条目已有 video_id 但状态仍为 %s，打回会重复上传，转人工" % st)
+            continue
+        n = int(x.get("healer_retarget_count", 0) or 0)
+        if n >= 2:
+            escalated.append(jid)
+            _healer_escalate_item(
+                x, "healer_retarget_cap",
+                "同一条目第 3 次打回，转升级不再打回")
+            continue
+        old_st = st
+        new_st = "review_passed" if st == "generating" else "teaser_validation"
+        x["status"] = new_st
+        x["healer_retarget_count"] = n + 1
+        x["note"] = (x.get("note") or "") + " [healer: stuck>6h %s→%s 第%d次]" % (
+            old_st, new_st, n + 1)
+        # 结构化日志：id/old/new/count（红队 WATCH-8：确认打回可观测）
+        print("[healer][retarget] id=%s old=%s new=%s count=%d" % (
+            jid, old_st, new_st, n + 1))
+        retried.append(x.get("topic"))
+    if retried or escalated:
         queue_db.pipeline_save(changed)
     return retried
+
+
+def _healer_escalate_item(item, condition, detail):
+    """单条目升级：写 escalation inbox（graded_assertions，自带 12h 去重+风暴限流）。"""
+    try:
+        import os as _os, sys as _sys
+        _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+        from graded_assertions import escalate
+        escalate(
+            checker="publish_healer",
+            subject=str(item.get("topic", ""))[:40],
+            condition=condition,
+            severity="P2",
+            detail="%s | job_id=%s" % (detail[:160], str(item.get("job_id", ""))[:40]),
+        )
+    except Exception as e:
+        print("[healer][escalate][error] 升级写入失败: %s" % str(e)[:80])
 
 
 def remediate(diag):

@@ -387,14 +387,33 @@ def collect_teaser_results():
                     plog("collect", "ok", "B' 限流仍在，发布继续推迟 %s：%s"
                          % (topic30, breason2))
                     continue
-                vid = _upload_public(vf, item.get("title", ""),
-                                     item.get("description", ""),
-                                     item.get("topic", ""))
+                # 2026-10-16 P2-5 修（四脑议会 anti-idle）：defer 72h 年龄上限
+                _defer_at = item.get("teaser_publish_deferred_at", "")
+                try:
+                    _ddt = datetime.fromisoformat(str(_defer_at).replace("Z", "+00:00"))
+                    _dh = (datetime.now(timezone.utc) - _ddt).total_seconds() / 3600 \
+                        if _ddt.tzinfo else 0
+                except Exception:
+                    _dh = 0
+                if _dh > 72:
+                    item["status"] = "teaser_failed"
+                    item["teaser_error"] = "defer_72h_exceeded:B' 限流推迟超 72h"
+                    item.pop("teaser_publish_deferred", None)
+                    item.pop("teaser_publish_deferred_at", None)
+                    plog("collect", "error", "teaser 推迟超 72h 转失败 %s" % topic30)
+                    _escalate_publish_blocked(item, item["teaser_error"], "deferred_timeout")
+                    changed = True
+                    continue
+                # 2026-10-16 P2-4 修：用 with_reason 版，保留拒绝原文
+                vid, _reason = _upload_public_with_reason(
+                    vf, item.get("title", ""),
+                    item.get("description", ""),
+                    item.get("topic", ""))
                 item.pop("teaser_publish_deferred", None)
                 item.pop("teaser_publish_deferred_at", None)
                 if not vid:
                     item["status"] = "teaser_failed"
-                    item["teaser_error"] = "公开发布失败"
+                    item["teaser_error"] = "公开发布失败: " + str(_reason)[:300]
                     plog("collect", "error", "teaser 发布失败 %s" % topic30)
                 else:
                     item["status"] = "teaser_published"
@@ -486,12 +505,14 @@ def collect_teaser_results():
                  % (item.get("topic", "")[:30], breason))
             changed = True
             continue
-        vid = _upload_public(video_file, item.get("title", ""),
-                             item.get("description", ""),
-                             item.get("topic", ""))
+        # 2026-10-16 P2-4 修：用 with_reason 版，保留拒绝原文
+        vid, _reason = _upload_public_with_reason(
+            video_file, item.get("title", ""),
+            item.get("description", ""),
+            item.get("topic", ""))
         if not vid:
             item["status"] = "teaser_failed"
-            item["teaser_error"] = "公开发布失败"
+            item["teaser_error"] = "公开发布失败: " + str(_reason)[:300]
             changed = True
             continue
         item["status"] = "teaser_published"

@@ -464,6 +464,75 @@ def _suspect_review(topic, qid, reason, detail):
                 ttl_key="review_answer", checker_health={"probe_ok": True})
 
 
+def _maybe_auto_clear_stale_qid(item, topic):
+    """2026-10-16 P1-1（四脑议会 anti-idle）：stale qid 自动清理。
+
+    qid 触发超过 STALE_QID_CLEAR_AFTER_H（3h）仍无任何答案 → 把 review_qid 备份到
+    review_qid_stale 后清空，本条目下个预算周期重新送审（仍须过 Ask Studio≥85 门）。
+    同一条目最多自动清理 2 次，第 3 次转 _suspect_review 升级。
+    返回 True=本轮已处理（调用方应 continue）。
+    """
+    STALE_QID_CLEAR_AFTER_H = 3
+    STALE_QID_MAX_CLEARS = 2
+    trig = item.get("review_triggered_at")
+    try:
+        trig_dt = datetime.fromisoformat(str(trig))
+        if trig_dt.tzinfo is None:
+            trig_dt = trig_dt.replace(tzinfo=timezone.utc)
+        age_h = (datetime.now(timezone.utc) - trig_dt).total_seconds() / 3600
+    except Exception:
+        return False
+    if age_h < STALE_QID_CLEAR_AFTER_H:
+        return False
+    clears = int(item.get("review_qid_auto_clears", 0) or 0)
+    qid = item.get("review_qid")
+    if clears >= STALE_QID_MAX_CLEARS:
+        _suspect_review(topic, qid, "stale_qid_cap",
+                        f"qid {qid} {age_h:.1f}h 无答案，已达 {STALE_QID_MAX_CLEARS} 次自动清理上限，转人工")
+        pipeline_log("select", "error",
+                     f"qid {age_h:.1f}h 无答案达清理上限，转人工: {topic}", 0)
+        return True
+    item["review_qid_stale"] = qid
+    item["review_qid"] = None
+    item["review_qid_auto_clears"] = clears + 1
+    item["review_auto_cleared"] = True
+    pipeline_log("select", "ok",
+                 f"qid {age_h:.1f}h 无答案，自动清理第{clears + 1}次备重审: {topic}", 0)
+    return True
+
+
+def _gen_poll_tick(item, backend):
+    """2026-10-16 P1-3（四脑议会 anti-idle）：生成轮询计数。
+
+    每轮 collect 对在途任务调用一次；超 72 轮（约 24h @20min 频率，红队 WATCH-4：
+    若轮询频率变更，此阈值需同步调整）→ 升级一次并标记，不再重复升级。
+    返回 True=本轮已达上限（调用方可继续等待，升级已记）。
+    """
+    pc = int(item.get("gen_poll_count", 0) or 0) + 1
+    item["gen_poll_count"] = pc
+    if pc > 72 and not item.get("gen_poll_escalated"):
+        item["gen_poll_escalated"] = True
+        detail = f"{backend} 在途任务 {pc} 轮（约 24h）仍未完成，dispatcher/thread 可能 hung"
+        try:
+            if ga is not None:
+                ga.escalate("auto_pipeline.generate",
+                            str(item.get("topic", ""))[:40],
+                            "stuck_generation", severity="P2", detail=detail,
+                            evidence_ts=ga.utcnow(), ttl_key="gen_poll")
+        except Exception:
+            pass
+        pipeline_log("generate", "error",
+                     f"生成 hung 升级: {item.get('topic')} {detail}", 0)
+        return True
+    return False
+
+
+def _gen_poll_reset(item):
+    """任务终结（done/failed）时清轮询计数。"""
+    item.pop("gen_poll_count", None)
+    item.pop("gen_poll_escalated", None)
+
+
 # ---------------- 重审闭环（D20261015-009，四脑议会） ----------------
 # 评审预算：动态（2026-10-15 用户要求：不固定，按实际需求浮动）
 # 需求=待审条目数；预算=需求+25%余量；下限8（保底）、上限24（防失控）
@@ -714,6 +783,13 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
                     item["status"] = "review_timeout"
                     pipeline_log("select", "error", f"终审超时: {topic}", 0)
                 else:
+                    # 2026-10-16 P1-1 修（四脑议会 anti-idle）：_pickup_only 且 qid
+                    # 触发超过 3h 仍无答案 → stale qid 自动清理（备份→清空），下个
+                    # 预算周期重新送审。2 次上限后转升级。红队 WEAKEN 对冲：重审仍
+                    # 须过 Ask Studio≥85 门，不存在"自批"；review_auto_cleared 留痕。
+                    if _pickup_only and _maybe_auto_clear_stale_qid(item, topic):
+                        changed = True
+                        continue
                     pipeline_log("select", "ok", f"已送审待答案: {topic}", 0)
                 changed = True
                 continue
@@ -897,6 +973,9 @@ def collect_musemain_results(queue):
         rp = os.path.join(MCP_DONE, jid + ".result.json")
         if os.path.exists(rp):
             continue
+        # 2026-10-16 P1-3：轮询计数（超 72 轮约 24h → 升级）
+        _gen_poll_tick(item, "musemain")
+        changed = True
         try:
             state, info = gvm.check(muse_jid)
         except Exception as e:
@@ -904,6 +983,7 @@ def collect_musemain_results(queue):
                          f"muse-main 轮询异常 {item.get('topic')}: {e}", 0)
             continue  # transient，下轮重试
         if state == "done":
+            _gen_poll_reset(item)
             sys.path.insert(0, "/home/hatch/data/perpetua")
             from atomic_json import atomic_write as _aw2
             _aw2(rp, {"status": "done", "file": info, "backend": "musemain",
@@ -912,6 +992,7 @@ def collect_musemain_results(queue):
                          f"muse-main 取回 {item.get('topic')} → {os.path.basename(info)}", 1)
             changed = True
         elif state == "failed":
+            _gen_poll_reset(item)
             sys.path.insert(0, "/home/hatch/data/perpetua")
             from atomic_json import atomic_write as _aw3
             _aw3(rp, {"status": "error", "error": info, "backend": "musemain",
@@ -950,6 +1031,9 @@ def collect_nano_results(queue):
         rp = os.path.join(MCP_DONE, jid + ".result.json")
         if os.path.exists(rp):
             continue
+        # 2026-10-16 P1-3：轮询计数（超 72 轮约 24h → 升级）
+        _gen_poll_tick(item, "nano")
+        changed = True
         try:
             nano = _bridge.NanoMuseClient()
             # 桥接线程自动批准 pending 的 approval 卡，避免卡在人工确认
@@ -980,6 +1064,7 @@ def collect_nano_results(queue):
         sys.path.insert(0, "/home/hatch/data/perpetua")
         from atomic_json import atomic_write as _aw
         if success and item.get("job_id"):
+            _gen_poll_reset(item)
             # generate_video 期望文件路径
             local_path = file_or_summary.strip()
             if not (local_path and os.path.exists(local_path)):
@@ -997,6 +1082,7 @@ def collect_nano_results(queue):
                 pipeline_log("generate", "error",
                              f"nano 生成无有效文件 {item.get('topic')}", 0)
         else:
+            _gen_poll_reset(item)
             _aw(rp, {"status": "error", "error": file_or_summary[:300],
                      "backend": "nano", "topic": item.get("topic")})
             pipeline_log("generate", "error",
@@ -1280,6 +1366,35 @@ def _enqueue_private_flip(video_id, title, slot=None, review_score=None,
     return entry
 
 
+def _find_recent_upload_by_title(title):
+    """2026-10-16 P2-6（红队 WEAKEN 对冲）：5xx/网络错误可能已在服务端提交，
+    重试前先查频道最近 5 条是否有同标题已发布，防止盲重传导致重复发布。
+    返回 video_id 或 ""。"""
+    import subprocess as _sp
+    try:
+        r = _sp.run(["python3", "/home/hatch/data/youtube/yt.py", "recent", "5"],
+                    capture_output=True, text=True, timeout=60)
+        items = json.loads(r.stdout) if r.stdout.strip() else []
+        norm = lambda s: "".join(str(s).lower().split())
+        nt = norm(title)
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            if norm(it.get("title", "")) == nt and it.get("video_id"):
+                return it["video_id"]
+    except Exception:
+        pass
+    return ""
+
+
+# 网络/API 5xx 类临时错误标记（2026-10-16 P2-6：此类最多重试 2 次再终态；
+# 4xx/鉴权类仍立即终态）
+_TRANSIENT_UPLOAD_MARKERS = (
+    "[error]", "timeout", "timed out", "connection", "temporary",
+    "500", "502", "503", "504", "socket", "ssl", "econnreset", "econnrefused",
+)
+
+
 def _auto_upload_private(item):
     """2026-10-09 新政：QC 通过后自动上传为 private，到点翻 public，无人工终审。
     返回 (ok, retryable)。interval 门禁拒绝 → retryable=True，下一轮 collect 重试。
@@ -1311,6 +1426,7 @@ def _auto_upload_private(item):
         item["video_id"] = video_id
         item["upload_result"] = res[:500]
         item["uploaded_at"] = now_iso()
+        item.pop("upload_retries", None)  # 2026-10-16 P2-6：成功后清重试计数
         # 状态机记录：进入 INTENTIONAL_PRIVATE（经跃迁门）
         try:
             import pipeline_state as ps
@@ -1340,6 +1456,30 @@ def _auto_upload_private(item):
                       "review_score": item.get("review_score")})
         return True, False
     retryable = "gateway:spacing" in res  # 120 分钟间隔门禁 → 下一轮重试
+    # 2026-10-16 P2-6 修（四脑议会 anti-idle）：网络异常/API 5xx 判 transient，
+    # 最多重试 2 次再终态（此前直接进 upload_failed 终态）
+    _rl = str(res).lower()
+    _is_transient = any(m in _rl for m in _TRANSIENT_UPLOAD_MARKERS)
+    if _is_transient and not retryable:
+        # 红队 WEAKEN 对冲：重试前先验重——5xx 可能已在服务端提交
+        _dup_vid = _find_recent_upload_by_title(item["title"])
+        if _dup_vid:
+            pipeline_log("publish", "ok",
+                         f"上传疑似已提交（频道已见同标题 {_dup_vid}），按成功恢复: {item['topic']}", 1)
+            item["status"] = "uploaded_private"
+            item["video_id"] = _dup_vid
+            item["upload_result"] = f"recovered:{_dup_vid}"
+            item["uploaded_at"] = now_iso()
+            item.pop("upload_retries", None)
+            return True, False
+        _ur = int(item.get("upload_retries", 0) or 0)
+        if _ur < 2:
+            item["upload_retries"] = _ur + 1
+            pipeline_log("publish", "ok",
+                         f"自动上传遇临时错误，下轮第{_ur + 1}次重试: {item['topic']}: {res[:100]}", 0)
+            return False, True
+        pipeline_log("publish", "error",
+                     f"自动上传临时错误重试 2 次仍失败，转终态: {item['topic']}", 0)
     if retryable:
         pipeline_log("publish", "ok",
                      f"自动上传被间隔门禁拦下，下一轮重试: {item['topic']}", 0)
