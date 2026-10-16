@@ -1,0 +1,33 @@
+你是陪审团召集人。对以下未公开长视频成片做上线前陪审团预审：
+标题：30 AI Fails, Ranked by Disaster 💀
+描述：Karen watches 30 AI-generated disasters and scores every single one. From physics giving up to a Karen losing an argument with a motor, this is the week in AI fails — ranked, roasted, and given the AI FAIL SCORE they deserve. New episodes every Tuesday.
+
+Timestamps:
+00:00 Cold open
+00:20 Host hook + this week's observation
+00:55 Block 1: Physics gave up
+06:25 Block 2: Karen vs AI (feat. clip #19)
+11:45 Block 3: AI tried to make a movie
+16:55 Block 4: Rapid fire
+21:20 Grand finale: why the 30K-vi
+开场字幕：This week I watched a pile of AI videos so you don't have to. Sora 2, Veo 3.1, Kling. Way too many.
+
+Plenty of them forgot that reality is a rule you're supposed to follow.
+
+One of them made a smoothie commit a war crime. You just saw it.
+
+And clip number nineteen — the one where a Karen gets her own car towed while she's still yelling — that one's been living in my head rent free.
+
+Every clip gets an AI Fail Score. Ten is 'the machine has left the building.' Let's go.
+
+Okay. Real talk, sixty seconds.
+
+Two weeks ago, this channel's distribution fell off a cliff — ninety-nine percent, gone overnight. I published thirteen videos in eight days into complete silence. Single-digit views. Zero comments.
+
+Here's what I learned: the algorithm didn't kill this channel. I did. I was batch-uploading 
+请组织多模型独立评审，给出：
+1. Hook 评分（前30秒，1-10分）+ 具体改进点
+2. 标题评分（1-10分）+ 3个备选标题
+3. 缩略图建议（文字/构图/表情三要素）
+4. 总 verdict：GO（可上线）/ FIX（列出必须改的点）/ HOLD（说明原因）
+只输出结构化结论，不输出过程讨论。

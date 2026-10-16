@@ -43,7 +43,9 @@ SUSPECT_FOREVER_SECONDS = 6 * 3600
 SLA_REESCALATE_SECONDS = 2 * 3600
 SLA_P1_SECONDS = 6 * 3600
 # SUSPECT 风暴限流（R4）：同一 dedup key 的升级合并，指数退避
-STORM_BASE_SECONDS = 1800
+STORM_BASE_SECONDS = 86400  # 24h：同一 subject+condition 未 ack 的升级 24h 内复用同一 escalation ID，
+                           # 不再每轮看门狗新建一条 P1/PAGE（2026-10-16：30min 窗口约等于看门狗周期导致慢性条件每轮建单，风暴）
+                           # N9：去重命中不重置 ack SLA 计时器，sla_due 照常对原记录 T+2h 分页/T+6h 升 P1
 
 
 def utcnow():
@@ -147,13 +149,13 @@ def ledger_resolve(entry_id):
 def escalate(checker, subject, condition, severity="P2", detail="",
              evidence_ts=None, ttl_key=None, checker_health=None):
     """
-    SUSPECT 升级：写 escalation inbox，12h 去重（M11），风暴限流，SLA 计时。
+    SUSPECT 升级：写 escalation inbox，24h 去重，风暴限流，SLA 计时。
     返回 escalation 记录。N9：去重命中不重置 ack SLA 计时器。
     """
     inbox = _load(ESCALATION_PATH, [])
     key = dedup_key(checker, subject, condition)
     now = time.time()
-    # 风暴限流：同一 key 30min 内已升级过 → 合并计数，不重复分页
+    # 风暴限流：同一 key 24h 内已升级过 → 合并计数，不重复分页
     for e in inbox:
         if e.get("dedup_key") == key and not e.get("ack_at"):
             age = now - e.get("filed_at_epoch", 0)
