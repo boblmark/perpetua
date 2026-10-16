@@ -61,6 +61,7 @@ rsync -a \
   --exclude='executed_commands.json' --exclude='pipeline_runs.json' \
   --exclude='dead_state_alert_dedup.json' --exclude='matrix_history.json' \
   --exclude='platform_matrix.json' --exclude='evolution_reports/' \
+  --exclude='deep_dive_*.md' \
   "$SRC/" "$ROOT/code/"
 echo "[win-mig] 源码 staging 完成"
 

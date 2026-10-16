@@ -44,6 +44,10 @@ STATE_JSON_RES = (
     re.compile(r"^review_budget_.*\.json$"),
     re.compile(r"^collect_run_.*\.json$"),
 )
+# 运行时日报 markdown（cron 持续追加/重写，永不烘焙进包；evolution_reports/ 走目录排除）
+RUNTIME_MD_RES = (
+    re.compile(r"^deep_dive_\d{4}-\d{2}-\d{2}\.md$"),
+)
 STATE_JSON_NAMES = {
     "private_queue.json", "anomaly_ledger.json", "escalation_inbox.json",
     "command_queue.json", "commander_chat_queue.json", "cron_ops_queue.json",
@@ -68,6 +72,8 @@ def included(relpath):
     if name in EXCLUDE_NAMES:
         return False
     if name.lower().endswith(EXCLUDE_SUFFIXES) or ".bak-" in name:
+        return False
+    if name.endswith(".md") and any(r.match(name) for r in RUNTIME_MD_RES):
         return False
     if name.endswith(".json") and (
         name in STATE_JSON_NAMES
