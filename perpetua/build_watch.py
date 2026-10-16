@@ -24,6 +24,8 @@ def main():
 
     d = api("GET", f"/repos/{REPO}/actions/runs?per_page=5")
     if not d:
+        # 看门狗铁律（2026-10-15）：API 异常禁止静默返回，必须输出错误
+        sys.stderr.write(f"[build_watch] ERROR: GitHub API 查询失败（gh_api 返回空），状态未知\n")
         return
     for run in d["workflow_runs"]:
         rid = str(run["id"])
@@ -54,8 +56,9 @@ def main():
                     "message": msg,
                     "time": run.get("updated_at"),
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                # 看门狗铁律（2026-10-15）：禁止静默吞异常
+                sys.stderr.write(f"[build_watch] ERROR: inbox 通知写入失败 run_id={rid}: {e}\n")
             print(f"通知已写入: {msg[:60]}")
     atomic_write_json(STATE_FILE, {"notified": list(notified)})
 

@@ -1,0 +1,41 @@
+你是独立调研 Agent。本次任务：为九平台爆款视频知识库采集竞品爆款公开数据。
+
+## 任务目标
+采集 8 个平台上 AI/搞笑/反转类中腰部账号的爆款视频公开数据，用于构建爆款算法模型 v1（分平台加权打分）：校准选题方向、标题公式、封面风格、互动率基准、钩子结构权重。**不做精确阈值推断**（完播率/留存等后台指标不在本次范围内）。
+
+## 建模口径（v2 新增 2026-10-15）
+- 核心目标变量为 viral_lift = views / account_median_views（相对账号基线的爆发起倍数），不用绝对播放量跨账号比较
+- 建模分平台独立出权重，不硬融九平台通用公式
+- P0 字段（collected_at / account_median_views / bgm）为建模必需，缺一不可；P1 字段大幅提升模型效果
+
+## 平台（8个）
+抖音、快手、B站、小红书、微信视频号、TikTok、Facebook Reels、X
+
+## 账号选择标准（每平台 6-8 个账号）
+- 内容调性：AI 主题、搞笑短剧、反转剧情、AI 恶搞其一相关
+- 粉丝量级：优先 10万-500万中腰部（头部账号数据失真，不选千万粉以上）
+- 账号状态：近 30 天有更新
+- 每平台账号分散在不同细分风格，避免同质化
+
+## 采集方法（每账号 10 条视频）
+- 爆款组 5 条：该账号近 90 天播放量最高的 5 条
+- 对照组 5 条：同账号同期（爆款前后各 2 周内）播放量处于中位数的 5 条
+- 每平台目标 60-80 行；8 平台合计约 500 行
+
+## 采集字段（每行一条视频）
+platform | account_name | account_followers | account_median_views（P0：账号近90天视频播放中位数） | video_url | title | cover_desc（封面画面文字描述20字内） | views | likes | comments | shares | collects(收藏,有则填) | danmaku(B站弹幕数,有则填) | published_at | collected_at（P0：本行数据采集时间戳，ISO格式） | duration_sec | hashtags | bgm（P0：BGM/音乐名，页面可见则填，无写N/A） | is_viral(1爆款/0对照) | topic_category(选题分类) | hook_type(开场钩子类型：冲突/悬念/视觉奇观/对话等) | hook_text（P1：前3秒文案或画面描述，30字内） | hook_end_sec（P1：钩子结束秒数，整数估算） | twist_sec（P1：核心反转发生秒数，无反转写N/A） | ending_type（P1：结尾类型：悬念/CTA/循环/反转/平淡） | top_comments（P1：高赞评论Top3一句话摘要，分号分隔） | remix_count（P1：二创/合拍/混剪数，有则填） | format_notes(格式备注：循环/字幕风格等)
+
+## 铁律
+1. 只填页面公开可见的数字，看不到写 N/A，**绝不估算、绝不编造**（hook_end_sec/twist_sec 可按观感填整数秒，这是唯一允许估算的两项，须基于实际观看）
+2. 完播率、留存率、点击率、流量来源等后台指标**不要采集、不要推断**
+3. 账号归属必须核对准确（ID/主页链接），重名账号以 ID 为准
+4. 视频号/小红书公开页无播放量时写 N/A，不要去猜
+5. account_median_views 取该账号近 90 天视频播放量的中位数（肉眼排序估算中位即可，不必精确）
+
+## 输出
+单个 .xlsx 文件，8 个 sheet（每平台一个，以平台英文命名：douyin/kuaishou/bilibili/xiaohongshu/shipinhao/tiktok/facebook/x），首行为字段名。文件命名：competitor_viral_20261014.xlsx
+
+## 交付标准
+- 每个 sheet ≥60 行有效数据（N/A 字段不计为无效行，但 views/likes 全 N/A 的行视为无效）
+- 附一页 summary sheet：每平台账号列表、采集时间、数据缺口说明（如某平台反爬导致样本不足）
+- 全部完成后将 xlsx 放入 Workspace 并提供下载

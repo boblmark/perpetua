@@ -44,6 +44,7 @@
 ## 管线自驱
 | 触发场景 | 动作 | 频率/条件 | 状态 |
 |---|---|---|---|
+| 48h 主题评估（两振出局+贝叶斯收缩） | evaluator_48h.py | 每小时 | cron自动（2026-10-12，B计划 R4；feed份额<50%或APV<70%为MISS，首振watchlist、连振blocklist，配额故障fail-open） |
 | 生成任务积压 | perpetua-pipeline-collect | 每 20 分钟 | cron自动 |
 | 死状态/超时 | dead-state-watchdog | 每 30 分钟 | cron自动 |
 | 每日深度复盘 | perpetua-deep-dive-weekly | 每天 23:49 | cron自动 |
@@ -51,6 +52,11 @@
 | 30天执行表打勾 | sheet-daily-maintainer | 每天 23:49 | cron自动 |
 | relay 18080 隧道断（YouTube API/jev 等鉴权请求全挂） | `bash /home/hatch/data/mcp_server/vm_ltunnel.sh` 或 `jev_keepalive.sh` 重建隧道 | 条件：`ss -tln` 不见 127.0.0.1:18080 | 半自动（2026-10-10 发现 keepalive 尚无 cron 覆盖，已手工重建；需补每 5 分钟 cron） |
 | 管线代码改动后（模板/QC/拼接/发布任一环节） | 用合成素材跑真实代码路径回归（拼接+QC+状态机），确认无异常再宣布"落地" | 条件：相关 .py 文件 mtime 变化且当日未跑过回归 | 半自动（2026-10-10 teaser_validate._run_qc 因 run_qc 返回 dict 而非 tuple，全量 teaser 差点在 QC 环被误杀；教训：接口契约变更必须 grep 全部调用方） |
+
+## 爆款加码 B 计划（内部新颖性引擎）
+| 触发场景 | 动作 | 频率/条件 | 状态 |
+|---|---|---|---|
+| 每周限量格式扫描（B计划 R3） | 主 agent 手动：扫竞品/平台格式信号（时长、节奏、字幕样式），只采格式不抄选题标题 | 每周一次 | 手动（2026-10-12 用户拍板主 agent 手动执行；质量稳定后可转 cron自动） |
 
 ## 主 Muse 协作（dispatcher）
 | 触发场景 | 动作 | 条件 | 状态 |

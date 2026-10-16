@@ -48,7 +48,17 @@ def save(p, data):
 def _dedup_key(msg):
     # 2026-10-10 修：告警文本含年龄（"已 2.7h"），每轮 key 都不同导致 12h 去重失效、
     # 30 分钟轮询重复刷屏。去重按稳定 key（剥离末尾年龄），显示文本保持不变。
-    return re.sub(r" 已 \d+(\.\d+)?h$", "", msg)
+    key = re.sub(r" 已 \d+(\.\d+)?h$", "", msg)
+    # 2026-10-12 修：orphan 告警年龄是中文 "X.X 小时" 且在消息中间（"…84）91.3 小时未进任何队列"），
+    # 上条正则剥不掉 → 12h 去重对 orphan 告警从未生效。同样剥离易变字段。
+    key = re.sub(r"\d+(\.\d+)?\s*小时", "", key)
+    # 2026-10-15 修：dead-man 告警年龄是消息中间的 "距上次上传已 24.7h"，两条正则都剥不掉 →
+    # 同一死状态每 30 分钟重新告警（10-15 00:01 与 23:32 各告一次）。剥离该中间年龄。
+    key = re.sub(r"距上次上传已 \d+(\.\d+)?h", "距上次上传已", key)
+    # 2026-10-15 修2：review_passed 卡死告警的年龄同样在消息中间（"已 131.7h，submit 门禁…"），
+    # 与 10-10/10-12 的规律同类——通用规则剥离所有 "已 X.Xh" 中间年龄（dead-man 的也一并兜底）。
+    key = re.sub(r"已 \d+(\.\d+)?h", "已", key)
+    return key
 
 def alert(msg):
     """写入 inbox 告警（messages + notices，控制台事件流可见）。
@@ -147,12 +157,22 @@ def check_qc_orphans():
     except FileNotFoundError:
         return []
     referenced = set()
+    # 2026-10-12 修：pipeline_queue 已迁 SQLite（D20261011-001 P1），JSON 是死镜像（最后写入 10-10）。
+    # 此前只读 JSON 导致已在 SQLite 队列的成品被误判 orphan，每 12h 重复误报。真相源走 queue_db。
     for p in (QUEUE_PATH, APPROVAL_PATH):
         items = load(p, [])
         items = items if isinstance(items, list) else items.get("items", [])
         for it in items:
             if isinstance(it, dict) and it.get("video_file"):
                 referenced.add(os.path.basename(str(it["video_file"])))
+    try:
+        _q = queue_db.pipeline_load()
+        _qitems = _q if isinstance(_q, list) else _q.get("items", [])
+        for it in _qitems:
+            if isinstance(it, dict) and it.get("video_file"):
+                referenced.add(os.path.basename(str(it["video_file"])))
+    except Exception as ex:
+        print(f"  WARN: 读 SQLite 队列失败（orphan 检查降级用 JSON）: {ex}")
     now_t = now()
     state = load(ORPHAN_STATE_PATH, {})
     if not isinstance(state, dict):
@@ -199,6 +219,24 @@ def check_pipeline_stuck():
         if not isinstance(it, dict):
             continue
         st = it.get("status", "")
+        # 2026-10-15 新增：review_passed 但分数 <85 且非对照组 = 死状态
+        # （D20261010-007 前的老数据，未路由到 teaser_validation；submit 门禁拦住，无执行者）
+        if st == "review_passed":
+            rs = it.get("review_score")
+            cg = it.get("control_group")
+            if isinstance(rs, (int, float)) and rs < 85 and not cg:
+                ts = it.get("updated_at") or it.get("reviewed_at") or ""
+                updated = parse_time(ts)
+                if updated:
+                    age_h = (now() - updated).total_seconds() / 3600
+                    if age_h >= 2:
+                        topic = it.get("topic", "?")
+                        issues.append(
+                            f"{topic} review_passed {rs}分（<85非对照组）"
+                            f"已 {age_h:.1f}h，submit 门禁拦住，无执行者。"
+                            f"应按 D20261010-007 路由到 teaser_validation"
+                        )
+            continue
         if st not in TRANSIENT:
             continue
         # 找最后更新时间

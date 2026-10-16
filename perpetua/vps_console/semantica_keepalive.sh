@@ -8,8 +8,8 @@ LOG=/home/hatch/data/perpetua/vps_console/semantica_keepalive.log
 if ! curl -s -o /dev/null --max-time 5 http://127.0.0.1:18091/ ; then
   echo "$(date '+%F %T') explorer down, restarting" >> "$LOG"
   cd /home/hatch/data/research/semantica-pilot && \
-    SEMANTICA_ALLOW_ANONYMOUS=true nohup ./venv/bin/python -m semantica.explorer --graph graph_kb.json \
-      --port 18091 --host 127.0.0.1 --no-browser >> explorer_run.log 2>&1 &
+    SEMANTICA_ALLOW_ANONYMOUS=true setsid nohup ./venv/bin/python -m semantica.explorer --graph graph_kb.json \
+      --port 18091 --host 127.0.0.1 --no-browser >> explorer_run.log 2>&1 < /dev/null &
 fi
 
 # 2. 反向隧道（ssh -R 18091/18092）
@@ -28,6 +28,6 @@ if ! curl -s -o /dev/null --max-time 5 http://127.0.0.1:18092/healthz ; then
   systemctl daemon-reload 2>/dev/null
   systemctl enable --now kb-search.service 2>/dev/null || \
     (cd /home/hatch/data/research/kb-search && \
-     NO_PROXY="localhost,127.0.0.1,::1" nohup ./venv/bin/python server.py \
-       >> server.log 2>&1 &)
+     NO_PROXY="localhost,127.0.0.1,::1" setsid nohup ./venv/bin/python server.py \
+       >> server.log 2>&1 < /dev/null &)
 fi

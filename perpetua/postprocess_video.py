@@ -35,6 +35,7 @@ import sys
 BASE = os.path.dirname(os.path.abspath(__file__))
 LOOP_CHECK = os.path.join(BASE, "loop_check.py")
 BURN_SUBS = os.path.join(BASE, "burn_subtitles.py")
+BEAUTIFY = os.path.join(BASE, "beautify.py")
 LOG = os.path.join(BASE, "postprocess.log")
 YUNET_MODEL = os.path.join(BASE, "models", "face_detection_yunet_2023mar.onnx")
 
@@ -220,6 +221,77 @@ def _repair_loop_point(video):
     return False, video, detail
 
 
+# R4 loop 闭合时长（秒）：尾部向首帧溶解。0.5s 足够让首尾帧相似度→~1.0，
+# 又短到不构成"结尾淡出"的退出信号（D20261010-014 禁的是"结束了"的视觉暗示；
+# 溶回首帧恰恰是无缝循环本身，Ask Studio 2026-10-15 亦要求 punchline 连回开头）。
+R4_XFADE_SEC = 0.5
+
+
+def _repair_loop_close(video):
+    """R4: R3 切点修不好时，尾部 0.5s 向首帧做 xfade 溶解闭合。
+
+    原理：无缝循环的本质是"结尾=开头"。生成模型做不到首尾呼应时，
+    后期用 0.5s 溶解把尾部接到首帧——观众感知为自然循环，而非淡出结束。
+    音频保持原样（只处理视频流），时长不变。
+    返回 (changed, out_path, detail)。fail-safe：任何失败返回原片。
+    """
+    passed, detail = _run_loop_check(video)
+    if passed:
+        return False, video, detail
+    dur = _probe_duration(video)
+    if dur < REPAIR_MIN_DURATION + R4_XFADE_SEC:
+        _log(f"[postprocess] R4 loop-close: 时长 {dur:.1f}s 不足，跳过")
+        return False, video, detail
+    base, ext = os.path.splitext(video)
+    frame_png = f"{base}.r4_frame.png"
+    out = f"{base}.r4{ext}"
+    try:
+        # 1. 抽首帧
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", video,
+             "-vframes", "1", frame_png],
+            capture_output=True, text=True, timeout=60)
+        if r.returncode != 0 or not os.path.exists(frame_png):
+            _log(f"[postprocess] R4 loop-close: 抽首帧失败")
+            return False, video, detail
+        # 2. 尾部 xfade 溶回首帧（视频流；音频原样保留）
+        # 注意：xfade 要求两路输入时间基一致——视频流可能是 1/12288 等怪 timebase，
+        # 图片恒为 1/25，直接配对会报 Invalid argument。先 settb=AVTB 统一。
+        offset = dur - R4_XFADE_SEC
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", video,
+             "-loop", "1", "-t", str(R4_XFADE_SEC + 0.1), "-i", frame_png,
+             "-filter_complex",
+             "[0:v]settb=AVTB,fps=30[v0];"
+             "[1:v]settb=AVTB,fps=30[v1];"
+             f"[v0][v1]xfade=transition=fade:duration={R4_XFADE_SEC}:offset={offset},format=yuv420p[v]",
+             "-map", "[v]", "-map", "0:a?",
+             "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+             "-c:a", "aac", "-b:a", "192k",
+             "-movflags", "+faststart", out],
+            capture_output=True, text=True, timeout=300)
+        if r.returncode != 0 or not os.path.exists(out):
+            _log(f"[postprocess] R4 loop-close: xfade 失败 {r.stderr[-200:]}")
+            return False, video, detail
+        # 3. 时长守卫 + 复验
+        dur2 = _probe_duration(out)
+        if abs(dur2 - dur) > 0.3 or dur2 < REPAIR_MIN_DURATION:
+            _log(f"[postprocess] R4 loop-close: 时长异常 {dur:.1f}->{dur2:.1f}，弃用")
+            return False, video, detail
+        p2, d2 = _run_loop_check(out)
+        _log(f"[postprocess] R4 loop-close: similarity {detail.get('similarity')} -> "
+             f"{d2.get('similarity')} {'通过' if p2 else '仍不通过'} -> {out}")
+        if p2:
+            return True, out, d2
+        return False, video, d2
+    finally:
+        try:
+            if os.path.exists(frame_png):
+                os.remove(frame_png)
+        except OSError:
+            pass
+
+
 def qc_repair(video):
     """QC 感知修复：R1 黑帧修剪 → R2 人脸起始帧 → （R3 在 loop_check 失败时触发）。
 
@@ -329,8 +401,12 @@ def apply_karma_thud(video):
 
 
 def run_postprocess(video, skip_loop=False, skip_subs=False, skip_audio=False,
-                    skip_repair=False):
-    """返回 (ok: bool, result: dict)。ok=False 意味着应打回重生成。"""
+                    skip_repair=False, beautify=False):
+    """返回 (ok: bool, result: dict)。ok=False 意味着应打回重生成。
+
+    beautify：可选美化步骤（hqdn3d 降噪→unsharp 锐化→eq/vibrance 提鲜），
+    失败只记 warn 永不打回。默认关闭，用 --beautify 或 BEAUTIFY_ENABLED=1 开启。
+    """
     result = {"video": video, "steps": {}}
     final_video = video
 
@@ -348,6 +424,40 @@ def run_postprocess(video, skip_loop=False, skip_subs=False, skip_audio=False,
                                              "applied": False,
                                              "error": str(e)[:200]}]
 
+    # 0.5 美化（2026-10-12，用户立项）：opt-in，放在 loop_check 之前让 QC 评最终像素。
+    # 失败只记 warn 继续，永不打回、永不 fail-closed。
+    if beautify:
+        try:
+            out_b = os.path.splitext(final_video)[0] + ".beautified.mp4"
+            r = subprocess.run(
+                [sys.executable, BEAUTIFY, final_video, "--preset", "pop",
+                 "--out", out_b],
+                capture_output=True, text=True, timeout=600)
+            bres = None
+            for line in reversed(r.stdout.strip().splitlines()):
+                try:
+                    bres = json.loads(line)
+                    break
+                except Exception:
+                    continue
+            if bres and bres.get("ok") and os.path.isfile(bres["out"]):
+                final_video = bres["out"]
+                result["steps"]["beautify"] = {
+                    "applied": True, "preset": "pop",
+                    "elapsed_s": bres.get("elapsed_s"),
+                    "out": bres["out"],
+                }
+                _log(f"[postprocess] beautify {video} -> {bres['out']} "
+                     f"({bres.get('elapsed_s')}s)")
+            else:
+                raise RuntimeError((bres or {}).get("error", "unknown") if bres
+                                   else r.stderr[-200:])
+        except Exception as e:
+            _log(f"[postprocess] beautify 失败，继续用原片交付：{e}")
+            result["steps"]["beautify"] = {"applied": False,
+                                           "error": str(e)[:200],
+                                           "warn": True}
+
     if not skip_loop:
         passed, detail = _run_loop_check(final_video)
         result["steps"]["loop_check"] = detail
@@ -355,7 +465,7 @@ def run_postprocess(video, skip_loop=False, skip_subs=False, skip_audio=False,
              f"{'PASS' if passed else 'FAIL'} "
              f"(similarity={detail.get('similarity')})")
         if not passed and not skip_repair:
-            # R3：loop 不通过先尝试尾部切点修复，修不好才打回重生成
+            # R3：loop 不通过先尝试尾部切点修复，修不好再试 R4 溶解闭合
             try:
                 changed, repaired_lp, detail2 = _repair_loop_point(final_video)
                 result["steps"]["R3_loop_point"] = {
@@ -366,6 +476,18 @@ def run_postprocess(video, skip_loop=False, skip_subs=False, skip_audio=False,
                     result["steps"]["loop_check"] = detail2
             except Exception as e:
                 _log(f"[postprocess] R3_loop_point 异常：{e}")
+            if not passed:
+                # R4：尾部 0.5s 向首帧溶解闭合（后期造无缝循环）
+                try:
+                    changed4, repaired_lc, detail4 = _repair_loop_close(final_video)
+                    result["steps"]["R4_loop_close"] = {
+                        "applied": changed4, "detail": detail4}
+                    if changed4:
+                        final_video = repaired_lc
+                        passed = True
+                        result["steps"]["loop_check"] = detail4
+                except Exception as e:
+                    _log(f"[postprocess] R4_loop_close 异常：{e}")
         if not passed:
             result["ok"] = False
             result["reason"] = (
@@ -434,13 +556,14 @@ def main():
     skip_subs = "--skip-subs" in sys.argv
     skip_audio = "--skip-audio" in sys.argv
     skip_repair = "--skip-repair" in sys.argv
+    beautify = "--beautify" in sys.argv or os.environ.get("BEAUTIFY_ENABLED") == "1"
     if not args:
         print("usage: postprocess_video.py <video.mp4> [--json] "
-              "[--skip-repair] [--skip-loop] [--skip-subs] [--skip-audio]",
-              file=sys.stderr)
+              "[--skip-repair] [--skip-loop] [--skip-subs] [--skip-audio] "
+              "[--beautify]", file=sys.stderr)
         sys.exit(2)
     ok, result = run_postprocess(args[0], skip_loop, skip_subs, skip_audio,
-                                 skip_repair)
+                                 skip_repair, beautify)
     if as_json:
         print(json.dumps(result, ensure_ascii=False))
     else:

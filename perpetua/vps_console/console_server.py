@@ -9,7 +9,7 @@ import re
 import subprocess
 import time
 from datetime import datetime, timezone, timedelta
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 DATA = "/home/hatch/data"
@@ -18,6 +18,10 @@ import sys as _sys
 if "/home/hatch/data/perpetua" not in _sys.path:
     _sys.path.insert(0, "/home/hatch/data/perpetua")
 import queue_db
+# 360° v2：发布真相源 YouTube API 结果内存缓存（10min TTL；前端每 5s 轮询，不缓存会烧光 API 配额）
+import threading as _threading
+_PUBTRUTH_CACHE = {"at": 0.0, "data": {}, "err": ""}
+_PUBTRUTH_LOCK = _threading.Lock()
 TOKEN_FILE = os.path.join(DATA, "mcp_server", ".token")
 AUDIT_LOG = os.path.join(DATA, "perpetua", "terminal_audit.log")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -605,11 +609,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        if path == "/oauth2callback":
+            self.serve_oauth_callback(parsed)
+            return
         if path == "/":
             self.serve_index()
             return
         if path == "/oa":
             self.serve_file("oa.html", "text/html; charset=utf-8")
+            return
+        if path == "/command":
+            # 2026-10-16 退役：360° 已并入 Battle 标签页，/command 永久跳转到 /
+            self.send_response(301)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
             return
         if path == "/qr-douyin":
             self.serve_qr_douyin_page()
@@ -652,6 +666,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.api_publish_plan()
             elif path == "/api/generation_progress":
                 self.api_generation_progress()
+            elif path == "/api/live_model":
+                self.api_live_model_get()
             elif path == "/api/kb/search":
                 self.api_kb_search(qs)
             elif path == "/api/postop_status":
@@ -674,6 +690,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.api_imgcache()
             elif path == "/api/branding_requests":
                 self.api_branding_requests()
+            elif path == "/api/pipeline/queue":
+                self.api_pipeline_queue()
+            elif path == "/api/quarantine/list":
+                self.api_quarantine_list()
+            elif path == "/api/agent/cron-cache":
+                self.api_agent_cron_cache()
+            elif path == "/api/agent/hotstandby":
+                self.api_agent_hotstandby()
+            elif path == "/api/command/live":
+                self.api_command_live()
+            elif path == "/api/mutate/pending":
+                self.api_mutate_pending(parsed)
+                return
+            elif path == "/api/cron/requests":
+                self.api_cron_requests()
+                return
             elif path == "/api/oa/org":
                 self.api_oa_org()
             elif path == "/api/oa/approvals":
@@ -717,6 +749,12 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/chat":
             self.api_chat(payload.get("message", ""))
             return
+        if parsed.path == "/api/commander/chat":
+            self.api_commander_chat(payload)
+            return
+        if parsed.path == "/api/commander/poll":
+            self.api_commander_poll(payload)
+            return
         if parsed.path == "/api/oa/approve":
             self._oa_decide_body(payload, True)
             return
@@ -734,6 +772,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/matrix_sync":
             self.api_matrix_sync()
+            return
+        if parsed.path == "/api/live_model":
+            self.api_live_model_set(payload)
             return
             return
         if parsed.path == "/api/snapshot/refresh":
@@ -772,6 +813,18 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/mcp":
             # 通用 MCP JSON-RPC 代理：payload {"method": "tools/list", "params": {...}}
             self.api_mcp_call(payload)
+            return
+        if parsed.path == "/api/pipeline/recovery-approve":
+            self.api_pipeline_recovery_approve(payload)
+            return
+        if parsed.path == "/api/mutate":
+            self.api_mutate(payload)
+            return
+        if parsed.path == "/api/quarantine/unfreeze":
+            self.api_quarantine_unfreeze(payload)
+            return
+        if parsed.path == "/api/quarantine/title-swap":
+            self.api_quarantine_title_swap(payload)
             return
         self.send_response(404)
         self.end_headers()
@@ -831,6 +884,26 @@ tick();
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.send_header("Pragma", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def serve_oauth_callback(self, parsed):
+        import urllib.parse as up
+        qs = up.parse_qs(parsed.query)
+        code = qs.get('code', [''])[0]
+        err = qs.get('error', [''])[0]
+        if err:
+            body = f"<h2>授权失败: {err}</h2>".encode()
+        elif code:
+            # 把 code 存到文件，由后台脚本换 token（避免在响应里暴露）
+            with open('/home/hatch/data/youtube/.oauth_code', 'w') as f:
+                f.write(code)
+            body = "<h2>授权成功！可以关闭此页面，回到控制台继续。</h2>".encode('utf-8')
+        else:
+            body = "<h2>未收到授权码</h2>".encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
@@ -974,6 +1047,46 @@ tick();
         json_resp(self, {"items": out, "count": len(out),
                          "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                     time.gmtime())})
+
+    def api_live_model_get(self):
+        """读取实时语音/视频模型配置（2026-10-12 新增）"""
+        import os
+        cfg_path = "/home/hatch/data/nanomuse-migration/perception/server/live_model_config.yaml"
+        defaults = {
+            "live_model": "gemini-2.0-flash-exp",
+            "video_fps": 1,
+            "video_quality": 70,
+            "audio_sample_rate": 16000,
+        }
+        try:
+            import yaml
+            if os.path.exists(cfg_path):
+                with open(cfg_path, encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+                defaults.update(cfg)
+        except Exception as e:
+            defaults["error"] = str(e)
+        json_resp(self, defaults)
+
+    def api_live_model_set(self, payload):
+        """更新实时语音/视频模型配置（2026-10-12 新增）"""
+        import os
+        cfg_path = "/home/hatch/data/nanomuse-migration/perception/server/live_model_config.yaml"
+        allowed = {"live_model", "video_fps", "video_quality", "audio_sample_rate"}
+        try:
+            import yaml
+            cfg = {}
+            if os.path.exists(cfg_path):
+                with open(cfg_path, encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+            for k in allowed:
+                if k in payload:
+                    cfg[k] = payload[k]
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(cfg, f, allow_unicode=True)
+            json_resp(self, {"ok": True, "config": cfg})
+        except Exception as e:
+            json_resp(self, {"ok": False, "error": str(e)})
 
     def api_kb_search(self, qs):
         """知识库语义检索（2026-10-11 新增）：查 OpenViking MCP 向量库。
@@ -1282,7 +1395,8 @@ tick();
                          "summary": {"total_views": total_views, "total_videos": total_videos,
                                      "platform_count": len(platforms)},
                          "trends": trends,
-                         "stale_hours": stale_hours})
+                         "stale_hours": stale_hours,
+                         "login_warnings": [k for k,v in stale_hours.items() if v > 12]})
 
     def api_matrix_sync(self):
         """矩阵手动同步触发（2026-10-11 重做）：持久 job 文件状态机。
@@ -1984,6 +2098,539 @@ tick();
         data = read_json_file(os.path.join(DATA, "perpetua", "tenants", "registry.json"))
         json_resp(self, data or {"tenants": {}})
 
+    # ---- 作战指挥中心：360 全息实时聚合（2026-10-16）----
+    def _cmd_read_json(self, path, default=None):
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return default
+
+    def _cmd_pgrep(self, pat):
+        try:
+            out = subprocess.run(["pgrep", "-f", "--", pat],
+                                 capture_output=True, timeout=4)
+            return out.returncode == 0
+        except Exception:
+            return False
+
+    def _cmd_tail(self, path, n=15):
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+            return [l.rstrip("\n") for l in lines[-n:] if l.strip()]
+        except Exception:
+            return []
+
+    def _cmd_http_ok(self, url, timeout=6):
+        """轻量 HTTP 存活检查（dispatcher 在 VPS 上，走 HTTP 不走 pgrep）"""
+        try:
+            out = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                                  "-m", str(timeout), url],
+                                 capture_output=True, text=True, timeout=timeout + 2)
+            return out.stdout.strip() not in ("", "000")
+        except Exception:
+            return False
+
+    # ---- 360° v2：六个扩展模块（全部只读，禁止写入/修复/触发） ----
+    def _cmd_age_h(self, ts):
+        """ISO 时间戳 → 距今小时数；解析失败返回 None"""
+        if not ts:
+            return None
+        try:
+            s = str(ts).strip().replace("Z", "+00:00")
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 3600)
+        except Exception:
+            return None
+
+    def _cmd_fmt_age(self, h):
+        if h is None:
+            return "未知"
+        if h < 1:
+            return f"{h * 60:.0f}分钟"
+        if h < 48:
+            return f"{h:.1f}小时"
+        return f"{h / 24:.1f}天"
+
+    def _mod_fleet(self):
+        """1. 舰队视图：nanoMuse MCP/主控制台/Dispatcher 存活探针 + 外部智能体取货新鲜度"""
+        items = []
+        mcp_ok = self._cmd_http_ok("http://127.0.0.1:8735/health", timeout=4)
+        items.append({"t": "nanoMuse MCP :8735（热备指挥官）", "s": "在线" if mcp_ok else "离线"})
+        con_ok = self._cmd_http_ok("http://127.0.0.1:18739/", timeout=4)
+        items.append({"t": "nanoMuse 主控制台 :18739", "s": "在线" if con_ok else "离线"})
+        disp_ok = self._cmd_http_ok("http://192.166.82.123:8740/", timeout=6)
+        items.append({"t": "Dispatcher :8740（VPS，主 Muse 通道）", "s": "在线" if disp_ok else "离线"})
+        items.append({"t": "主 agent（本控制台服务）", "s": "在线"})
+        ib = self._cmd_read_json(os.path.join(DATA, "collab", "inbox.json"), {})
+        pend = ib.get("pending_pickup", []) if isinstance(ib, dict) else []
+        picked = ib.get("picked_up", []) if isinstance(ib, dict) else []
+        last_age = None
+        if picked and isinstance(picked[-1], dict):
+            last = picked[-1]
+            last_age = self._cmd_age_h(last.get("picked_at") or last.get("created"))
+        if last_age is None:
+            ext_s = "unknown"
+        elif last_age > 24:
+            ext_s = "STALE " + self._cmd_fmt_age(last_age) + "前"
+        else:
+            ext_s = "在线（" + self._cmd_fmt_age(last_age) + "前取货）"
+        items.append({"t": f"外部智能体（Marvis 取货，待取 {len(pend)}）", "s": ext_s})
+        n_off = sum(1 for i in items if i["s"] == "离线")
+        stale_ext = last_age is not None and last_age > 24
+        status = "bad" if n_off >= 2 else ("warn" if (n_off == 1 or stale_ext) else "ok")
+        return {"id": "fleet", "name": "智能体舰队", "status": status,
+                "summary": f"{len(items) - n_off}/{len(items)} 在线" + (f" · 外部取货{self._cmd_fmt_age(last_age)}前" if last_age is not None else ""),
+                "detail": "只读探针：127.0.0.1:8735/health、127.0.0.1:18739、192.166.82.123:8740 存活 + collab/inbox.json 取货新鲜度",
+                "items": items}
+
+    def _mod_quota(self):
+        """2. 生成后端额度：dispatch_health 探针口径的轻量复刻（只读，不提交生成任务）。
+        geminigen 完整探针太重（~60s 浏览器 eval），取最近一次生命线巡检缓存并标注年龄。"""
+        import glob as _glob
+        items = []
+        states = {}  # name -> (ok|warn|bad, note)
+        # 最近一次 dispatch-lifeline-watch 缓存
+        logp = os.path.join(os.path.expanduser("~"), "workspace", "goals", "karenvsai",
+                            "hidden_files", "dispatch-health", "run.log")
+        cache_age = None
+        cached = {}
+        try:
+            lines = self._cmd_tail(logp, 40)
+            hi = -1
+            for i, l in enumerate(lines):
+                if "dispatch-lifeline-watch" in l:
+                    hi = i
+            if hi >= 0:
+                m = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2})", lines[hi])
+                if m:
+                    cache_age = self._cmd_age_h(m.group(1).replace(" ", "T") + ":00+08:00")
+                for l in lines[hi + 1:]:
+                    m2 = re.match(r"\s{2}(\S[^:]*):\s*(OK|SUSPECT|CONFIRMED)\b\s*(.*)", l)
+                    if m2:
+                        cached[m2.group(1).strip().lower()] = (m2.group(2), m2.group(3).strip()[:70])
+        except Exception:
+            pass
+        age_note = ("巡检缓存" + self._cmd_fmt_age(cache_age) + "前") if cache_age is not None else "无巡检缓存"
+
+        def get_cached(*keys):
+            for k in keys:
+                if k in cached:
+                    return cached[k]
+            return ("UNKNOWN", "无记录")
+
+        # dispatcher：实时探针
+        d_ok = self._cmd_http_ok("http://192.166.82.123:8740/mcp", timeout=6)
+        states["dispatcher :8740"] = ("ok", "实时探针 HTTP 有响应") if d_ok else ("bad", "实时探针不可达")
+        # mcp-b 队列：缓存
+        qv, qn = get_cached("queue mcp-b", "queue")
+        states["mcp-b 队列"] = ({"OK": "ok"}.get(qv, "warn"), age_note + " " + qn)
+        # geminigen：缓存（重探针）
+        gv, gn = get_cached("geminigen")
+        if gv == "OK":
+            states["geminigen（免费档）"] = ("ok", age_note + " " + gn)
+        elif gv in ("CONFIRMED",):
+            states["geminigen（免费档）"] = ("bad", age_note + " " + gn)
+        else:
+            states["geminigen（免费档）"] = ("warn", age_note + " " + gn)
+        # h3：实时（配置文件，无地址即 SUSPECT）
+        h3_addr = os.environ.get("H3_ADDR", "")
+        if not h3_addr:
+            for cfg in ["/home/hatch/data/perpetua/h3_config.json", "/home/hatch/data/h3_addr.txt"]:
+                try:
+                    with open(cfg, encoding="utf-8") as f:
+                        h3_addr = f.read().strip().split()[0]
+                        if h3_addr:
+                            break
+                except Exception:
+                    pass
+        states["H3 备链"] = ("warn", "未配置地址（已知）") if not h3_addr else ("ok", "已配置，实时探针略")
+        # vids：实时（日期口径）
+        try:
+            from datetime import date as _date
+            states["vids"] = ("warn", "配额耗尽至 2026-11-01（已知）") if _date.today() < _date(2026, 11, 1) else ("warn", "恢复日期已到，需重测")
+        except Exception:
+            states["vids"] = ("warn", "日期口径异常")
+        # builtin：实时（24h 出片）
+        try:
+            now = time.time()
+            recent = [f for f in _glob.glob("/home/hatch/data/perpetua/videos/job-*.mp4")
+                      if now - os.path.getmtime(f) < 24 * 3600]
+            states["builtin"] = ("ok", f"24h 内出片 {os.path.basename(sorted(recent)[-1])}") if recent else ("warn", "24h 内无出片记录")
+        except Exception:
+            states["builtin"] = ("warn", "目录不可读")
+        for name, (st, note) in states.items():
+            items.append({"t": name, "s": ({"ok": "OK", "warn": "SUSPECT", "bad": "DOWN"}[st]) + " · " + note})
+        worst = "bad" if any(s == "bad" for _, (s, _) in states.items()) else ("warn" if any(s == "warn" for _, (s, _) in states.items()) else "ok")
+        return {"id": "quota", "name": "生成后端额度", "status": worst,
+                "summary": " · ".join(f"{k.split()[0]}:{v}" for k, (v, _) in states.items()),
+                "detail": "复用 dispatch_health.py 探针口径；geminigen/mcp-b 取生命线巡检缓存（重探针），其余实时；只读，未提交任何生成任务",
+                "items": items}
+
+    def _mod_council(self):
+        """3. 四脑议会：brain_council/synthesis.md × MEMORY.md 议会决策登记处"""
+        bc = os.path.join(DATA, "brain_council")
+        try:
+            memtxt = open(os.path.join(os.path.expanduser("~"), "MEMORY.md"), encoding="utf-8").read()
+        except Exception:
+            memtxt = ""
+        dirs = []
+        try:
+            dirs = sorted([d for d in os.listdir(bc)
+                           if d.startswith("council-") and os.path.isdir(os.path.join(bc, d))],
+                          reverse=True)[:3]
+        except Exception:
+            pass
+        items = []
+        worst = "ok"
+        for d in dirs:
+            title, draft = d, False
+            try:
+                with open(os.path.join(bc, d, "synthesis.md"), encoding="utf-8") as f:
+                    head = [l.rstrip("\n") for l in f.readlines()[:25]]
+                for l in head:
+                    if l.startswith("#"):
+                        title = l.lstrip("# ").strip()[:42]
+                        break
+                blob = "\n".join(head)
+                draft = ("草案" in blob) or ("待拍板" in blob)
+            except Exception:
+                title = d + "（无 synthesis）"
+            if d in memtxt and not draft:
+                lab = "已拍板"
+            elif draft:
+                lab, worst = "草案", "warn"
+            else:
+                lab, worst = "待拍板", "warn"
+            items.append({"t": title, "s": lab})
+        if not items:
+            return {"id": "council", "name": "四脑议会", "status": "unknown",
+                    "summary": "无议会目录", "detail": "brain_council 下无 council-* 目录", "items": []}
+        return {"id": "council", "name": "四脑议会", "status": worst,
+                "summary": "最近议会：" + "、".join(i["s"] for i in items),
+                "detail": "brain_council/*/synthesis.md 标题 × MEMORY.md 顶部议会决策登记处（只读）",
+                "items": items}
+
+    def _mod_anomaly(self):
+        """4. 异常治理：只展示数字。D20261015-007 冻结中，不做任何自动修复/降级。"""
+        al = self._cmd_read_json(os.path.join(DATA, "perpetua", "anomaly_ledger.json"), [])
+        items_all = al if isinstance(al, list) else al.get("items", [])
+        open_ = [i for i in items_all if isinstance(i, dict) and not i.get("resolved")]
+        byc = {}
+        for i in open_:
+            byc[i.get("checker", "?")] = byc.get(i.get("checker", "?"), 0) + 1
+        esc = self._cmd_read_json(os.path.join(DATA, "perpetua", "escalation_inbox.json"), [])
+        esc_items = esc if isinstance(esc, list) else esc.get("items", [])
+        pend = [e for e in esc_items if isinstance(e, dict) and not e.get("ack_by")]
+        p1 = [e for e in pend if e.get("severity") == "P1"]
+        items = [{"t": f"SUSPECT:{c}", "s": f"{n} 条"} for c, n in sorted(byc.items(), key=lambda x: -x[1])]
+        items.append({"t": "升级待 ack", "s": f"{len(pend)} 条"})
+        items.append({"t": "其中 P1 分页", "s": f"{len(p1)} 条"})
+        status = "ok" if not open_ else ("bad" if len(p1) >= 20 else "warn")
+        return {"id": "anomaly", "name": "异常治理", "status": status,
+                "summary": f"未解决 {len(open_)} · 待 ack {len(pend)} · P1 {len(p1)}",
+                "detail": "anomaly_ledger.json（按 checker 分组）+ escalation_inbox.json（只展示；D20261015-007 冻结中，不做自动修复/降级）",
+                "items": items}
+
+    def _mod_cron(self):
+        """5. cron 舰队：cron.list/cron.runs 快照（只读；STALE>30min 标 unknown）"""
+        snap = self._cmd_read_json(os.path.join(BASE_DIR, "cron_fleet_snapshot.json"), {})
+        if not snap:
+            return {"id": "cron", "name": "cron 舰队", "status": "unknown",
+                    "summary": "无快照", "detail": "cron_fleet_snapshot.json 缺失", "items": []}
+        age = self._cmd_age_h(snap.get("captured_at"))
+        stale = age is None or age > 0.5
+        chain = snap.get("key_chain", [])
+        items = [{"t": "总数/启用/禁用",
+                  "s": f"{snap.get('schedule_total')}/{snap.get('enabled_total')}/{len(snap.get('disabled', []))}"}]
+        bad_chain = 0
+        for j in chain:
+            ok = j.get("status") == "succeeded"
+            bad_chain += 0 if ok else 1
+            items.append({"t": j.get("id", "?"),
+                          "s": ("OK " + str(j.get("last_run", ""))[:16]) if ok else ("异常:" + str(j.get("status", "?")))})
+        for r in snap.get("recent_non_ok", [])[:3]:
+            items.append({"t": "跳过/" + str(r.get("job_id", "?")), "s": str(r.get("status", "?"))})
+        dis = snap.get("disabled", [])
+        if dis:
+            items.append({"t": "已禁用", "s": "、".join(dis[:6])})
+        status = "unknown" if stale else ("warn" if bad_chain else "ok")
+        return {"id": "cron", "name": "cron 舰队", "status": status,
+                "summary": f"{snap.get('enabled_total')}/{snap.get('schedule_total')} 启用 · 关键链路 {len(chain) - bad_chain}/{len(chain)} 正常" + (f" · 快照{self._cmd_fmt_age(age)}前" if age is not None else ""),
+                "detail": "cron.list/cron.runs 快照（只读；STALE>30min 标 unknown，需定时刷新快照以保持实时）",
+                "items": items}
+
+    def _mod_pubtruth(self):
+        """6. 发布真相源：private_queue.json × YouTube Data API videos.list 实拉 privacyStatus。
+        10min 内存缓存（前端每 5s 轮询，不缓存会烧光 API 配额）；只读查询，不做任何翻转。"""
+        import threading as _th
+        q = self._cmd_read_json(os.path.join(DATA, "youtube", "private_queue.json"), [])
+        vids = q if isinstance(q, list) else []
+        targets = [v for v in vids if isinstance(v, dict) and v.get("status") == "waiting"][:3]
+        recent_pub = [v for v in vids if isinstance(v, dict) and v.get("status") in ("published", "public")][:2]
+        targets = targets + [v for v in recent_pub if v not in targets]
+        now = time.time()
+        with _PUBTRUTH_LOCK:
+            fresh = (now - _PUBTRUTH_CACHE["at"] < 600) and bool(_PUBTRUTH_CACHE["data"])
+            cache_at = _PUBTRUTH_CACHE["at"]
+        results = dict(_PUBTRUTH_CACHE["data"]) if fresh else {}
+        err = _PUBTRUTH_CACHE.get("err", "")
+        if not fresh and targets:
+            box = {}
+
+            def _worker():
+                try:
+                    import sys as _s
+                    if "/home/hatch/data/youtube" not in _s.path:
+                        _s.path.insert(0, "/home/hatch/data/youtube")
+                    from yt_upload import get_status
+                    for v in targets:
+                        vid = v.get("video_id")
+                        try:
+                            box[vid] = get_status(vid)
+                        except BaseException as e:
+                            # BaseException：连 Exception 都没接住的也如实记录，不静默丢
+                            import sys as _se
+                            print(f"[pubtruth] get_status({vid}) raised {type(e).__name__}: {e}",
+                                  file=_se.stderr)
+                            box[vid] = {"error": f"{type(e).__name__}: {str(e)[:80]}"}
+                except Exception as e:
+                    box["_fatal"] = str(e)[:100]
+
+            th = _th.Thread(target=_worker, daemon=True)
+            th.start()
+            th.join(10)
+            if th.is_alive():
+                err = "API 查询超时(10s)，本次显示 unknown"
+            else:
+                err = box.pop("_fatal", "")
+            results = box
+            with _PUBTRUTH_LOCK:
+                # 超时则只缓存 60s（很快重试），成功则缓存 10min
+                _PUBTRUTH_CACHE["at"] = now if not th.is_alive() else now - 540
+                _PUBTRUTH_CACHE["data"] = dict(box)
+                _PUBTRUTH_CACHE["err"] = err
+            cache_at = now
+        items = []
+        worst = "ok"
+        for v in targets:
+            vid = v.get("video_id", "?")
+            r = results.get(vid, {})
+            priv = r.get("privacyStatus") if isinstance(r, dict) else None
+            slot = v.get("slot") or (str(v.get("scheduled_at", ""))[:16])
+            qs = v.get("status")
+            if priv:
+                src = "API 实拉 " + time.strftime("%H:%M", time.localtime(cache_at))
+                expect = "private" if qs == "waiting" else "public"
+                match = (priv == expect)
+                s = f"{priv} ✓" if match else f"{priv} ✗应为{expect}"
+                if not match:
+                    worst = "warn"
+            else:
+                src = "unknown"
+                s = "unknown" + (f"({r.get('error', '')[:30]})" if isinstance(r, dict) and r.get("error") else "")
+                worst = "warn"
+            items.append({"t": (v.get("title") or vid)[:28], "s": f"{s} · 档{slot} · 真相源={src}",
+                          "vid": vid, "qstatus": qs})
+        if not targets:
+            items.append({"t": "队列为空", "s": "无 waiting 视频"})
+        return {"id": "pubtruth", "name": "发布真相源", "status": worst,
+                "summary": f"{len(targets)} 条已核验" + (f" · {err}" if err else ""),
+                "detail": "private_queue.json × YouTube Data API videos.list 实拉 privacyStatus（10min 内存缓存，不烧配额；只读）",
+                "items": items}
+
+    def api_command_live(self):
+        """GET /api/command/live — 作战指挥中心全息快照（只读聚合，<2s）"""
+        now = time.strftime("%Y-%m-%d %H:%M:%S")
+        out = {"ok": True, "at": now}
+        D = DATA
+        # ---- 1. 八阶段管线 ----
+        stages = []
+        try:
+            pq = self._cmd_read_json(os.path.join(D, "perpetua", "pipeline_queue.json"), [])
+            terminal = {"teaser_failed", "retired", "review_failed", "archived",
+                        "teaser_published", "uploaded"}
+            active = [i for i in pq if i.get("status") not in terminal]
+            stages.append({"id": "topics", "name": "选题池", "count": len(active),
+                           "detail": f"{len(pq)} 候选中 {len(active)} 流转中",
+                           "items": [{"t": i.get("topic", "?")[:28], "s": i.get("status")}
+                                     for i in active[:6]]})
+        except Exception as e:
+            stages.append({"id": "topics", "name": "选题池", "count": -1, "detail": str(e)[:80], "items": []})
+        try:
+            asq = self._cmd_read_json(os.path.join(D, "ask_studio", "queue.json"), {})
+            pend = asq.get("pending", []) if isinstance(asq, dict) else []
+            iq = self._cmd_read_json(os.path.join(D, "ask_studio", "instant_queue.json"), {})
+            iitems = iq.get("items", iq.get("pending", [])) if isinstance(iq, dict) else []
+            # 只计真正待回答：排除 answered/superseded（2026-10-16 修：曾把 42 条已回答误计为待回答）
+            ipend = [i for i in iitems if isinstance(i, dict) and i.get("status") not in ("answered", "superseded")]
+            pend = [p for p in pend if isinstance(p, dict) and p.get("status") == "pending"] if isinstance(pend, list) else []
+            n_pend = len(pend) + len(ipend)
+            stages.append({"id": "review", "name": "Ask Studio 评审", "count": n_pend,
+                           "detail": f"待回答 {n_pend}",
+                           "items": [{"t": (p.get("question") or p.get("topic") or "?")[:28], "s": "pending"}
+                                     for p in (pend + ipend)[:4]]})
+        except Exception as e:
+            stages.append({"id": "review", "name": "Ask Studio 评审", "count": -1, "detail": str(e)[:80], "items": []})
+        try:
+            pj = "/home/hatch/data/mcp_jobs/pending"
+            n_gen = len([f for f in os.listdir(pj) if f.endswith(".json") and not f.endswith(".result.json")]) if os.path.isdir(pj) else 0
+            stages.append({"id": "generate", "name": "视频生成", "count": n_gen,
+                           "detail": f"生成队列 {n_gen} 待处理", "items": []})
+        except Exception as e:
+            stages.append({"id": "generate", "name": "视频生成", "count": -1, "detail": str(e)[:80], "items": []})
+        try:
+            aa = self._cmd_read_json(os.path.join(D, "perpetua", "awaiting_approval.json"), [])
+            qc_ok = sum(1 for i in aa if i.get("qc_passed"))
+            stages.append({"id": "qc", "name": "QC 质检", "count": qc_ok,
+                           "detail": f"{len(aa)} 条待终审，{qc_ok} 条 QC 通过",
+                           "items": [{"t": (i.get("title") or "?")[:28], "s": i.get("status")}
+                                     for i in aa[:6]]})
+        except Exception as e:
+            stages.append({"id": "qc", "name": "QC 质检", "count": -1, "detail": str(e)[:80], "items": []})
+        try:
+            priv = self._cmd_read_json(os.path.join(D, "youtube", "private_queue.json"), [])
+            pitems = priv if isinstance(priv, list) else priv.get("queue", priv.get("items", []))
+            waiting = [i for i in pitems if i.get("status") == "waiting"] if isinstance(pitems, list) else []
+            pubd = [i for i in pitems if i.get("status") in ("published", "public")] if isinstance(pitems, list) else []
+            stages.append({"id": "upload", "name": "上传 Private", "count": len(waiting) + len(pubd),
+                           "detail": f"{len(waiting)} 等待翻转 / {len(pubd)} 已公开",
+                           "items": [{"t": (i.get("title") or "?")[:28], "s": i.get("status")}
+                                     for i in waiting[:4]]})
+            stages.append({"id": "schedule", "name": "排期翻 Public", "count": len(waiting),
+                           "detail": ("下一档 " + str(waiting[0].get("scheduled_at") or waiting[0].get("slot") or "?")[:16]) if waiting else "无排期",
+                           "items": []})
+        except Exception as e:
+            stages.append({"id": "upload", "name": "上传 Private", "count": -1, "detail": str(e)[:80], "items": []})
+            stages.append({"id": "schedule", "name": "排期翻 Public", "count": -1, "detail": str(e)[:80], "items": []})
+        try:
+            crp = self._cmd_read_json(os.path.join(D, "youtube", "comment_reply_pending.json"), [])
+            n_crp = len(crp) if isinstance(crp, list) else len(crp.get("items", []))
+            stages.append({"id": "postop", "name": "发布后运营", "count": n_crp,
+                           "detail": f"{n_crp} 条评论待回复", "items": []})
+        except Exception as e:
+            stages.append({"id": "postop", "name": "发布后运营", "count": -1, "detail": str(e)[:80], "items": []})
+        try:
+            evo_log = os.path.join(os.path.expanduser("~"), "workspace", "goals", "karenvsai",
+                                   "hidden_files", "daily-evolution-runlog.md")
+            el = self._cmd_tail(evo_log, 2)
+            last_evo = el[-1][:60] if el else "暂无记录"
+            stages.append({"id": "reflow", "name": "数据回流", "count": 1 if el else 0,
+                           "detail": "每日进化: " + last_evo, "items": []})
+        except Exception as e:
+            stages.append({"id": "reflow", "name": "数据回流", "count": -1, "detail": str(e)[:80], "items": []})
+        out["stages"] = stages
+        # ---- 2. 服务网格 ----
+        svc = [
+            {"id": "console", "name": "控制台 :8080", "ok": True, "note": "本服务"},
+            {"id": "mcp", "name": "MCP Server", "ok": self._cmd_pgrep("mcp_server/server.py"), "note": ""},
+            {"id": "dispatcher", "name": "Dispatcher :8740", "ok": self._cmd_http_ok("http://192.166.82.123:8740/mcp"), "note": "VPS"},
+            {"id": "perception", "name": "Perception :18736", "ok": self._cmd_pgrep("perception_server.py"), "note": ""},
+            {"id": "nanowebui", "name": "Nano WebUI :18737", "ok": self._cmd_pgrep("http.server 18737"), "note": ""},
+            {"id": "t8738", "name": "隧道 8738", "ok": self._cmd_pgrep("[-]R 0[.]0[.]0[.]0:8738:"), "note": "MCP 对外"},
+            {"id": "t18901", "name": "隧道 18901", "ok": self._cmd_pgrep("[-]R 0[.]0[.]0[.]0:18901:"), "note": "天枢控制台"},
+            {"id": "t18738", "name": "隧道 18738", "ok": self._cmd_pgrep("[-]L 127[.]0[.]0[.]1:18738:"), "note": "Gemini Live"},
+        ]
+        out["services"] = svc
+        out["services_ok"] = sum(1 for s in svc if s["ok"])
+        out["services_total"] = len(svc)
+        # ---- 3. 九平台矩阵 ----
+        plats = []
+        try:
+            pm = self._cmd_read_json(os.path.join(D, "perpetua", "distributor", "platform_matrix.json"), {})
+            pd = pm.get("platforms", pm) if isinstance(pm, dict) else {}
+            for k, v in pd.items():
+                if not isinstance(v, dict):
+                    continue
+                plats.append({"id": k, "status": v.get("status", "ok"),
+                              "videos": len(v.get("videos", [])),
+                              "comments": len(v.get("comments", []))})
+        except Exception:
+            pass
+        out["platforms"] = plats
+        out["platforms_ok"] = sum(1 for p in plats if p["status"] == "ok")
+        # ---- 4. 健康常量（读最近 publish runlog）----
+        consts = []
+        try:
+            rl = self._cmd_tail("/home/hatch/workspace/goals/karenvsai/hidden_files/publish-health-watch-runlog.md", 3)
+            last = rl[-1] if rl else ""
+            import re
+            m1 = re.search(r"hours_since_last_publish=([\d.]+)", last)
+            m2 = re.search(r"publishes_last_24h=(\d+)", last)
+            m3 = re.search(r"max_schedule_deviation_min_48h=(\d+)", last)
+            consts = [
+                {"id": "gap", "name": "距上次发布", "value": (m1.group(1) + "h") if m1 else "?",
+                 "target": "≤18h", "ok": (float(m1.group(1)) <= 18) if m1 else None},
+                {"id": "daily", "name": "24h 发布数", "value": (m2.group(1) + "条") if m2 else "?",
+                 "target": "≥2条", "ok": (int(m2.group(1)) >= 2) if m2 else None},
+                {"id": "dev", "name": "排期偏差", "value": (m3.group(1) + "min") if m3 else "?",
+                 "target": "≤15min", "ok": (int(m3.group(1)) <= 15) if m3 else None},
+            ]
+        except Exception:
+            pass
+        out["constants"] = consts
+        # ---- 5. 异常与队列 ----
+        try:
+            al = self._cmd_read_json(os.path.join(D, "perpetua", "anomaly_ledger.json"), [])
+            items = al if isinstance(al, list) else al.get("items", al.get("anomalies", []))
+            out["anomaly_open"] = len(items) if isinstance(items, list) else 0
+        except Exception:
+            out["anomaly_open"] = -1
+        try:
+            conn = sqlite3.connect(os.path.join("/home/hatch/data", "ops_center.db"))
+            cur = conn.cursor()
+            cur.execute("SELECT status, COUNT(*) FROM event_bus GROUP BY status")
+            out["event_bus"] = {r[0]: r[1] for r in cur.fetchall()}
+            cur.execute("SELECT event_type, created_at FROM event_bus ORDER BY created_at DESC LIMIT 8")
+            out["recent_bus"] = [{"t": r[0], "at": r[1]} for r in cur.fetchall()]
+            conn.close()
+        except Exception:
+            out["event_bus"] = {}
+            out["recent_bus"] = []
+        # ---- 6. 实时事件流 ----
+        events = []
+        try:
+            mem = self._cmd_tail(os.path.join(os.path.expanduser("~"), "memory",
+                                              time.strftime("%Y-%m-%d") + ".md"), 25)
+            for line in mem:
+                s = line.strip()
+                if s.startswith("- ") and len(s) > 4:
+                    events.append({"src": "巡检日志", "text": s[2:110]})
+        except Exception:
+            pass
+        try:
+            aud = self._cmd_tail(os.path.join(D, "perpetua", "audit.log"), 8)
+            for line in aud[-5:]:
+                events.append({"src": "审计", "text": line[:110]})
+        except Exception:
+            pass
+        out["events"] = events[-20:]
+        # ---- 7. 360° v2 六个扩展模块（只读聚合） ----
+        modules = []
+        for _fn in (self._mod_fleet, self._mod_quota, self._mod_council,
+                    self._mod_anomaly, self._mod_cron, self._mod_pubtruth):
+            try:
+                modules.append(_fn())
+            except Exception as _e:
+                modules.append({"id": "mod_err", "name": "模块采集异常", "status": "unknown",
+                                "summary": "采集异常", "detail": str(_e)[:120], "items": []})
+        out["modules"] = modules
+        # ---- 总 verdict（服务 bad + 模块 bad 合并计数，口径与八阶段一致） ----
+        bad_svc = [s for s in svc if not s["ok"]]
+        bad_mod = [m for m in modules if m.get("status") == "bad"]
+        n_bad = len(bad_svc) + len(bad_mod)
+        out["verdict"] = "HEALTHY" if n_bad == 0 else ("DEGRADED" if n_bad <= 2 else "DOWN")
+        _vn = []
+        if bad_svc:
+            _vn.append("服务异常: " + "、".join(s["name"] for s in bad_svc))
+        if bad_mod:
+            _vn.append("模块异常: " + "、".join(m["name"] for m in bad_mod))
+        out["verdict_note"] = "；".join(_vn) if _vn else "全部服务在线"
+        json_resp(self, out)
+
     # ---- 健康 ----
     def api_health(self):
         def pgrep(pat):
@@ -2006,6 +2653,835 @@ tick();
             "tunnel_8080": pgrep("8080:localhost:8080"),
             "disk": disk,
         })
+
+    # ---- 统一控制台：四脑议会方案 A（D20261013-001）----
+    # Tab 1: Pipeline & Cadence Gate / Tab 2: HITL Quarantine / Tab 3: Agent Infrastructure
+    # 红队修订已纳入：KILL-3（逐条审批）、KILL-4（STALE 显示）、WEAKEN-1（身份+审计）
+
+    def _audit_unified_console(self, action, target, operator, detail=None):
+        """统一控制台 mutation 审计日志（红队 WEAKEN-1：不可变审计）"""
+        try:
+            log_path = os.path.join(DATA, "perpetua", "vps_console", "unified_console_audit.log")
+            entry = {
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "action": action,
+                "target": target,
+                "operator": operator or "unknown",
+                "detail": detail or {},
+            }
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception as e:
+            print(f"WARN: 统一控制台审计写入失败: {e}", file=_sys.stderr)
+
+    def api_pipeline_queue(self):
+        """GET /api/pipeline/queue — 发布队列状态（读 SQLite 真相源）"""
+        try:
+            import sqlite3
+            db = os.path.join(DATA, "ops_center.db")
+            conn = sqlite3.connect(db)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            # 队列概览
+            cur.execute("SELECT status, COUNT(*) as c FROM event_bus GROUP BY status")
+            by_status = {r["status"]: r["c"] for r in cur.fetchall()}
+            # 最近 10 条 PENDING
+            cur.execute(
+                "SELECT event_id, queue_name, event_type, status, created_at, updated_at "
+                "FROM event_bus WHERE status='PENDING' ORDER BY created_at DESC LIMIT 10"
+            )
+            pending = [dict(r) for r in cur.fetchall()]
+            # 队首等待时长（最老 PENDING 的年龄）
+            cur.execute(
+                "SELECT MIN(created_at) as oldest FROM event_bus WHERE status='PENDING'"
+            )
+            oldest = cur.fetchone()["oldest"]
+            queue_delay_min = None
+            if oldest:
+                try:
+                    from datetime import datetime, timezone
+                    dt = datetime.fromisoformat(oldest.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    queue_delay_min = round(
+                        (datetime.now(timezone.utc) - dt).total_seconds() / 60, 1
+                    )
+                except Exception:
+                    pass
+            conn.close()
+            # burst lock：队列延迟 >120min 则锁定（红队 KILL-2：执行层 interlock 由 publisher 侧实现，此处仅报告状态）
+            burst_locked = queue_delay_min is not None and queue_delay_min > 120
+            json_resp(self, {
+                "ok": True,
+                "by_status": by_status,
+                "pending_sample": pending,
+                "queue_delay_min": queue_delay_min,
+                "burst_locked": burst_locked,
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            })
+        except Exception as e:
+            json_resp(self, {"ok": False, "error": str(e)[:200]}, 500)
+
+    def api_quarantine_list(self):
+        """GET /api/quarantine/list — 隔离视频列表"""
+        try:
+            qpath = os.path.join(DATA, "youtube", "quarantine.json")
+            items = []
+            if os.path.exists(qpath):
+                with open(qpath, encoding="utf-8") as f:
+                    data = json.load(f)
+                # 兼容 dict 和 list 两种格式
+                if isinstance(data, dict):
+                    for vid, info in data.items():
+                        if isinstance(info, dict):
+                            info["video_id"] = vid
+                            items.append(info)
+                elif isinstance(data, list):
+                    items = data
+            json_resp(self, {
+                "ok": True,
+                "count": len(items),
+                "items": items,
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            })
+        except Exception as e:
+            json_resp(self, {"ok": False, "error": str(e)[:200]}, 500)
+
+    def api_agent_cron_cache(self):
+        """GET /api/agent/cron-cache — 116 cron 状态镜像（红队 KILL-4：必须显 STALE+缓存年龄）"""
+        try:
+            cache_path = os.path.join(DATA, "perpetua", "vps_console", "agent_cron_cache.json")
+            now = time.time()
+            if os.path.exists(cache_path):
+                with open(cache_path, encoding="utf-8") as f:
+                    cache = json.load(f)
+                cached_at = cache.get("cached_at", 0)
+                age_sec = now - cached_at if cached_at else None
+                # 超过 120s 未刷新则标 STALE
+                stale = age_sec is None or age_sec > 120
+                json_resp(self, {
+                    "ok": True,
+                    "stale": stale,
+                    "cached_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(cached_at)) if cached_at else None,
+                    "age_sec": round(age_sec, 1) if age_sec is not None else None,
+                    "jobs": cache.get("jobs", []),
+                    "job_count": len(cache.get("jobs", [])),
+                    "heartbeat": cache.get("heartbeat", "unknown"),
+                })
+            else:
+                # 无缓存 = UNKNOWN，不伪装成健康
+                json_resp(self, {
+                    "ok": True,
+                    "stale": True,
+                    "cached_at": None,
+                    "age_sec": None,
+                    "jobs": [],
+                    "job_count": 0,
+                    "heartbeat": "unknown",
+                    "note": "no cache yet — status UNKNOWN, not healthy",
+                })
+        except Exception as e:
+            json_resp(self, {"ok": False, "error": str(e)[:200]}, 500)
+
+    def api_commander_chat(self, payload):
+        """POST /api/commander/chat — 指挥官对话
+        payload: {target: 'muse'|'nano', message: str}
+        nano: 直接调 nano-call，同步返回
+        muse: 关键词即时回复；复杂问题进队列异步处理，前端轮询 /api/commander/poll
+        """
+        import uuid
+        target = (payload.get("target") or "muse").strip()
+        message = (payload.get("message") or "").strip()
+        if not message:
+            json_resp(self, {"ok": False, "error": "消息为空"}, 400)
+            return
+        if target == "nano":
+            try:
+                nano_call = os.path.expanduser("~/workspace/skills/nanomuse-caller/bin/nano-call")
+                r = subprocess.run(
+                    [_sys.executable, nano_call, message, "--timeout", "120", "--json"],
+                    capture_output=True, text=True, timeout=150,
+                )
+                try:
+                    out = json.loads(r.stdout.strip())
+                    reply = out.get("reply") or out.get("response") or out.get("text") or r.stdout.strip()[:2000]
+                except Exception:
+                    reply = r.stdout.strip()[:2000] or f"nano 调用异常: {r.stderr[:200]}"
+                json_resp(self, {"ok": True, "target": "nano", "reply": reply, "async": False})
+            except Exception as e:
+                json_resp(self, {"ok": True, "target": "nano",
+                                 "reply": f"nano 暂时不可用: {e}", "async": False})
+            return
+        # muse: 需要口令验证（防公网滥用子 agent）
+        token = (payload.get("token") or "").strip()
+        token_ok = False
+        try:
+            saved = open(os.path.join(DATA, "perpetua", "commander_chat_token"), encoding="utf-8").read().strip()
+            token_ok = bool(token) and token == saved
+        except Exception:
+            pass
+        if not token_ok:
+            json_resp(self, {"ok": False, "error": "口令错误或缺失，Muse 对话需要口令验证"}, 403)
+            return
+        # muse: 关键词即时
+        reply = self.chat_keyword(message)
+        if reply:
+            json_resp(self, {"ok": True, "target": "muse", "reply": reply, "async": False, "source": "local"})
+            return
+        # muse: 异步队列（由 cron worker 起子 agent 处理）
+        qpath = os.path.join(DATA, "perpetua", "commander_chat_queue.json")
+        qid = "ccq-" + uuid.uuid4().hex[:8]
+        queue = []
+        if os.path.exists(qpath):
+            try:
+                queue = json.load(open(qpath, encoding="utf-8"))
+            except Exception:
+                queue = []
+        # 取同 session 历史（最近 10 条）供子 agent 上下文
+        session_id = (payload.get("session_id") or "default").strip()
+        history = []
+        for x in queue:
+            if x.get("session_id") == session_id and x.get("status") == "done":
+                history.append({"role": "user", "content": x.get("message", "")})
+                if x.get("reply"):
+                    history.append({"role": "assistant", "content": x["reply"]})
+        history = history[-20:]  # 最近 10 轮
+        queue.append({
+            "qid": qid,
+            "session_id": session_id,
+            "target": "muse",
+            "message": message,
+            "history": history,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "reply": None,
+        })
+        # 只保留最近 50 条
+        queue = queue[-50:]
+        with open(qpath, "w", encoding="utf-8") as f:
+            json.dump(queue, f, ensure_ascii=False, indent=2)
+        json_resp(self, {"ok": True, "target": "muse", "async": True, "qid": qid,
+                         "reply": "已收到，正在处理（主 agent 每 2 分钟扫一次队列）…"})
+
+    def api_commander_poll(self, payload):
+        """POST /api/commander/poll — 轮询 muse 异步回复
+        payload: {qid: str} → {ok, status: pending|done, reply}
+        """
+        qid = (payload.get("qid") or "").strip()
+        qpath = os.path.join(DATA, "perpetua", "commander_chat_queue.json")
+        if not os.path.exists(qpath):
+            json_resp(self, {"ok": False, "error": "队列不存在"}, 404)
+            return
+        try:
+            queue = json.load(open(qpath, encoding="utf-8"))
+        except Exception as e:
+            json_resp(self, {"ok": False, "error": str(e)[:200]}, 500)
+            return
+        item = next((x for x in queue if x.get("qid") == qid), None)
+        if not item:
+            json_resp(self, {"ok": False, "error": "qid 不存在"}, 404)
+            return
+        json_resp(self, {"ok": True, "qid": qid, "status": item.get("status"),
+                         "reply": item.get("reply")})
+
+    def api_agent_hotstandby(self):
+        """GET /api/agent/hotstandby — 指挥官热备状态（muse-main vs nanoMuse 路由/降级链）"""
+        try:
+            import subprocess
+            base = os.path.join(DATA, "perpetua")
+            # 1. backend_config.json
+            cfg = {}
+            cfg_path = os.path.join(base, "backend_config.json")
+            if os.path.exists(cfg_path):
+                with open(cfg_path, encoding="utf-8") as f:
+                    cfg = json.load(f)
+            # 2. muse_or_nano.py --status（路由+健康+额度）
+            status_out = {}
+            try:
+                r = subprocess.run(
+                    [_sys.executable, os.path.join(base, "muse_or_nano.py"), "--status"],
+                    capture_output=True, text=True, timeout=60,
+                )
+                if r.stdout.strip():
+                    status_out = json.loads(r.stdout.strip())
+            except Exception as e:
+                status_out = {"error": str(e)[:200]}
+            # 3. fallback_daemon 最近日志（最近 5 行）
+            fb_log = []
+            fb_path = os.path.join(base, "fallback_daemon.log")
+            if os.path.exists(fb_path):
+                with open(fb_path, encoding="utf-8") as f:
+                    lines = [l.strip() for l in f if l.strip()]
+                fb_log = lines[-5:]
+            # 4. shadow 模式
+            shadow = os.environ.get("FALLBACK_SHADOW", "true").lower() == "true"
+            json_resp(self, {
+                "ok": True,
+                "config": cfg,
+                "router_status": status_out,
+                "fallback_log_tail": fb_log,
+                "shadow_mode": shadow,
+            })
+        except Exception as e:
+            json_resp(self, {"ok": False, "error": str(e)[:200]}, 500)
+
+    def api_pipeline_recovery_approve(self, payload):
+        """POST /api/pipeline/recovery-approve — 逐条恢复审批（红队 KILL-3：删除一键恢复，改为逐视频/逐档位）"""
+        video_id = (payload.get("video_id") or "").strip()
+        slot = (payload.get("slot") or "").strip()
+        operator = (payload.get("operator") or "").strip() or "console-user"
+        if not video_id:
+            json_resp(self, {"ok": False, "error": "video_id required"}, 400)
+            return
+        # 只记录审批意图，实际恢复由管线执行（不直接改生产状态）
+        self._audit_unified_console("recovery_approve", video_id, operator,
+                                     {"slot": slot})
+        json_resp(self, {
+            "ok": True,
+            "video_id": video_id,
+            "slot": slot,
+            "operator": operator,
+            "note": "approval recorded; pipeline executor will process",
+            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+
+    def api_quarantine_unfreeze(self, payload):
+        """POST /api/quarantine/unfreeze — 单条解冻审批"""
+        video_id = (payload.get("video_id") or "").strip()
+        operator = (payload.get("operator") or "").strip() or "console-user"
+        reason = (payload.get("reason") or "").strip()
+        if not video_id:
+            json_resp(self, {"ok": False, "error": "video_id required"}, 400)
+            return
+        self._audit_unified_console("quarantine_unfreeze", video_id, operator,
+                                     {"reason": reason})
+        json_resp(self, {
+            "ok": True,
+            "video_id": video_id,
+            "operator": operator,
+            "note": "unfreeze approval recorded; use pipeline to execute",
+            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+
+    def api_quarantine_title_swap(self, payload):
+        """POST /api/quarantine/title-swap — 标题更换审批"""
+        video_id = (payload.get("video_id") or "").strip()
+        new_title = (payload.get("new_title") or "").strip()
+        operator = (payload.get("operator") or "").strip() or "console-user"
+        if not video_id or not new_title:
+            json_resp(self, {"ok": False, "error": "video_id and new_title required"}, 400)
+            return
+        self._audit_unified_console("quarantine_title_swap", video_id, operator,
+                                     {"new_title": new_title})
+        json_resp(self, {
+            "ok": True,
+            "video_id": video_id,
+            "new_title": new_title,
+            "operator": operator,
+            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+
+    # ---- 可写层 mutation API（D20261016-003：ack/刷新/重试探针直行；Tier3 只建审批）----
+    MUTATE_DIRECT = {"anomaly.ack", "sync.refresh", "probe.retry",
+                       "pipeline.trigger", "title.swap"}
+    MUTATE_TIER3_KINDS = {"publish", "delete", "flip_public", "quarantine",
+                          "revoke_credential", "infra_change", "bulk_reputation"}
+    # 直接调用即视为 Tier3 执行意图的一律拦截（必须走 approval.create）
+    MUTATE_TIER3_BLOCKED = {"video.publish", "video.delete", "video.flip_public",
+                            "credential.revoke", "infra.change", "video.bulk_reputation",
+                            "video.quarantine"}
+
+    def _mutate_identity(self):
+        ip = self.client_address[0] if self.client_address else "?"
+        ua = (self.headers.get("User-Agent") or "")[:40]
+        return f"web-console:{ip}"
+
+    def _mutate_idem_path(self):
+        return os.path.join(DATA, "perpetua", "vps_console", "mutation_idempotency.json")
+
+    def _mutate_idem_get(self, key):
+        try:
+            d = json.load(open(self._mutate_idem_path(), encoding="utf-8"))
+        except Exception:
+            return None
+        rec = d.get(key)
+        if not rec:
+            return None
+        if time.time() - rec.get("at", 0) > 86400:
+            return None
+        return rec.get("result")
+
+    def _mutate_idem_set(self, key, result):
+        try:
+            p = self._mutate_idem_path()
+            d = json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {}
+            # 清理过期
+            now = time.time()
+            d = {k: v for k, v in d.items() if now - v.get("at", 0) <= 86400}
+            d[key] = {"at": now, "result": result}
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False)
+        except Exception as e:
+            print(f"WARN: 幂等存储失败: {e}", file=_sys.stderr)
+
+    def _mutate_inbox_path(self):
+        return os.path.join(DATA, "perpetua", "escalation_inbox.json")
+
+    def _mutate_inbox_load(self):
+        try:
+            d = json.load(open(self._mutate_inbox_path(), encoding="utf-8"))
+            return d if isinstance(d, list) else d.get("items", [])
+        except Exception:
+            return []
+
+    def _mutate_inbox_save(self, items):
+        with open(self._mutate_inbox_path(), "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=1)
+
+    def _mutate_anomaly_ack(self, params, operator):
+        """直行：异常 ack。带操作前状态 + 回读验证。"""
+        eid = (params.get("escalation_id") or "").strip()
+        note = (params.get("note") or "").strip()[:200]
+        if not eid:
+            raise ValueError("escalation_id required")
+        items = self._mutate_inbox_load()
+        it = next((x for x in items if x.get("escalation_id") == eid), None)
+        if not it:
+            raise ValueError("escalation_id 不存在")
+        pre = {"acked": bool(it.get("ack_by")), "ack_by": it.get("ack_by")}
+        if pre["acked"]:
+            return {"escalation_id": eid, "already_acked": True, "pre": pre}
+        it["ack_by"] = operator
+        it["ack_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        if note:
+            it["ack_note"] = note
+        self._mutate_inbox_save(items)
+        # 回读验证
+        back = [x for x in self._mutate_inbox_load() if x.get("escalation_id") == eid]
+        if not back or back[0].get("ack_by") != operator:
+            raise RuntimeError("回读验证失败：ack 未落盘")
+        self._audit_unified_console("anomaly.ack", eid, operator,
+                                    {"pre": pre, "note": note})
+        return {"escalation_id": eid, "acked": True, "pre": pre, "readback": "ok"}
+
+    def _mutate_sync_refresh(self, params, operator):
+        """直行：刷新同步。target: matrix | snapshot | pipeline"""
+        target = (params.get("target") or "").strip()
+        if target == "matrix":
+            # 与 api_matrix_sync 同逻辑：建 job，后台 cron 捡起执行
+            job = _matrix_job_load()
+            if job and job.get("status") == "running":
+                return {"target": "matrix", "already_running": True}
+            platforms = {p: "pending" for p in
+                         ["youtube", "douyin", "xiaohongshu", "kuaishou", "shipinhao",
+                          "bilibili", "facebook", "tiktok", "x"]}
+            _matrix_job_save({"status": "running",
+                              "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                              "triggered_by": "console-mutate:" + operator,
+                              "platforms": platforms})
+            self._audit_unified_console("sync.refresh", "matrix", operator, {})
+            return {"target": "matrix", "job": "created"}
+        if target == "snapshot":
+            _real_snapshot_cache["at"] = 0
+            _real_snapshot_cache["data"] = None
+            real = fetch_real_snapshot()
+            if real:
+                write_json_file(SNAPSHOT_FILE, real)
+                self._audit_unified_console("sync.refresh", "snapshot", operator, {})
+                return {"target": "snapshot", "refreshed": True}
+            return {"target": "snapshot", "refreshed": False, "fallback": True}
+        if target == "pipeline":
+            # 管线数据由 /api/command/live 实时读取，服务端无缓存；刷新=确认读取正常
+            self._audit_unified_console("sync.refresh", "pipeline", operator, {})
+            return {"target": "pipeline", "refreshed": True, "note": "live 数据实时读取，无缓存"}
+        raise ValueError("target 须为 matrix|snapshot|pipeline")
+
+    def _mutate_probe_retry(self, params, operator):
+        """直行：重试探针。probe: dispatch_health"""
+        probe = (params.get("probe") or "").strip()
+        if probe != "dispatch_health":
+            raise ValueError("probe 仅支持 dispatch_health")
+        r = subprocess.run(
+            [_sys.executable, os.path.join(DATA, "perpetua", "dispatch_health.py")],
+            capture_output=True, text=True, timeout=60)
+        out = (r.stdout or "")[-1500:]
+        self._audit_unified_console("probe.retry", probe, operator,
+                                    {"exit": r.returncode})
+        return {"probe": probe, "exit": r.returncode,
+                "verdict": "HEALTHY" if r.returncode == 0 else "DEGRADED",
+                "output_tail": out}
+
+    def _mutate_approval_create(self, params, operator):
+        """Tier3：只创建逐条审批，永不执行。"""
+        kind = (params.get("kind") or "").strip()
+        target = (params.get("target") or "").strip()
+        reason = (params.get("reason") or "").strip()
+        if kind not in self.MUTATE_TIER3_KINDS:
+            raise ValueError("kind 须为 " + "|".join(sorted(self.MUTATE_TIER3_KINDS)))
+        if not target or not reason:
+            raise ValueError("target 和 reason 必填")
+        items = self._mutate_inbox_load()
+        eid = f"web-{int(time.time())}-{os.urandom(4).hex()}"
+        entry = {
+            "escalation_id": eid,
+            "dedup_key": "web-" + eid,
+            "checker": "web-console",
+            "subject": f"tier3:{kind}:{target}",
+            "condition": "待人工批准（控制台创建，禁止自动执行）",
+            "severity": "P1",
+            "detail": f"[{kind}] {target} —— {reason}",
+            "evidence_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "checker_health": {"probe_ok": True},
+            "filed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "filed_at_epoch": time.time(),
+            "tier3_kind": kind,
+            "tier3_target": target,
+            "tier3_reason": reason,
+            "created_by": operator,
+            "must_approve_before_execute": True,
+        }
+        items.append(entry)
+        self._mutate_inbox_save(items)
+        self._audit_unified_console("approval.create", f"{kind}:{target}", operator,
+                                    {"escalation_id": eid, "reason": reason})
+        return {"escalation_id": eid, "kind": kind, "target": target,
+                "status": "pending_approval",
+                "note": "已创建逐条审批，等待人工批准后方可执行"}
+
+
+    def _yt_mod(self):
+        """延迟导入 YouTube 模块（避免启动期拖慢）"""
+        _sys.path.insert(0, "/home/hatch/data/youtube")
+        import yt_upload
+        return yt_upload
+
+    def _exec_flip_public(self, video_id, operator):
+        """执行器：翻公开。操作前状态 + emergency flip + 回读验证。"""
+        yt = self._yt_mod()
+        try:
+            pre = yt.get_status(video_id) or {}
+        except Exception as e:
+            raise RuntimeError(f"操作前状态读取失败: {e}"[:200])
+        pre_privacy = pre.get("privacyStatus", "")
+        if pre_privacy == "public":
+            return {"executed": False, "already_public": True,
+                    "pre_privacy": pre_privacy}
+        if pre_privacy != "private":
+            # 操作前状态不明（视频不存在 / API 异常）→ 拒绝执行，保守失败
+            raise RuntimeError(
+                f"拒绝执行：操作前 privacyStatus={pre_privacy!r} 不是 private")
+        r = subprocess.run(
+            [_sys.executable, os.path.join(DATA, "youtube", "private_flip.py"),
+             "emergency", video_id],
+            capture_output=True, text=True, timeout=180)
+        tail = ((r.stdout or "") + (r.stderr or ""))[-1200:]
+        try:
+            post = yt.get_status(video_id) or {}
+        except Exception as e:
+            post = {"error": str(e)[:120]}
+        post_privacy = post.get("privacyStatus", "")
+        ok = post_privacy == "public"
+        self._audit_unified_console(
+            "exec.flip_public", video_id, operator,
+            {"pre_privacy": pre_privacy, "post_privacy": post_privacy,
+             "cli_exit": r.returncode, "verified": ok})
+        if not ok:
+            raise RuntimeError(f"翻转后回读验证失败: privacyStatus={post_privacy}")
+        return {"executed": True, "pre_privacy": pre_privacy,
+                "post_privacy": post_privacy, "verified": True,
+                "cli_tail": tail[-400:]}
+
+    def _exec_quarantine_unfreeze(self, video_id, operator):
+        """执行器：隔离解冻。从 quarantine.json 移除 + 翻回 public + 回读验证。"""
+        qpath = os.path.join(DATA, "youtube", "quarantine.json")
+        try:
+            q = json.load(open(qpath, encoding="utf-8")) if os.path.exists(qpath) else {}
+        except Exception:
+            q = {}
+        pre_in_q = video_id in q if isinstance(q, dict) else False
+        yt = self._yt_mod()
+        try:
+            pre = yt.get_status(video_id) or {}
+        except Exception as e:
+            raise RuntimeError(f"操作前状态读取失败: {e}"[:200])
+        if pre.get("privacyStatus", "") != "private":
+            raise RuntimeError(
+                "拒绝执行：操作前 privacyStatus 不是 private（视频不存在或状态不明）")
+        if isinstance(q, dict) and video_id in q:
+            del q[video_id]
+            with open(qpath, "w", encoding="utf-8") as f:
+                json.dump(q, f, ensure_ascii=False, indent=1)
+        try:
+            res = yt.update_metadata(video_id, privacy="public")
+        except Exception as e:
+            raise RuntimeError(f"翻回 public 失败: {e}"[:200])
+        if not res.get("updated"):
+            raise RuntimeError(f"翻回 public 被拒: {res.get('error', 'unknown')}"[:200])
+        try:
+            post = yt.get_status(video_id) or {}
+        except Exception as e:
+            post = {"error": str(e)[:120]}
+        ok = post.get("privacyStatus") == "public"
+        self._audit_unified_console(
+            "exec.quarantine_unfreeze", video_id, operator,
+            {"was_in_quarantine": pre_in_q,
+             "pre_privacy": pre.get("privacyStatus", ""),
+             "post_privacy": post.get("privacyStatus", ""), "verified": ok})
+        if not ok:
+            raise RuntimeError("解冻后回读验证失败")
+        return {"executed": True, "was_in_quarantine": pre_in_q, "verified": True}
+
+    def _mutate_approval_decide(self, params, operator):
+        """审批决策：approve（批准并执行）/ reject（驳回）。
+        批准即执行——点击者即为该具体操作的批准人，审计留痕。
+        flip_public / quarantine 有自动执行器；其余 kind 批准后标记待 Dash 执行。"""
+        eid = (params.get("escalation_id") or "").strip()
+        decision = (params.get("decision") or "").strip()
+        note = (params.get("note") or "").strip()[:200]
+        if not eid:
+            raise ValueError("escalation_id required")
+        if decision not in ("approve", "reject"):
+            raise ValueError("decision 须为 approve|reject")
+        items = self._mutate_inbox_load()
+        it = next((x for x in items if x.get("escalation_id") == eid), None)
+        if not it:
+            raise ValueError("escalation_id 不存在")
+        if not it.get("must_approve_before_execute"):
+            raise ValueError("该条目不是 Tier3 审批")
+        pre = {"decision": it.get("tier3_decision"),
+               "kind": it.get("tier3_kind"), "target": it.get("tier3_target")}
+        if pre["decision"]:
+            return {"escalation_id": eid, "already_decided": True, "pre": pre}
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        it["tier3_decision"] = decision
+        it["tier3_decided_by"] = operator
+        it["tier3_decided_at"] = now
+        if note:
+            it["tier3_decision_note"] = note
+        exec_result = None
+        if decision == "approve":
+            kind = it.get("tier3_kind")
+            target = it.get("tier3_target") or ""
+            vid = target.split()[0] if target else ""
+            if kind == "flip_public" and vid:
+                exec_result = self._exec_flip_public(vid, operator)
+            elif kind == "quarantine" and vid:
+                exec_result = self._exec_quarantine_unfreeze(vid, operator)
+            else:
+                exec_result = {"executed": False,
+                               "pending": "approved_pending_execution",
+                               "note": f"kind={kind} 暂无自动执行器，已批准，待 Dash 执行"}
+            it["tier3_exec_result"] = exec_result
+        self._mutate_inbox_save(items)
+        # 回读验证
+        back = [x for x in self._mutate_inbox_load()
+                if x.get("escalation_id") == eid]
+        if not back or back[0].get("tier3_decision") != decision:
+            raise RuntimeError("回读验证失败：决策未落盘")
+        self._audit_unified_console("approval.decide", eid, operator,
+                                    {"pre": pre, "decision": decision,
+                                     "exec": exec_result, "note": note})
+        return {"escalation_id": eid, "decision": decision, "pre": pre,
+                "exec": exec_result, "readback": "ok"}
+
+    def _mutate_pipeline_trigger(self, params, operator):
+        """直行：管线手动触发。stage: select|review|submit|collect|status"""
+        stage = (params.get("stage") or "").strip()
+        if stage not in ("select", "review", "submit", "collect", "status"):
+            raise ValueError("stage 须为 select|review|submit|collect|status")
+        cmd = [_sys.executable, os.path.join(DATA, "perpetua", "auto_pipeline.py"),
+               stage]
+        if stage == "select":
+            n = params.get("n", 2)
+            try:
+                n = max(1, min(5, int(n)))
+            except Exception:
+                n = 2
+            cmd += ["--n", str(n)]
+            if params.get("slot"):
+                cmd += ["--slot", str(params["slot"])[:8]]
+        if stage == "review":
+            # 控制台触发不阻塞等待：只捡答案+提交，不等新答案
+            cmd += ["--wait", "0", "--instant-timeout", "0"]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        out = ((r.stdout or "") + (r.stderr or ""))[-2000:]
+        self._audit_unified_console("pipeline.trigger", stage, operator,
+                                    {"exit": r.returncode})
+        return {"stage": stage, "exit": r.returncode,
+                "output_tail": out[-800:]}
+
+    def _mutate_title_swap(self, params, operator):
+        """直行：单视频标题更换。带操作前标题 + 回读验证。"""
+        video_id = (params.get("video_id") or "").strip()
+        new_title = (params.get("new_title") or "").strip()
+        if not video_id or not new_title:
+            raise ValueError("video_id 和 new_title 必填")
+        if len(new_title) > 100:
+            raise ValueError("标题过长（>100字）")
+        yt = self._yt_mod()
+        try:
+            pre = yt.get_status(video_id) or {}
+        except Exception as e:
+            raise RuntimeError(f"操作前状态读取失败: {e}"[:200])
+        pre_title = pre.get("title", "")
+        try:
+            res = yt.update_metadata(video_id, title=new_title)
+        except Exception as e:
+            raise RuntimeError(f"标题更换失败: {e}"[:200])
+        if not res.get("updated"):
+            raise RuntimeError(f"标题更换被拒: {res.get('error', 'unknown')}"[:200])
+        try:
+            post = yt.get_status(video_id) or {}
+        except Exception as e:
+            post = {"error": str(e)[:120]}
+        ok = post.get("title", "") == new_title
+        self._audit_unified_console("title.swap", video_id, operator,
+                                    {"pre_title": pre_title[:60],
+                                     "new_title": new_title[:60],
+                                     "verified": ok})
+        if not ok:
+            raise RuntimeError("回读验证失败：标题未变更")
+        return {"video_id": video_id, "pre_title": pre_title,
+                "new_title": new_title, "verified": True}
+
+    def _mutate_flip_emergency(self, params, operator):
+        """Tier3：紧急翻公开申请。只创建审批（kind=flip_public + 紧急标记），不执行。"""
+        video_id = (params.get("video_id") or "").strip()
+        reason = (params.get("reason") or "").strip()
+        if not video_id:
+            raise ValueError("video_id required")
+        return self._mutate_approval_create(
+            {"kind": "flip_public", "target": video_id,
+             "reason": "[EMERGENCY] " + (reason or "紧急翻公开申请")}, operator)
+
+    def _mutate_cron_request(self, params, operator):
+        """cron 操作请求：写入队列，由 Dash 处理执行（控制台无直连 cron 控制面）。"""
+        op = (params.get("op") or "").strip()
+        job_id = (params.get("job_id") or "").strip()
+        detail = (params.get("detail") or "").strip()[:300]
+        if op not in ("pause", "resume", "update_body", "delete", "run_now"):
+            raise ValueError("op 须为 pause|resume|update_body|delete|run_now")
+        if not job_id:
+            raise ValueError("job_id required")
+        qpath = os.path.join(DATA, "perpetua", "cron_ops_queue.json")
+        try:
+            q = json.load(open(qpath, encoding="utf-8")) if os.path.exists(qpath) else []
+        except Exception:
+            q = []
+        req_id = f"cronreq-{int(time.time())}-{os.urandom(3).hex()}"
+        q.append({"request_id": req_id, "op": op, "job_id": job_id,
+                  "detail": detail, "requested_by": operator,
+                  "requested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                  "status": "pending"})
+        with open(qpath, "w", encoding="utf-8") as f:
+            json.dump(q, f, ensure_ascii=False, indent=1)
+        self._audit_unified_console("cron.request", f"{op}:{job_id}", operator,
+                                    {"request_id": req_id, "detail": detail})
+        return {"request_id": req_id, "op": op, "job_id": job_id,
+                "status": "pending",
+                "note": "已入队，待 Dash 处理执行"}
+
+    def api_mutate_pending(self, parsed):
+        """GET /api/mutate/pending?kind=anomaly|tier3 — 抽屉操作区数据源（只读）"""
+        qs = parse_qs(parsed.query)
+        kind = (qs.get("kind", ["anomaly"])[0] or "anomaly").strip()
+        items = self._mutate_inbox_load()
+        if kind == "anomaly":
+            out = [{"escalation_id": e.get("escalation_id"),
+                    "subject": e.get("subject"), "condition": e.get("condition"),
+                    "severity": e.get("severity"),
+                    "detail": (e.get("detail") or "")[:160],
+                    "filed_at": e.get("filed_at")}
+                   for e in items if isinstance(e, dict) and not e.get("ack_by")][:20]
+        elif kind == "tier3":
+            out = [{"escalation_id": e.get("escalation_id"),
+                    "kind": e.get("tier3_kind"), "target": e.get("tier3_target"),
+                    "reason": e.get("tier3_reason"), "created_by": e.get("created_by"),
+                    "filed_at": e.get("filed_at"),
+                    "decision": e.get("tier3_decision"),
+                    "emergency": "[EMERGENCY]" in (e.get("tier3_reason") or "")}
+                   for e in items if isinstance(e, dict)
+                   and e.get("must_approve_before_execute")
+                   and not e.get("ack_by") and not e.get("tier3_decision")][:20]
+        else:
+            out = []
+        json_resp(self, {"ok": True, "kind": kind, "items": out})
+
+    def api_cron_requests(self):
+        """GET /api/cron/requests — cron 操作请求队列（只读）"""
+        qpath = os.path.join(DATA, "perpetua", "cron_ops_queue.json")
+        try:
+            q = json.load(open(qpath, encoding="utf-8")) if os.path.exists(qpath) else []
+        except Exception:
+            q = []
+        json_resp(self, {"ok": True, "items": q if isinstance(q, list) else []})
+
+    def api_mutate(self, payload):
+        """POST /api/mutate — 统一写入入口（D20261016-003）
+        payload: {action, idempotency_key, params}
+        直行：anomaly.ack / sync.refresh / probe.retry / pipeline.trigger /
+              title.swap（执行+审计）
+        Tier3：approval.create（只建审批）/ approval.decide（批准并执行，
+              flip_public 与 quarantine 有自动执行器）/ flip.emergency（只建审批）；
+              cron.request 只入队待 Dash 执行；直接执行类 action 一律 403
+        每条 mutation：身份 + 审计日志 + 幂等键 + 操作前状态 + 回读验证
+        """
+        action = (payload.get("action") or "").strip()
+        idem = (payload.get("idempotency_key") or "").strip()
+        params = payload.get("params") or {}
+        operator = self._mutate_identity()
+        if not action or not idem:
+            json_resp(self, {"ok": False, "error": "action 与 idempotency_key 必填"}, 400)
+            return
+        if not isinstance(params, dict):
+            json_resp(self, {"ok": False, "error": "params 须为对象"}, 400)
+            return
+        # 幂等：重复 key 直接返回上次结果
+        cached = self._mutate_idem_get(idem)
+        if cached is not None:
+            json_resp(self, {"ok": True, "idempotent": True, "result": cached})
+            return
+        # Tier3 直接执行意图拦截
+        if action in self.MUTATE_TIER3_BLOCKED:
+            self._audit_unified_console("mutate_blocked_tier3", action, operator,
+                                        {"params": params, "idempotency_key": idem})
+            json_resp(self, {"ok": False, "error": "TIER3_BLOCKED",
+                             "message": "Tier 3 动作禁止直接执行，请用 approval.create 创建逐条审批，待人工批准"},
+                      403)
+            return
+        try:
+            if action == "anomaly.ack":
+                result = self._mutate_anomaly_ack(params, operator)
+            elif action == "sync.refresh":
+                result = self._mutate_sync_refresh(params, operator)
+            elif action == "probe.retry":
+                result = self._mutate_probe_retry(params, operator)
+            elif action == "approval.create":
+                result = self._mutate_approval_create(params, operator)
+            elif action == "approval.decide":
+                result = self._mutate_approval_decide(params, operator)
+            elif action == "pipeline.trigger":
+                result = self._mutate_pipeline_trigger(params, operator)
+            elif action == "title.swap":
+                result = self._mutate_title_swap(params, operator)
+            elif action == "flip.emergency":
+                result = self._mutate_flip_emergency(params, operator)
+            elif action == "cron.request":
+                result = self._mutate_cron_request(params, operator)
+            else:
+                json_resp(self, {"ok": False, "error": "未知 action: " + action}, 400)
+                return
+        except ValueError as e:
+            json_resp(self, {"ok": False, "error": str(e)[:300]}, 400)
+            return
+        except Exception as e:
+            self._audit_unified_console("mutate_error", action, operator,
+                                        {"error": str(e)[:200], "idempotency_key": idem})
+            json_resp(self, {"ok": False, "error": str(e)[:300]}, 500)
+            return
+        self._mutate_idem_set(idem, result)
+        json_resp(self, {"ok": True, "action": action, "operator": operator,
+                         "result": result})
 
     # ---- 终端 ----
     def api_exec(self, command):
@@ -2195,8 +3671,9 @@ tick();
 
 def main():
     port = int(os.environ.get("CONSOLE_PORT", "8080"))
-    srv = HTTPServer(("127.0.0.1", port), Handler)
-    print(f"Perpetua console v2 on 127.0.0.1:{port}", flush=True)
+    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    srv.daemon_threads = True  # 主进程退出时工作线程不阻塞
+    print(f"Perpetua console v2 (threaded) on 127.0.0.1:{port}", flush=True)
     srv.serve_forever()
 
 

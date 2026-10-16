@@ -46,6 +46,84 @@ TEASER_AVD_GREEN = 75.0     # teaser T+48h：averageViewPercentage ≥ 75%
 TEASER_VIEWS_GREEN = 30     # teaser T+48h：views ≥ 30（VvS proxy，分发证明）
 LONGFORM_T14_HOURS = 150.0  # 正片 T+14d：150 观看小时
 
+# --- 防误判（D20261015-010，每日进化议会首轮，红队 R3 修订） ---
+# gas-nozzle 的 "AVD 0% → RED" 是可见性翻转期间的瞬时脏数据，不是真实观众行为。
+# 规则：读数持久化 + 跃迁脏数据隔离 + RED 需两次连续确认（≥6h 间隔），否则 PENDING。
+TEASER_READINGS_LOG = PERPETUA / "teaser_readings.jsonl"
+RED_CONFIRM_GAP_H = 6        # 两次确认最小间隔（红队修订：12h→6h，降延迟）
+
+
+def _log_teaser_reading(video_id, avd, views, quarantined, reason=""):
+    rec = {"video_id": video_id,
+           "ts": datetime.now(timezone.utc).isoformat(),
+           "avd": avd, "views": views,
+           "quarantined": quarantined, "reason": reason}
+    try:
+        with open(TEASER_READINGS_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _recent_valid_readings(video_id, hours=72):
+    """近 hours 小时内未被隔离的读数（时间升序）。"""
+    out = []
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        with open(TEASER_READINGS_LOG, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if r.get("video_id") != video_id or r.get("quarantined"):
+                    continue
+                try:
+                    ts = datetime.fromisoformat(r["ts"].replace("Z", "+00:00"))
+                except Exception:
+                    continue
+                if ts >= cutoff:
+                    out.append((ts, r))
+    except FileNotFoundError:
+        pass
+    out.sort(key=lambda x: x[0])
+    return [r for _, r in out]
+
+
+def _is_green(avd, views):
+    return (avd is not None and avd >= TEASER_AVD_GREEN
+            and views is not None and views >= TEASER_VIEWS_GREEN)
+
+
+def confirmed_teaser_verdict(video_id, avd, views):
+    """防误判的 teaser  verdict：GREEN / RED / PENDING。
+    - 脏数据隔离：avd==0 且 views>0（已证实的翻转脏数据签名）→ 隔离本次读数
+    - RED 需最近 2 个有效读数（间隔≥6h）都不达标；否则 PENDING（不判 RED）
+    """
+    quarantined, reason = False, ""
+    if avd == 0 and (views or 0) > 0:
+        quarantined, reason = True, "avd_zero_with_views_flip_artifact"
+    _log_teaser_reading(video_id, avd, views, quarantined, reason)
+    if quarantined:
+        return "PENDING"
+    if _is_green(avd, views):
+        return "GREEN"
+    # 不达标：需要两次连续确认
+    valid = _recent_valid_readings(video_id)
+    if len(valid) >= 2:
+        r1, r2 = valid[-2], valid[-1]
+        try:
+            t1 = datetime.fromisoformat(r1["ts"].replace("Z", "+00:00"))
+            t2 = datetime.fromisoformat(r2["ts"].replace("Z", "+00:00"))
+            gap_h = (t2 - t1).total_seconds() / 3600
+        except Exception:
+            gap_h = 0
+        if gap_h >= RED_CONFIRM_GAP_H \
+                and not _is_green(r1.get("avd"), r1.get("views")) \
+                and not _is_green(r2.get("avd"), r2.get("views")):
+            return "RED"
+    return "PENDING"
+
 
 def title_features(title):
     t = title.lower()
@@ -195,12 +273,16 @@ def analyze(videos, baseline):
             if v["avd"] is None:
                 v["verdict"] = "缺数"
                 missing.append(v)
-            elif v["avd"] >= TEASER_AVD_GREEN and v["views"] >= TEASER_VIEWS_GREEN:
-                v["verdict"] = "GREEN"
-                green.append(v)
             else:
-                v["verdict"] = "RED"
-                red.append(v)
+                # D20261015-010：防误判 verdict（脏数据隔离 + 两次确认）
+                vd = confirmed_teaser_verdict(v["id"], v["avd"], v["views"])
+                v["verdict"] = vd
+                if vd == "GREEN":
+                    green.append(v)
+                elif vd == "RED":
+                    red.append(v)
+                else:  # PENDING：未定，不判 RED，进观察
+                    watching.append(v)
         else:
             v["vclass"] = "longform"
             v["verdict"] = "观察中"
@@ -214,6 +296,14 @@ def derive_findings(green, red, watching, baseline):
     findings = []
     if not green and not red and not watching:
         return ["样本不足（48h 窗口无发布），维持现有策略"]
+    # D20261015-010 R1：分发异常告警（只告警，不自动归因改元数据）
+    # 信号：完播达标但播放极低 = 内容 OK、疑似分发问题（smart-meter 89%完播/23播放实证）
+    for v in watching + red:
+        avd, views = v.get("avd"), v.get("views", 0)
+        if avd is not None and avd >= TEASER_AVD_GREEN and views < TEASER_VIEWS_GREEN:
+            findings.append(
+                f"疑似分发问题（非内容问题）：「{v['title'][:30]}」完播 {avd:.0f}% "
+                f"但仅 {views} 播放——内容达标，检查信息流分发/发布时间，不要改标题创意")
     def rate(lst, key):
         if not lst:
             return 0.0

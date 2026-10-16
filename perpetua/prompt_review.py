@@ -57,8 +57,18 @@ def submit_prompt_review_instant(prompt, title, description, topic=None,
         r = _ask_now(q_text, priority="high", asked_by="dash", force=force)
         iid = r.get("iid")
         if not force or True:
+            # 2026-10-16 修：幂等命中（ask_now 返回 deduped=True，同一 iid）
+            # 时保留原始 submitted_at，只有真正新建提问才记 now。
+            # 此前每次重跑都把 submitted_at 刷成 now，导致
+            # _fresh_review_answer 误判"答案早于提交"→SUSPECT，
+            # selected 永久卡死。
+            _deduped = bool(r.get("deduped"))
+            _prev = reviewed.get(key)
+            _prev_ts = _prev.get("submitted_at") if isinstance(_prev, dict) else None
             reviewed[key] = {"qid": iid, "topic": topic, "title": title,
-                             "attempt": attempt, "submitted_at": now_iso(),
+                             "attempt": attempt,
+                             "submitted_at": (_prev_ts if (_deduped and _prev_ts)
+                                              else now_iso()),
                              "mode": "instant"}
             _save(REVIEWED_PATH, reviewed)
         ans = _check_now(iid, timeout_minutes=instant_timeout_minutes)

@@ -166,6 +166,31 @@ def _write_back(video_key, command, result):
         print(f"WARN: 写回 pipeline_state 失败: {e}", file=sys.stderr)
 
 
+def _is_stale_command(cmd):
+    """stale 命令检测（2026-10-14 gas-nozzle 空转 bug 修复）：
+    若命令入队时间早于该视频最后一次状态变更，则该命令已被后续跃迁 supersede，
+    执行它会把视频打回旧状态。仅对 QUARANTINE/SET_PRIVATE（可见性变更）生效。
+    """
+    if cmd.get("command") not in ("QUARANTINE", "SET_PRIVATE"):
+        return False
+    try:
+        from pipeline_state import load_state
+        from datetime import datetime
+        state = load_state()
+        rec = state.get(cmd.get("video_key"))
+        if not rec:
+            return False
+        enqueued = cmd.get("enqueued_at")
+        updated = rec.get("updated_at")
+        if not enqueued or not updated:
+            return False
+        # ISO 8601 字符串可直接比较（同为 UTC）
+        return enqueued < updated
+    except Exception as e:
+        print(f"WARN: stale 检测失败，保守放行: {e}", file=sys.stderr)
+        return False  # 检测失败时不拦截，避免误杀正常命令
+
+
 def process_queue(handler_overrides=None, max_batch=20):
     """worker：取 pending 命令 → 执行 → 记 executed → 写回。返回处理统计。"""
     handlers = dict(DEFAULT_HANDLERS)
@@ -180,6 +205,17 @@ def process_queue(handler_overrides=None, max_batch=20):
             if key in executed:
                 cmd["status"] = "skipped"
                 skipped += 1
+                continue
+            # stale 命令拦截：入队早于视频最后状态变更的可见性命令直接跳过
+            if _is_stale_command(cmd):
+                cmd["status"] = "skipped"
+                cmd["skip_reason"] = "stale: enqueued before last state transition"
+                skipped += 1
+                audit_log("command_skipped_stale", cmd["video_key"],
+                          cmd.get("from_state", ""), cmd.get("to_state", ""),
+                          "executor", {"command": cmd["command"],
+                                      "idempotency_key": key,
+                                      "enqueued_at": cmd.get("enqueued_at")})
                 continue
             handler = handlers.get(cmd["command"])
             if not handler:

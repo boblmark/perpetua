@@ -150,32 +150,104 @@ def main():
         href = js("(function(){return location.href})()")
     say(f"落地页：{href}")
 
-    # 2. eval 插入 prompt（长文本瞬间插入，比逐字快）
+    # 1b. 激活 arena tab（2026-10-16 修）：9222 浏览器多 tab 共享（FB/Gemini/arena），
+    #     后台 tab 的 React 被节流、ProseMirror 编辑器不挂载 → NO_EDITOR。
+    #     经 CDP 激活 arena.ai/agent 的 page target，并关闭同 URL 的重复 tab。
+    def _activate_arena_tab():
+        try:
+            r = subprocess.run(SSH_BASE + ["curl", "-s", "http://127.0.0.1:9222/json/list"],
+                               capture_output=True, text=True, timeout=30)
+            targets = [t for t in json.loads(r.stdout)
+                       if t.get("type") == "page" and "arena.ai/agent" in (t.get("url") or "")]
+            if not targets:
+                say("激活 arena tab：未找到 arena.ai/agent 的 page target")
+                return False
+            first = targets[0]["id"]
+            subprocess.run(SSH_BASE + ["curl", "-s", "-X", "POST",
+                                       "http://127.0.0.1:9222/json/activate/%s" % first],
+                           capture_output=True, text=True, timeout=30)
+            for t in targets[1:]:
+                # 只关停留在落地页的重复 tab，不碰 /agent/<id> 会话
+                if (t.get("url") or "").rstrip("/") == LANDING.rstrip("/"):
+                    subprocess.run(SSH_BASE + ["curl", "-s", "-X", "PUT",
+                                               "http://127.0.0.1:9222/json/close/%s" % t["id"]],
+                                   capture_output=True, text=True, timeout=30)
+            say("已激活 arena tab（%d 个，关闭 %d 个重复）" % (len(targets), max(0, len(targets) - 1)))
+            return True
+        except Exception as e:
+            say("激活 arena tab 异常: %s" % str(e)[:100])
+            return False
+
+    _activate_arena_tab()
+    time.sleep(3)
+
+    # 2. 等编辑器挂载 + eval 插入 prompt（长文本瞬间插入，比逐字快）
+    #    2026-10-16 修：真根因是后台 tab 的 React 被浏览器节流、ProseMirror 不挂载
+    #    （9222 与 FB/Gemini 自动化共享），非单纯懒加载。step 1b 已激活 tab，
+    #    这里再轮询确认（单次 eval 必须 <25s，agent-browser CDP 超时上限）。
+    #    插入幂等：编辑器已有文本则视为已插入。
     b64 = base64.b64encode(prompt.encode("utf-8")).decode("ascii")
-    expr = (
-        "(function(){var bin=atob('" + b64 + "');"
-        "var bytes=Uint8Array.from(bin,function(c){return c.charCodeAt(0)});"
-        "var t=new TextDecoder().decode(bytes);"
-        "var el=document.querySelector('[contenteditable]');"
-        "if(!el)return 'NO_EDITOR';el.focus();"
-        "document.execCommand('insertText',false,t);"
-        "return 'INSERTED:'+el.innerText.length})()"
-    )
-    ins = js(expr, timeout=60)
-    say(f"插入结果：{ins[:60]}")
+    ins = ""
+    editor_state = "NONE"
+    for attempt in range(20):
+        try:
+            editor_state = js(
+                "(function(){var el=document.querySelector('.tiptap.ProseMirror,[contenteditable]');"
+                "return el?(el.innerText.trim().length>0?'HAS_TEXT':'EMPTY'):'NONE'})()",
+                timeout=30)
+        except RuntimeError as e:
+            say("找编辑器尝试 %d 异常: %s" % (attempt + 1, str(e)[:80]))
+            editor_state = "NONE"
+        if editor_state in ("HAS_TEXT", "EMPTY"):
+            say("找编辑器尝试 %d: %s" % (attempt + 1, editor_state))
+            break
+        if attempt == 2:
+            # 点一次 composer，触发编辑器挂载
+            try:
+                js("(function(){var els=Array.from(document.querySelectorAll('button'));"
+                   "var send=els.find(function(b){return /send message/i.test(b.getAttribute('aria-label')||'')});"
+                   "if(!send)return 'NOSEND';var r=send.getBoundingClientRect();"
+                   "var c=document.elementFromPoint(r.x-300,r.y-20);"
+                   "if(!c)return 'NOEL';c.click();return 'CLICKED';})()",
+                   timeout=30)
+            except RuntimeError:
+                pass
+        time.sleep(5)
+    if editor_state == "HAS_TEXT":
+        ins = "INSERTED:already"
+    elif editor_state == "EMPTY":
+        expr = (
+            "(function(){var bin=atob('" + b64 + "');"
+            "var bytes=Uint8Array.from(bin,function(c){return c.charCodeAt(0)});"
+            "var t=new TextDecoder().decode(bytes);"
+            "var el=document.querySelector('.tiptap.ProseMirror,[contenteditable]');"
+            "if(!el)return 'NO_EDITOR';el.focus();"
+            "if(el.innerText.trim().length===0)document.execCommand('insertText',false,t);"
+            "return 'INSERTED:'+el.innerText.length})()"
+        )
+        try:
+            ins = js(expr, timeout=30)
+        except RuntimeError as e:
+            say("插入异常: %s" % str(e)[:80])
+            ins = ""
+    say("插入结果：%s" % ins[:60])
     if not ins.startswith("INSERTED:"):
         print(json.dumps({"ok": False, "error": "输入框插入失败", "log": log},
                          ensure_ascii=False))
         sys.exit(1)
 
-    # 3. 点 Send
-    snap, _, _ = ab(["snapshot"], timeout=30)
-    ref = find_ref(snap, "send message") or find_ref(snap, "send")
-    if not ref:
+    # 3. 点 Send（2026-10-16 修：此页 a11y 快照几乎为空，snapshot 取不到 ref，
+    #    改用 DOM 直接点 aria-label="Send message" 的按钮）
+    send_clicked = js(
+        "(function(){var els=Array.from(document.querySelectorAll('button'));"
+        "var m=els.find(function(b){return /send message/i.test(b.getAttribute('aria-label')||'')});"
+        "if(!m)return 'NOSEND';m.click();return 'SENT_CLICKED';})()",
+        timeout=30)
+    say("点击 Send：%s" % send_clicked[:40])
+    if send_clicked != "SENT_CLICKED":
         print(json.dumps({"ok": False, "error": "找不到 Send 按钮", "log": log},
                          ensure_ascii=False))
         sys.exit(1)
-    ab(["click", ref], timeout=30)
     say("已点击 Send")
 
     # 4. 等新会话 URL

@@ -66,6 +66,24 @@ KARMA_VERBS = [
     "dangle", "dangles", "dangled",                # Out-of-order Sign: 小牌子挂在鼻子上
     "snap", "snaps", "snapped",                    # Velvet Rope: 绒绳弹在小腿上
     "dive", "dives", "dived", "dove",              # Pet Dive-bomb: 宠物扑向她的包
+    # 2026-10-12 Ask Studio 动词扩充 15 词 + 评审 2 S 词（与 karma_verbs.json tier_s 同步）
+    "repossess", "repossesses", "repossessed",   # REPOSESSED
+    "reflect", "reflects", "reflected",         # REFLECTED
+    "hoist", "hoists", "hoisted",               # HOISTED
+    "sanitize", "sanitizes", "sanitized",       # SANITIZED
+    "broadcast", "broadcasts", "broadcasted",    # BROADCASTED
+    "confiscate", "confiscates", "confiscated",  # CONFISCATED
+    "auction", "auctions", "auctioned",          # AUCTIONED
+    "downgrade", "downgrades", "downgraded",     # DOWNGRADED
+    "reroute", "reroutes", "rerouted",           # REROUTED
+    "wrap", "wraps", "wrapped",                  # WRAPPED
+    "mirror", "mirrors", "mirrored",             # MIRRORED
+    "quarantine", "quarantines", "quarantined",   # QUARANTINED
+    "dismantle", "dismantles", "dismantled",     # DISMANTLED
+    "deduct", "deducts", "deducted",             # DEDUCTED
+    # (eject 已有) EJECTED
+    "false-alarm", "false-alarms", "false-alarmed",  # FALSE-ALARM: 拉响火警插队反被围观社死
+    "auto-lock", "auto-locks", "auto-locked",       # AUTO-LOCK: 智能门主动反锁
 ]
 
 STOPWORDS = {

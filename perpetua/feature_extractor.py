@@ -129,7 +129,18 @@ def main():
             for t in top3
         ],
     }
-    OUT.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 2026-10-15：merge 而非 overwrite。dynamic_constraints.json 还有
+    # daily_topic_feedback.py 写 topic_directives / topic_feedback_date，
+    # 另有 research_brief 等人工字段——overwrite 会把它们吞掉。
+    try:
+        _merged = json.loads(OUT.read_text(encoding="utf-8"))
+        if not isinstance(_merged, dict):
+            _merged = {}
+    except Exception:
+        _merged = {}
+    _merged.update(out)
+    OUT.write_text(json.dumps(_merged, ensure_ascii=False, indent=2),
+                   encoding="utf-8")
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 

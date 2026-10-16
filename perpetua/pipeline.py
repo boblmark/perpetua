@@ -89,7 +89,7 @@ def status(tenant_id="default"):
                 if latest and r["at"][:10] != today:
                     # 继续往前找今日计数，但已有最新状态可跳出优化
                     pass
-        info = STAGE_INFO[s]
+        info = STAGE_INFO.get(s, {"zh": s, "needs_ai": False})
         out[s] = {
             "label": info["zh"], "needs_ai": info["needs_ai"],
             "status": latest["status"] if latest else "idle",

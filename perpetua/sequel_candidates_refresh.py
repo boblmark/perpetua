@@ -9,18 +9,19 @@
 4. 更新 sequel_candidates.json：不删历史记录，只更新排名/播放/续集想法
 5. Top 10 新上榜视频标题 → 输出 NEW_HITS 供 cron 记入 memory 日志
 """
-import json, re, sys, urllib.parse
+import json, re, subprocess, sys, time, urllib.parse, urllib.request
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 sys.path.insert(0, "/home/hatch/data")
 sys.path.insert(0, "/home/hatch/data/youtube")
-from relay import urlopen as _urlopen
 from yt import api_call, _token
+# 直连（2026-10-12 起 relay→Google 中断，见 yt.py 头部说明）：Analytics API 走环境 egress 代理直连
 
 BASE = Path("/home/hatch/data")
 OUT = BASE / "sequel_candidates.json"
-TODAY = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+TODAY = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")  # 用户视角：北京时间日期
 
 # ---------- 1. Analytics API：近 90 天每条视频播放量 ----------
 def analytics_90d():
@@ -37,8 +38,26 @@ def analytics_90d():
             params["pageToken"] = page
         url = ("https://youtubeanalytics.googleapis.com/v2/reports?"
                + urllib.parse.urlencode(params))
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-        r = json.load(_urlopen(req, timeout=40))
+        # 2026-10-15: egress 代理下 urllib chunked 读偶发 IncompleteRead，
+        # 改用 curl（更稳健）+ 4 次退避重试；成功则解析 JSON
+        r = None
+        last_err = None
+        for attempt in range(4):
+            try:
+                p = subprocess.run(
+                    ["curl", "-sS", "--max-time", "60", "--retry", "2",
+                     "-H", f"Authorization: Bearer {token}", url],
+                    capture_output=True, text=True, timeout=90)
+                if p.returncode != 0:
+                    raise RuntimeError(f"curl exit {p.returncode}: {p.stderr.strip()[:200]}")
+                r = json.loads(p.stdout)
+                break
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if attempt < 3:
+                    time.sleep(2 * (attempt + 1))
+        if r is None:
+            raise RuntimeError(f"analytics fetch failed after 4 attempts: {last_err}")
         rows.extend(r.get("rows", []))
         page = r.get("nextPageToken")
         if not page:
@@ -85,7 +104,7 @@ DEVICE_PATTERNS = [
 
 KARMA_WORDS = ["instant", "karma", "backfire", "payback", "got owned", "caught",
                "destroy", "wreck", "humiliat", "shock", "soak", "electrocute",
-               "slam", "trap", "revenge", "fired", "arrested"]
+               "slam", "trap", "revenge", "fired", "arrested", "big mistake"]
 HORROR_WORDS = ["skinwalker", "creepy", "horror", "scary", "caught on camera"]
 
 def detect_devices(title):

@@ -22,7 +22,7 @@ sys.path.insert(0, "/home/hatch/data/youtube")
 
 BASE = "/home/hatch/data/perpetua"
 STATE_FILE = os.path.join(BASE, "publish_healer_state.json")
-HEALER_VERSION = "1.0.0"
+HEALER_VERSION = "1.1.0"  # 2026-10-15: 业务量感知——长视频排期不再掩盖 Shorts 断档
 
 # 有推进希望的状态：诊断为"有料可推"才触发自动修
 ACTIONABLE = {"selected", "review_passed", "uploaded", "teaser_validation",
@@ -30,6 +30,10 @@ ACTIONABLE = {"selected", "review_passed", "uploaded", "teaser_validation",
 # transient 卡死：超过 N 小时无变化的 generating 类打回重试
 STUCK_HOURS = 6
 ESCALATE_COOLDOWN_HOURS = 6
+# Shorts/长视频分界（秒）：与 private_flip / Rule 8 口径一致
+LONGFORM_DURATION_SEC = 180
+# Shorts 空转线：沿用 D20261011-005 的 MAX_INTER_PUBLISH_LATENCY_HOURS=18h
+SHORTS_STARVE_HOURS = 18
 
 
 def _now():
@@ -102,9 +106,35 @@ def diagnose():
                    > STUCK_HOURS * 3600)
         bottleneck = "scheduler_stalled" if stalled else "draining"
     else:
-        bottleneck = "flowing"  # 有排期在等，不是真空转
+        # 2026-10-15 业务量感知：waiting 的排期可能全是长视频（如 EP1），
+        # 不能因此判 flowing 而掩盖 Shorts 断档。只看 Shorts 排期。
+        waiting_shorts = [x for x in waiting_flips
+                          if (x.get("video_duration_sec") or 0) <= LONGFORM_DURATION_SEC]
+        details["waiting_shorts"] = len(waiting_shorts)
+        details["waiting_longform"] = len(waiting_flips) - len(waiting_shorts)
+        if waiting_shorts:
+            bottleneck = "flowing"  # 有 Shorts 排期在等，不是真空转
+        else:
+            gap_h = _shorts_gap_hours()
+            details["hours_since_last_publish"] = gap_h
+            if gap_h is not None and gap_h > SHORTS_STARVE_HOURS:
+                bottleneck = "shorts_starved"  # 只有长视频排期 + Shorts 超 18h 未发
+            else:
+                bottleneck = "flowing"
     details["sig"] = _sig(items)
     return {"bottleneck": bottleneck, "details": details}
+
+
+def _shorts_gap_hours():
+    """距上次公开视频发布的小时数（复用 publish_health 口径）。
+    API 不可用时返回 None（不断言）。"""
+    try:
+        import publish_health
+        res = publish_health.check()
+        m = (res or {}).get("metrics", {})
+        return m.get("hours_since_last_publish")
+    except Exception:
+        return None
 
 
 # ---------------- 自动修 ----------------
@@ -147,7 +177,7 @@ def remediate(diag):
     import queue_db
     bn = diag["bottleneck"]
     actions = []
-    if bn in ("scheduler_stalled", "draining"):
+    if bn in ("scheduler_stalled", "draining", "shorts_starved"):
         ok, logs = _run_collect()
         actions.append({"action": "trigger_collect",
                         "result": "ok" if ok else "failed",
@@ -194,6 +224,7 @@ NEED_USER = {
     "scheduler_stalled": None,  # 自动修已触发，无需拍板
     "draining": None,
     "flowing": None,
+    "shorts_starved": "Shorts 已断档超 18h，但排期里只有长视频（如 EP1）：B-稳每日 2-3 条节奏已断。需拍板：是否紧急补 Shorts 选题/生成，或接受断档等 EP1。",
 }
 
 _CNBOTTLENECK_CN = {
@@ -202,6 +233,7 @@ _CNBOTTLENECK_CN = {
     "draining": "排空中",
     "flowing": "有排期在途",
     "api_down": "API 不可用",
+    "shorts_starved": "Shorts断档（长视频排期掩盖）",
 }
 
 

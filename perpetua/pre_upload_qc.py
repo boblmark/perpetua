@@ -86,6 +86,11 @@ EXPERIENCE_WEIGHTS = {
 }
 EXPERIENCE_PASS = 60  # 体验分及格线
 
+# ---- 美学下限门（2026-10-12，warn 级观察期）----
+# LAION 美学分（simple-aesthetics-predictor，MIT）。warn-only：低于阈值只记
+# warnings，不进 rejects、不扣分、不拦截。观察一周误报率后用户再拍板是否升级。
+AESTHETIC_WARN_THRESHOLD = 4.5  # 校准见 aesthetic_calibration.json
+
 
 def pipeline_log(stage, status="ok", detail="", count=0):
     """写 Perpetua 流水线遥测（pipeline_runs.json），失败不阻塞。"""
@@ -271,6 +276,32 @@ def _check_safezone(video):
         return "pass", f"{checked} 帧安全区检查通过"
     except Exception as e:
         return "warn", f"安全区检查异常: {e}"
+
+
+def _check_aesthetic(video, threshold=AESTHETIC_WARN_THRESHOLD):
+    """美学下限门（2026-10-12，warn 级观察期）。
+
+    LAION 美学分，1fps 抽帧取均值。永远返回 pass/warn，不返回 fail：
+    低于阈值只记 warning，不拦截、不扣分。任何异常 → warn 跳过（fail-open）。
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import aesthetic_gate
+        import tempfile
+        dur = aesthetic_gate.ffprobe_duration(video)
+        with tempfile.TemporaryDirectory() as td:
+            frames = aesthetic_gate.extract_frames(video, 1.0, td)
+            if not frames:
+                return "warn", "美学门：抽帧为空，跳过"
+            scores = aesthetic_gate.score_frames(frames)
+        mean = sum(scores) / len(scores)
+        lo = min(scores)
+        detail = (f"美学分均值 {mean:.2f}（{len(scores)} 帧，最低 {lo:.2f}，阈值 {threshold}）")
+        if mean < threshold:
+            return "warn", detail + " —— 低于美学下限，观察期只记录不拦截"
+        return "pass", detail
+    except Exception as e:
+        return "warn", f"美学门跳过: {type(e).__name__}: {str(e)[:80]}"
 
 
 def _fix_resolution(video, probe):
@@ -895,16 +926,18 @@ def _check_motion_1s(video):
 
 
 def run_qc(video_path, title="", prompt_meta=None, regen_fn=None, max_regen=2,
-           max_duration=None, check_loop=True):
+           max_duration=None, check_loop=True, repair_fn=None):
     """执行三层质检（v3, 2026-10-08）：Tier 1 合规硬门 + Tier 2 爆款体验分 + Tier 3 卫生。
 
     video_path: 绝对路径。
     regen_fn:   可选，循环验证失败时的重生成回调 fn(attempt)->新视频路径|None。
+    repair_fn:  可选，loop 不达标时的接缝修复回调 fn(video_path, similarity)->新路径|None。
+                2026-10-16 MoviePy 修复层：先修（1次）再重生成；阈值不降低。
     max_duration: 时长上限（秒），默认 MAX_DUR(11)。teaser 多段拼接（40s）传 65。
     check_loop: 是否跑无缝循环检查。v5.3.1 起多段 teaser 传 False（loop 不再是硬门）。
     返回 {"passed": bool, "experience_score": int(0-100), "checks": [...],
           "warnings": [...], "rejects": [...], "output_file": 最终视频绝对路径,
-          "regen_used": int, "needs_regen": bool}
+          "regen_used": int, "repair_used": int, "needs_regen": bool}
 
     fail-closed：
       - Tier 1 任何 fail → passed=False（合规问题，必须修/重生成）
@@ -915,6 +948,7 @@ def run_qc(video_path, title="", prompt_meta=None, regen_fn=None, max_regen=2,
     checks, warnings, rejects = [], [], []
     cur = os.path.abspath(video_path)
     regen_used = 0
+    repair_used = 0
     needs_regen = False
     exp_score = 0
     exp_breakdown = {}
@@ -938,12 +972,14 @@ def run_qc(video_path, title="", prompt_meta=None, regen_fn=None, max_regen=2,
 
     def _fail_closed():
         _log({"video": video_path, "passed": False, "rejects": rejects,
-              "experience_score": exp_score, "needs_regen": needs_regen})
+              "experience_score": exp_score, "needs_regen": needs_regen,
+              "repair_used": repair_used})
         return {"passed": False, "experience_score": exp_score,
                 "experience_breakdown": exp_breakdown,
                 "checks": checks, "warnings": warnings,
                 "rejects": rejects, "output_file": cur,
-                "regen_used": regen_used, "needs_regen": needs_regen}
+                "regen_used": regen_used, "repair_used": repair_used,
+                "needs_regen": needs_regen}
 
     if not os.path.isfile(cur):
         _rec("probe", "fail", f"文件不存在: {cur}", tier=1)
@@ -1102,6 +1138,7 @@ def run_qc(video_path, title="", prompt_meta=None, regen_fn=None, max_regen=2,
     else:
         attempt = 0
         loop_status, loop_msg = "fail", ""
+        repair_tried = False
         while True:
             passed, detail = _check_loop_impl(cur, LOOP_THRESHOLD)
             if passed:
@@ -1109,6 +1146,34 @@ def run_qc(video_path, title="", prompt_meta=None, regen_fn=None, max_regen=2,
                 loop_msg = (f"首尾帧相似度 {detail.get('similarity')}"
                             f"（阈值 {LOOP_THRESHOLD}）")
                 break
+            # 2026-10-16 MoviePy 修复层：loop 不达标先试接缝修复（限 1 次），
+            # 修好（同一阈值验证通过）才继续；修不好→走原有重生成路径。阈值不降低。
+            if repair_fn and not repair_tried:
+                repair_tried = True
+                sim_before = detail.get("similarity", 0.0)
+                try:
+                    repaired = repair_fn(cur, sim_before)
+                except Exception as e:
+                    repaired = None
+                    _rec("loop", "warn", f"接缝修复回调异常: {e}", tier=2)
+                if repaired and os.path.isfile(repaired):
+                    ok2, d2 = _check_loop_impl(repaired, LOOP_THRESHOLD)
+                    if ok2:
+                        cur = os.path.abspath(repaired)
+                        repair_used = 1
+                        _rec("loop", "warn",
+                             f"MoviePy 接缝修复: 相似度 {sim_before} → "
+                             f"{d2.get('similarity')} 已达标，继续 QC",
+                             tier=2)
+                        continue
+                    _rec("loop", "warn",
+                         f"MoviePy 接缝修复未达标 "
+                         f"({sim_before} → {d2.get('similarity')})，转重生成",
+                         tier=2)
+                    try:
+                        os.remove(repaired)
+                    except Exception:
+                        pass
             if regen_fn and attempt < max_regen:
                 attempt += 1
                 regen_used = attempt
@@ -1191,6 +1256,10 @@ def run_qc(video_path, title="", prompt_meta=None, regen_fn=None, max_regen=2,
     else:
         _rec("subtitles", "warn", note, tier=3)
 
+    # ---- 15. 美学下限门（2026-10-12，warn 级观察期：只记录不拦截）----
+    st, msg = _check_aesthetic(cur)
+    _rec("aesthetic", st if st != "fail" else "warn", msg, tier=3)
+
     # ============ 终裁：fail-closed + 体验分门槛 ============
     # 神经科学模型：人脸乘子应用到体验分（face_mult ∈ [0.5, 1.0]）
     try:
@@ -1211,6 +1280,7 @@ def run_qc(video_path, title="", prompt_meta=None, regen_fn=None, max_regen=2,
               "experience_breakdown": exp_breakdown,
               "checks": checks, "warnings": warnings,
               "rejects": rejects, "output_file": cur, "regen_used": regen_used,
+              "repair_used": repair_used,
               "needs_regen": needs_regen and not passed}
     _log({"video": video_path, "passed": passed, "experience_score": exp_score,
           "output": cur, "warnings": warnings, "rejects": rejects})

@@ -40,22 +40,50 @@ FORMAT_LOCK = FORMAT_LOCK_VEO  # 默认 Veo 8s；Sora 已下线（2026-09-24）
 # - ADD: 报应 6 类轮换 1-in-5（V53_PAYBACK_ROTATION，永久执行）
 # - ADD: 标题语法门（V53_TITLE_GRAMMAR_GATE，畸形动词正则）
 # - KEEP: V52 删除循环预埋（继续）；Climax Energy Ratio ≥1.60（分母改为 0-3.8s 均值）
-V53_OPENING = (
-    "OPENING FRAMING (v5.3.1, critical): A single fixed-perspective wide or "
-    "medium-wide shot from 0.00s to 5.50s — NO cuts, NO digital reframing, NO "
-    "punch-in zooms. Frame 0 MUST show Karen's torso/body AND the AI device's "
-    "interactive interface simultaneously. Karen's face bounding box MUST be ≤20% "
-    "of frame area at t=0.00s. "
-    "CCTV STYLE PACK (optional, v5.3.1): fisheye distortion, timestamp HUD, CAM id, "
-    "REC indicator may be added as aesthetic wrapper. NOT required. "
-    "NEVER insert an extreme close-up or close-up cut, punch-in, or face-tracking "
-    "crop before t=6.30s. NEVER let Karen's body occlude more than 40% of the AI "
-    "device during the first 2.00s."
+# v5.4 (2026-10-12, 爆款加码议会 D20261012-009 终审版 B2 + Ask Studio 终审 APPROVE WITH CHANGES):
+# - ADD: EARLY TWIST RULE（V54_EARLY_TWIST）——终审强制修改：
+#   红队原 B2 规格"按留存掉落曲线定位微升级"被 Ask Studio 判鸡生蛋缺陷（新选题无历史曲线、
+#   低播放量逐秒留存全是噪声、500ms 微调瘫痪剪辑流）→ 简化为结构规则：
+#   核心荒诞转折必须发生在 2.00-2.50s（观众 3s 前没看到转折就已划走），
+#   3.80-4.50s 必须有第二次升级（中段升级），惊喜不许全攒到 5.5s 报应。
+# - 诊断依据：90 天 feed 份额恶化到 20.5%（搜索 68.3%），hook/标题已公式化。
+V54_EARLY_TWIST = (
+    "EARLY TWIST RULE (v5.4, critical — Ask Studio final review 2026-10-12): "
+    "The CORE ABSURD TWIST — the moment the AI device does something genuinely "
+    "unexpected that REFRAMES the conflict (NOT just Karen shouting louder, NOT "
+    "just a status-light color change, NOT a bigger version of the same gag) — "
+    "MUST occur between 2.00s and 2.50s. By 2.50s the viewer MUST already feel "
+    "'this is NOT the Karen video I expected.' "
+    "A SECONDARY ESCALATION — a second, DIFFERENT unexpected move by the device — "
+    "MUST occur between 3.80s and 4.50s, before the uh-oh ramp. "
+    "NEVER save all surprise for the 5.5s payback: a viewer who has seen ZERO "
+    "twists by 3.0s has already swiped. "
+    "The 5.50-6.30s payback climax stays, but it is now the THIRD escalation, "
+    "not the first."
 )
+
+V54_OPENING = (
+    "MANDATORY OPENING — DYNAMIC PUNCH-IN HOOK (v5.4, 2026-10-15 模板手术 D20261015-009): "
+    "0.00s–~1.00s: TIGHT CLOSE-UP (face, hands, or key object) — the hook frame; "
+    "must contain the most emotionally charged detail of the scene. "
+    "At ~1.00s: HARD SNAP to a WIDE or MEDIUM-WIDE master shot. "
+    "~1.00s–5.50s: HOLD the wide/master — NO cuts, NO digital reframing, NO "
+    "additional punch-in zooms. "
+    "REQUIREMENTS: the close-up and the wide must show the SAME continuous scene "
+    "(no time jump); the hook detail must appear in the wide at the same scale "
+    "position; audio/VO begins at 0.00s and continues unbroken across the snap. "
+    "FORBIDDEN: fixed-perspective wide/medium-wide from 0.00s; slow push-ins; "
+    "fade from black; title cards in the first 1.5s. "
+    "CCTV STYLE PACK (optional): fisheye distortion, timestamp HUD, CAM id, "
+    "REC indicator may be added as aesthetic wrapper. NOT required."
+)
+# v5.3.1 旧开场已废弃（2026-10-15 四脑议会：模板级 hook 扣分，见 D20261015-009）
+V53_OPENING = V54_OPENING
 
 V53_BEAT_MAP = (
     "BEAT MAP (v5.3, 8.00s total): "
-    "0.00-1.20s SPATIAL CONTEXT: fixed wide shot, device UI readable, Karen face ≤20%. "
+    "0.00-1.00s HOOK: tight close-up punch-in on the most emotionally charged detail; "
+    "at ~1.00s HARD SNAP to wide/master establishing spatial context. "
     "1.20-3.80s ESCALATION: Karen physical aggression (hitting, screaming, jabbing); "
     "device status light shifts yellow/red. "
     "3.80-5.50s UH-OH RAMP: device telegraphs override (charge-up sound, whirring, "
@@ -63,7 +91,7 @@ V53_BEAT_MAP = (
     "5.50-6.30s PAYBACK CLIMAX: first karma contact between 5.50-5.80s, peak physical "
     "displacement by 6.10s, concludes by 6.30s. "
     "6.30-7.40s REACTION: Karen stunned in consequence state; digital zoom/pan to her "
-    "shocked expression permitted ONLY in this window. "
+    "stunned expression permitted ONLY in this window. "
     "7.40-8.00s NO-EXIT-RUNWAY (v5.3.1): NEVER linger, fade, or settle back to opening mood. "
     "End on punchline impact or hard cut. No dead air, no awkward pauses, no fade-outs. "
     "Loop-back is OPTIONAL, never required."
@@ -184,6 +212,12 @@ AUDIO_RULES = (
 KARMA_VERBS_TIER_S = [
     "TRAPPED", "SLAPPED", "SOAKED", "TOWED", "FLOODED",
     "TRIPPED", "LOCKED", "BOOTED", "SPRAYED",
+    # 2026-10-12 Ask Studio 动词扩充 15 词（与 karma_verbs.json tier_s 同步）
+    "EJECTED", "REPOSESSED", "REFLECTED", "HOISTED", "SANITIZED",
+    "BROADCASTED", "CONFISCATED", "AUCTIONED", "DOWNGRADED", "REROUTED",
+    "WRAPPED", "MIRRORED", "QUARANTINED", "DISMANTLED", "DEDUCTED",
+    # 2026-10-12 Ask Studio 评审：主动制裁类 S 词
+    "FALSE-ALARM", "AUTO-LOCK",
 ]
 KARMA_VERBS_TIER_B = [
     "CAUGHT", "EXPOSED", "BUSTED", "MUTED", "SNITCHED",
@@ -457,6 +491,7 @@ def build_viral_prompt(topic, hook, karma_payoff=None, emoji_pair=("🤖", "😂
         f"{V53_BEAT_MAP}\n\n"
         f"{V53_MOTION_RAMP}\n\n"
         f"{V53_CLIMAX_RULES}\n\n"
+        f"{V54_EARLY_TWIST}\n\n"
         f"{V53_TITLE_SPOILER_GATE}\n\n"
         f"{V53_PAYBACK_ROTATION}\n\n"
         f"{V53_TITLE_GRAMMAR_GATE}\n\n"
@@ -479,11 +514,13 @@ def build_viral_prompt(topic, hook, karma_payoff=None, emoji_pair=("🤖", "😂
         f"pulse then back to blue — single state-change cue, same fixed shot, "
         f"visual ONLY, no alarm sound. Movement "
         f"in every frame, nothing static. {SAFE_ZONE_RULE}\n\n"
-        f"1.2-5.5s ESCALATION + UH-OH RAMP (v5.3): Karen pushes the {topic_short} to its "
+        f"1.2-5.5s ESCALATION + TWISTS + UH-OH RAMP (v5.4): Karen pushes the {topic_short} to its "
         f"limit — the exact wrong move, louder, closer, absurd "
-        f"demand. The {topic_short} responds with cold literal logic: it "
-        f"does not argue, it ENFORCES. Deadpan ~1.2s pause before it acts — "
-        f"the pause IS the joke. From 3.8s the device telegraphs override "
+        f"demand. At 2.00-2.50s the {topic_short} delivers the CORE ABSURD TWIST: "
+        f"one genuinely unexpected move that reframes the conflict (cold literal "
+        f"logic: it does not argue, it ENFORCES). Deadpan ~1.2s pause before it acts — "
+        f"the pause IS the joke. At 3.80-4.50s a SECOND, DIFFERENT unexpected move "
+        f"from the {topic_short} (secondary escalation). From 4.5s the device telegraphs override "
         f"(charge-up sound, whirring, mechanical loading); Karen stays "
         f"oblivious and escalates further.\n\n"
         f"5.5-6.3s PAYBACK CLIMAX (v5.3 — the punchline window): {karma_payoff}. "
@@ -495,7 +532,7 @@ def build_viral_prompt(topic, hook, karma_payoff=None, emoji_pair=("🤖", "😂
         f"a cinematic bass drop, never muted dialogue.\n\n"
         f"6.3-8s REACTION + LOOP-OUT (v5.3): 6.3-7.4s comic aftermath — she "
         f"stands frozen mid-gesture in total comic disbelief; digital zoom/pan "
-        f"to her shocked expression permitted ONLY here. 7.4-8s motion settles "
+        f"to her stunned expression permitted ONLY here. 7.4-8s motion settles "
         f"to frame-0 ambient level, lighting returns to baseline. Final frame "
         f"MUST visually rhyme with frame 1 (same CCTV angle on the "
         f"{topic_short}, Karen re-entering) — post-generation verified by "

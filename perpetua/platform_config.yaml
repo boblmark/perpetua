@@ -1,0 +1,57 @@
+# Perpetua 跨平台配置文件
+# 自动检测平台后加载对应节，platform_adapter.py 读取此文件
+# 2026-10-14 新增：Windows 支持
+
+# 通用（跨平台一致）
+common:
+  console_port: 8080
+  mcp_port: 8734
+  # cron 调度在 Muse 平台侧，与 OS 无关
+
+# Linux 默认
+linux:
+  data_dir: "/home/hatch/data"
+  perpetua_dir: "/home/hatch/data/perpetua"
+  # 凭据代理（Unix socket）
+  credential_proxy_socket: "/run/credential-proxy/proxy.sock"
+  credential_vault: "/etc/credential-proxy/vault.json"
+  # SSH
+  ssh_key: "~/.ssh/id_ed25519"
+  ssh_proxy_command: "nc -X connect -x 198.19.0.1:3128 %h %p"
+  # 服务管理
+  service_manager: "systemd"  # 或 "nohup"
+  # Python
+  python_cmd: "python3"
+  pip_cmd: "pip3"
+  pip_break_system: true
+  # 浏览器 profile
+  chromium_profile_base: "~/.config/chromium"
+
+# Windows
+windows:
+  data_dir: "C:\\Perpetua\\data"
+  perpetua_dir: "C:\\Perpetua\\data\\perpetua"
+  # 凭据代理（Windows 用 TCP 代替 Unix socket）
+  credential_proxy_host: "127.0.0.1"
+  credential_proxy_port: 18999
+  credential_vault: "C:\\Perpetua\\data\\vault.json"
+  # SSH（Windows 10+ 自带 OpenSSH）
+  ssh_key: "%USERPROFILE%\\.ssh\\id_ed25519"
+  ssh_proxy_command: ""  # Windows 下如需代理在此填，格式同 Linux
+  ssh_exe: "ssh"  # 或 "C:\\Windows\\System32\\OpenSSH\\ssh.exe"
+  # 服务管理
+  service_manager: "nssm"  # 或 "task_scheduler" / "manual"
+  # Python
+  python_cmd: "python"
+  pip_cmd: "pip"
+  pip_break_system: false
+  # 浏览器 profile
+  chromium_profile_base: "%LOCALAPPDATA%\\Chromium\\User Data"
+
+# 平台差异说明（文档用，不被代码读取）
+_differences:
+  - "Unix socket → Windows TCP (credential_proxy)"
+  - "chmod 600 → Windows ACL (icacls)"
+  - "systemd → NSSM / 任务计划程序"
+  - "bash 脚本 → Python 跨平台重写 (platform_scripts/)"
+  - "pgrep/ps → psutil (跨平台进程库)"

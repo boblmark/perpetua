@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PERPETUA 作战指挥中心</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#070b12; --panel:#0c1220; --panel2:#0e1526;
+  --line:#1b2a4a; --cyan:#22d3ee; --blue:#1e5bc6;
+  --green:#34d399; --amber:#fbbf24; --red:#f87171;
+  --text:#dbe7ff; --dim:#7d90b8;
+}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(30,91,198,.18), transparent),
+    linear-gradient(rgba(34,211,238,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34,211,238,.03) 1px, transparent 1px);
+  background-size:100% 100%, 44px 44px, 44px 44px;}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;
+  background:repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);}
+.wrap{position:relative;z-index:1;max-width:1560px;margin:0 auto;padding:18px 22px 40px}
+/* header */
+header{display:flex;align-items:center;gap:18px;padding:14px 20px;background:linear-gradient(180deg,rgba(20,32,58,.85),rgba(12,18,32,.85));border:1px solid var(--line);border-radius:14px;box-shadow:0 0 32px rgba(34,211,238,.08), inset 0 0 60px rgba(30,91,198,.06)}
+.logo{width:46px;height:46px;border-radius:12px;background:conic-gradient(from 40deg,#1e5bc6,#22d3ee,#1e5bc6);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 0 18px rgba(34,211,238,.5);animation:spin 14s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+h1{font-size:21px;letter-spacing:3px;font-weight:700}
+h1 small{display:block;font-size:11px;letter-spacing:6px;color:var(--cyan);font-weight:400;margin-top:2px}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+#clock{font-size:15px;color:var(--cyan);font-variant-numeric:tabular-nums;letter-spacing:1px}
+.verdict{padding:7px 18px;border-radius:20px;font-weight:700;letter-spacing:2px;font-size:14px;border:1px solid}
+.v-HEALTHY{color:var(--green);border-color:var(--green);box-shadow:0 0 14px rgba(52,211,153,.35);animation:pulse 2.4s infinite}
+.v-DEGRADED{color:var(--amber);border-color:var(--amber);box-shadow:0 0 14px rgba(251,191,36,.3);animation:pulse 1.6s infinite}
+.v-DOWN{color:var(--red);border-color:var(--red);box-shadow:0 0 14px rgba(248,113,113,.4);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.65}}
+#upd{font-size:11px;color:var(--dim)}
+/* section titles */
+.sec{margin-top:18px}
+.sec-t{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:14px;letter-spacing:4px;color:var(--cyan);font-weight:600}
+.sec-t::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+/* pipeline flow */
+.flow{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 14px 16px;position:relative;overflow:hidden}
+#flowSvg{width:100%;height:auto;display:block}
+.fnode{cursor:pointer}
+.fnode circle.bg{fill:#0e1830;stroke:#274067;stroke-width:1.5;transition:.25s}
+.fnode:hover circle.bg{stroke:var(--cyan);filter:drop-shadow(0 0 8px rgba(34,211,238,.6))}
+.fnode text{fill:var(--text);font-size:13px;text-anchor:middle}
+.fnode .cnt{font-size:26px;font-weight:800;fill:#fff}
+.fnode .nm{font-size:12px;fill:var(--dim);letter-spacing:1px}
+.fedge{stroke:#274067;stroke-width:2;fill:none}
+.fedge.flow{stroke:var(--cyan);stroke-width:2;stroke-dasharray:8 10;opacity:.75;animation:dash 1.2s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-18}}
+/* cards grid */
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-height:120px}
+.card h3{font-size:12px;letter-spacing:3px;color:var(--cyan);margin-bottom:10px;font-weight:600}
+.span4{grid-column:span 4}.span6{grid-column:span 6}.span8{grid-column:span 8}.span12{grid-column:span 12}
+/* services */
+.svc{display:flex;align-items:center;gap:9px;padding:7px 4px;border-bottom:1px dashed rgba(27,42,74,.7);font-size:13px}
+.svc:last-child{border:none}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.d-ok{background:var(--green);box-shadow:0 0 10px var(--green);animation:pulse 2s infinite}
+.d-bad{background:var(--red);box-shadow:0 0 10px var(--red);animation:pulse 1s infinite}
+.d-warn{background:var(--amber);box-shadow:0 0 10px var(--amber);animation:pulse 1.6s infinite}
+.d-unk{background:#5b6b8c;box-shadow:0 0 10px #5b6b8c}
+.modcard{cursor:pointer;transition:.25s}
+.modcard:hover{border-color:var(--cyan);box-shadow:0 0 18px rgba(34,211,238,.25)}
+.svc .nm{flex:1}.svc .note{font-size:11px;color:var(--dim)}
+/* platforms */
+.plats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.plat{padding:9px 10px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.plat .st{font-weight:700;font-size:11px;padding:2px 8px;border-radius:8px}
+.st-ok{color:var(--green);background:rgba(52,211,153,.12)}
+.st-stale{color:var(--amber);background:rgba(251,191,36,.12)}
+.st-error{color:var(--red);background:rgba(248,113,113,.12)}
+/* constants */
+.const{margin-bottom:12px}
+.const .row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+.const .tgt{color:var(--dim);font-size:11px}
+.bar{height:7px;border-radius:4px;background:#141d33;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:4px;transition:width .6s}
+.b-ok{background:linear-gradient(90deg,#0e9f6e,var(--green));box-shadow:0 0 8px rgba(52,211,153,.5)}
+.b-bad{background:linear-gradient(90deg,#b45309,var(--amber));box-shadow:0 0 8px rgba(251,191,36,.5)}
+/* events */
+#events{height:300px;overflow-y:auto;font-size:12.5px;line-height:1.5}
+#events::-webkit-scrollbar{width:6px}#events::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+.ev{padding:7px 9px;margin-bottom:6px;background:var(--panel2);border-left:2px solid var(--cyan);border-radius:0 8px 8px 0;animation:slidein .4s}
+@keyframes slidein{from{opacity:0;transform:translateX(-8px)}}
+.ev .src{color:var(--cyan);font-size:10px;letter-spacing:1px;margin-right:8px}
+.ev.new{border-left-color:var(--green)}
+/* stats */
+.stat-row{display:flex;gap:14px;flex-wrap:wrap}
+.stat{flex:1;min-width:130px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}
+.stat .v{font-size:24px;font-weight:800;color:#fff}
+.stat .k{font-size:11px;color:var(--dim);letter-spacing:2px;margin-top:4px}
+/* drawer */
+#drawer{position:fixed;top:0;right:-420px;width:400px;max-width:92vw;height:100vh;background:#0b1120;border-left:1px solid var(--cyan);z-index:100;transition:right .3s;padding:22px;overflow-y:auto;box-shadow:-20px 0 60px rgba(0,0,0,.6)}
+#drawer.open{right:0}
+#drawer h2{font-size:16px;letter-spacing:2px;color:var(--cyan);margin-bottom:4px}
+#drawer .sub{font-size:12px;color:var(--dim);margin-bottom:14px}
+#drawerClose{position:absolute;top:14px;right:16px;background:none;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:4px 10px;cursor:pointer}
+.ditem{padding:9px 11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;font-size:13px}
+.ditem .s{float:right;font-size:11px;color:var(--amber)}
+.flash{animation:flash .8s}
+@keyframes flash{0%{box-shadow:0 0 0 rgba(34,211,238,0)}30%{box-shadow:0 0 26px rgba(34,211,238,.45)}}
+@media(max-width:1100px){.span4,.span6,.span8{grid-column:span 12}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="logo">◈</div>
+  <h1>PERPETUA 作战指挥中心<small>360° 全息实时监控</small></h1>
+  <div class="hdr-right">
+    <span id="upd">连接中…</span>
+    <span id="clock">--:--:--</span>
+    <span id="verdict" class="verdict v-DEGRADED">…</span>
+  </div>
+</header>
+
+<div class="sec">
+  <div class="sec-t">◆ 内容生产管线 · 实时流量</div>
+  <div class="flow"><svg id="flowSvg" viewBox="0 0 1400 190"></svg></div>
+</div>
+
+<div class="sec">
+  <div class="sec-t">◆ 系统状态矩阵</div>
+  <div class="grid">
+    <div class="card span4"><h3>服务网格</h3><div id="services"></div></div>
+    <div class="card span4"><h3>九平台分发矩阵</h3><div class="plats" id="plats"></div>
+      <div style="margin-top:10px;font-size:12px;color:var(--dim)" id="platSum"></div></div>
+    <div class="card span4"><h3>健康常量 D20261011-005</h3><div id="consts"></div>
+      <div class="stat-row" style="margin-top:8px">
+        <div class="stat"><div class="v" id="stAnomaly">–</div><div class="k">未解决异常</div></div>
+        <div class="stat"><div class="v" id="stBus">–</div><div class="k">事件总线待处理</div></div>
+      </div></div>
+    <div class="card span8"><h3>实时事件流</h3><div id="events"></div></div>
+    <div class="card span4"><h3>管线快照</h3><div class="stat-row">
+        <div class="stat"><div class="v" id="stSvc">–</div><div class="k">服务在线</div></div>
+        <div class="stat"><div class="v" id="stPlat">–</div><div class="k">平台正常</div></div>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:var(--dim);line-height:1.9" id="verdictNote"></div></div>
+  </div>
+</div>
+</div>
+
+<div class="sec">
+  <div class="sec-t">◆ 扩展作战视图 · 360° 无死角</div>
+  <div class="grid" id="modGrid"></div>
+</div>
+
+<div id="drawer">
+  <button id="drawerClose">✕</button>
+  <h2 id="dTitle"></h2><div class="sub" id="dSub"></div><div id="dItems"></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let lastData=null, seenEvents=new Set();
+const STAGE_POS=[["topics",90],["review",270],["generate",450],["qc",630],["upload",810],["schedule",990],["postop",1170],["reflow",1330]];
+const STAGE_NAMES={topics:"选题池",review:"Ask Studio 评审",generate:"视频生成",qc:"QC 质检",upload:"上传 Private",schedule:"排期翻 Public",postop:"发布后运营",reflow:"数据回流"};
+
+function drawFlow(stages){
+  const svg=$("flowSvg"); const byId={}; stages.forEach(s=>byId[s.id]=s);
+  let h='<defs><filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>';
+  STAGE_POS.forEach(([id,x],i)=>{
+    if(i<STAGE_POS.length-1){
+      const x2=STAGE_POS[i+1][1]-58;
+      h+=`<line class="fedge" x1="${x+58}" y1="80" x2="${x2}" y2="80"/><line class="fedge flow" x1="${x+58}" y1="80" x2="${x2}" y2="80"/>`;
+    }
+  });
+  STAGE_POS.forEach(([id,x])=>{
+    const s=byId[id]||{count:"?",name:STAGE_NAMES[id],detail:"",items:[]};
+    const c=s.count;
+    const col=c===-1?"#f87171":(c>0?"#22d3ee":"#274067");
+    const cnt=c===-1?"✕":c;
+    h+=`<g class="fnode" data-id="${id}">
+      <circle class="bg" cx="${x}" cy="80" r="56" style="stroke:${col}"/>
+      <text class="cnt" x="${x}" y="88" fill="${col}">${cnt}</text>
+      <text class="nm" x="${x}" y="162">${s.name||STAGE_NAMES[id]}</text>
+    </g>`;
+  });
+  // reflow 回流虚线
+  h+=`<path d="M 1330 136 Q 700 205 90 136" stroke="#1e5bc6" stroke-width="1.5" fill="none" stroke-dasharray="5 6" opacity=".6"/>
+      <text x="700" y="200" fill="#1e5bc6" font-size="11" text-anchor="middle" letter-spacing="3">数据回流 · 进化</text>`;
+  svg.innerHTML=h;
+  svg.querySelectorAll(".fnode").forEach(g=>g.addEventListener("click",()=>openDrawer(g.dataset.id)));
+}
+function openDrawer(id){
+  const s=(lastData.stages||[]).find(x=>x.id===id); if(!s) return;
+  $("dTitle").textContent=s.name; $("dSub").textContent=s.detail||"";
+  $("dItems").innerHTML=(s.items||[]).map(i=>`<div class="ditem">${esc(i.t)}<span class="s">${esc(i.s||"")}</span></div>`).join("")||'<div class="ditem">暂无明细</div>';
+  $("drawer").classList.add("open");
+}
+$("drawerClose").onclick=()=>$("drawer").classList.remove("open");
+function openModule(id){
+  const m=(lastData.modules||[]).find(x=>x.id===id); if(!m) return;
+  $("dTitle").textContent=m.name; $("dSub").textContent=m.detail||"";
+  $("dItems").innerHTML=(m.items||[]).map(i=>`<div class="ditem">${esc(i.t)}<span class="s">${esc(i.s||"")}</span></div>`).join("")||'<div class="ditem">暂无明细</div>';
+  $("drawer").classList.add("open");
+}
+function esc(s){return String(s||"").replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]))}
+
+async function tick(){
+  try{
+    const r=await fetch("/api/command/live?t="+Date.now()); const d=await r.json();
+    if(!d.ok) throw 0;
+    lastData=d;
+    $("upd").textContent="更新 "+d.at;
+    const v=$("verdict"); v.textContent=d.verdict; v.className="verdict v-"+d.verdict;
+    drawFlow(d.stages);
+    // services
+    $("services").innerHTML=d.services.map(s=>`<div class="svc"><span class="dot ${s.ok?"d-ok":"d-bad"}"></span><span class="nm">${esc(s.name)}</span><span class="note">${esc(s.note||"")}</span></div>`).join("");
+    // platforms
+    const pn={youtube:"YouTube",douyin:"抖音",xiaohongshu:"小红书",kuaishou:"快手",shipinhao:"视频号",bilibili:"B站",facebook:"Facebook",tiktok:"TikTok",x:"X"};
+    $("plats").innerHTML=d.platforms.map(p=>`<div class="plat"><span>${pn[p.id]||p.id}</span><span class="st st-${p.status}">${p.status==="ok"?"正常":p.status}</span></div>`).join("");
+    $("platSum").textContent=`${d.platforms_ok}/${d.platforms.length} 平台数据正常 · 视频 ${d.platforms.reduce((a,p)=>a+p.videos,0)} 条`;
+    // constants
+    $("consts").innerHTML=d.constants.map(c=>{
+      const pct=c.id==="gap"?Math.max(0,100-parseFloat(c.value)/18*100):c.id==="daily"?Math.min(100,parseFloat(c.value)/2*100):100-parseFloat(c.value)/15*100;
+      return `<div class="const"><div class="row"><span>${c.name} <b style="color:${c.ok===false?"var(--amber)":"var(--green)"}">${c.value}</b></span><span class="tgt">目标 ${c.target}</span></div><div class="bar"><i class="${c.ok===false?"b-bad":"b-ok"}" style="width:${Math.max(4,Math.min(100,pct))}%"></i></div></div>`;
+    }).join("");
+    $("stAnomaly").textContent=d.anomaly_open;
+    const busPend=Object.entries(d.event_bus||{}).filter(([k])=>k==="PENDING").reduce((a,[,v])=>a+v,0);
+    $("stBus").textContent=busPend;
+    $("stSvc").textContent=d.services_ok+"/"+d.services_total;
+    $("stPlat").textContent=d.platforms_ok+"/"+d.platforms.length;
+    $("verdictNote").textContent=d.verdict_note;
+    // 360° v2: six extension modules
+    const dotm={ok:"d-ok",warn:"d-warn",bad:"d-bad",unknown:"d-unk"};
+    $("modGrid").innerHTML=(d.modules||[]).map(m=>`<div class="card span4 modcard" data-mid="${m.id}"><h3>${esc(m.name)}</h3><div class="svc"><span class="dot ${dotm[m.status]||"d-unk"}"></span><span class="nm">${esc(m.summary||"")}</span></div><div style="font-size:11px;color:var(--dim);margin-top:6px">${esc((m.detail||"").slice(0,96))}</div></div>`).join("");
+    $("modGrid").querySelectorAll(".modcard").forEach(c=>c.addEventListener("click",()=>openModule(c.dataset.mid)));
+    // events
+    const box=$("events");
+    d.events.forEach(e=>{
+      const key=e.src+e.text;
+      if(seenEvents.has(key)) return; seenEvents.add(key);
+      const div=document.createElement("div"); div.className="ev new";
+      div.innerHTML=`<span class="src">${esc(e.src)}</span>${esc(e.text)}`;
+      box.prepend(div);
+    });
+    while(box.children.length>40) box.lastChild.remove();
+    document.querySelector(".flow").classList.remove("flash"); void document.querySelector(".flow").offsetWidth;
+    document.querySelector(".flow").classList.add("flash");
+  }catch(e){ $("upd").textContent="连接失败，重试中…"; }
+}
+setInterval(()=>{const d=new Date();$("clock").textContent=d.toLocaleTimeString("zh-CN",{hour12:false});},1000);
+setInterval(tick,5000); tick();
+document.addEventListener("visibilitychange",()=>{if(!document.hidden) tick();});
+</script>
+</body></html>

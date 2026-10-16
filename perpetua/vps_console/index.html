@@ -230,7 +230,10 @@ table.tm td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-alig
 .spinner{width:22px;height:22px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .hint{color:var(--muted);font-size:12px}
-.tab-nav{display:flex;gap:8px;margin:16px 0 4px;overflow-x:auto;padding-bottom:6px}
+.tab-nav{display:flex;flex-direction:column;gap:6px;margin:16px 0 4px;width:220px;flex-shrink:0;position:sticky;top:16px}
+.tab-nav .tab-btn{text-align:left;white-space:normal}
+.tab-layout{display:flex;gap:16px;align-items:flex-start}
+.tab-layout .tab-panel{flex:1;min-width:0}
 .tab-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:10px 18px;border-radius:10px;font-size:13px;cursor:pointer;white-space:nowrap;font-family:inherit;font-weight:600;transition:all .15s}
 .tab-btn:hover{color:var(--text);border-color:var(--primary)}
 .tab-btn.active{color:#fff;border-color:var(--primary);background:rgba(54,163,255,.14);box-shadow:0 0 12px rgba(54,163,255,.15)}
@@ -239,9 +242,16 @@ table.tm td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-alig
 .tab-panel.active{display:block;animation:tfade .2s ease}
 @keyframes tfade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .tab-panel>.card,.tab-panel>.pipeline-block,.tab-panel>.tenant-bar{margin-top:14px}
+/* 作战指挥中心状态图标动画 */
+.battle-icon-live{font-size:32px;color:var(--green);margin-bottom:8px;animation:battle-pulse 2s ease-in-out infinite;text-shadow:0 0 12px var(--green)}
+.battle-icon-stale{font-size:32px;color:var(--yellow);margin-bottom:8px;animation:battle-blink 1.5s ease-in-out infinite}
+.battle-icon-offline{font-size:28px;color:var(--red);margin-bottom:8px;opacity:.7}
+@keyframes battle-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.15);opacity:.8}}
+@keyframes battle-blink{0%,100%{opacity:1}50%{opacity:.4}}
 </style>
 </head>
 <body>
+<div id="loginWarnBar" style="display:none;background:#7f1d1d;color:#fecaca;padding:10px 16px;font-size:14px;border-bottom:1px solid #ef4444"></div>
 <div class="page" id="app">
 <div class="loading"><div class="spinner"></div>正在加载控制台 · Loading control plane</div>
 </div>
@@ -285,7 +295,9 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 const STAGE_META={trend:['趋势抓取','Trend',0],select:['AI 选题','Select',1],score:['爆款打分','Score',0],generate:['视频生成','Generate',1],publish:['发布','Publish',0],analyze:['数据分析','Analyze',0],optimize:['发布后优化','Optimize',0]};
 let SNAP=null, TENANTS={}, ACTIVE_TENANT=localStorage.getItem(LS_ACT)||'default', SETTINGS={};
 let ACTIVE_TAB=localStorage.getItem('perpetua-active-tab-v1')||'overview';
-const VALID_TABS=['overview','kb','pipeline','matrix','tenants','settings','logs'];
+const VALID_TABS=['overview','kb','pipeline','matrix','tenants','settings','logs','cadence','quarantine','agent','commander','plugins','battle'];
+// URL hash 直达：https://viralloopapp.com/#commander 直接打开指定 Tab
+(function(){try{var h=(location.hash||'').replace('#','');if(h&&VALID_TABS.indexOf(h)>=0){ACTIVE_TAB=h;}}catch(e){}})();
 if(VALID_TABS.indexOf(ACTIVE_TAB)<0)ACTIVE_TAB='overview';
 function switchTab(id){
   if(VALID_TABS.indexOf(id)<0)return;
@@ -297,12 +309,27 @@ function switchTab(id){
   if(id==='matrix'){renderMatrix()}
   if(id==='logs'){loadLogs(true)}
   if(id==='overview'){renderSnapSections()}
+  if(id==='settings'){loadLiveModel()}
   if(id==='kb'){kbLoadStats()}
   if(id==='tenants'){renderTenantTable();renderSnapSections()}
+  if(id==='cadence'){renderCadence()}
+  if(id==='quarantine'){renderQuarantine()}
+  if(id==='agent'){renderAgent()}
+  if(id==='commander'){/* chat tab, no preload needed */}
+  if(id==='plugins'){renderPlugins()}
+  if(id==='battle'){holoStart()}
+  else{holoStop()}
 }
 let PIPE_TIMER=null, LOG_TIMER=null, SNAP_TIMER=null;
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
 function mimg(u){if(!u)return '';return u.indexOf('/api/imgcache/')===0?u:('/api/matrix_img?url='+encodeURIComponent(u));}
+function imgErr(el){var w=el.style.width||'64px',h=el.style.height||'36px';
+var d=document.createElement('div');
+d.style.cssText='width:'+w+';height:'+h+';display:flex;align-items:center;justify-content:center;background:var(--bg2);border-radius:4px;font-size:18px;cursor:pointer;flex-shrink:0';
+d.title='图片加载失败，点击重试';d.textContent='🖼️';
+d.onclick=function(){var i=document.createElement('img');i.src=el.src;i.style.cssText=el.style.cssText;i.setAttribute('referrerpolicy','no-referrer');i.onerror=function(){imgErr(i)};d.replaceWith(i);};
+el.replaceWith(d);}
+function retryLoad(fnName){if(typeof window[fnName]==='function'){window[fnName]();}else{location.reload();}}
 async function api(path,opt={}){
   const r=await fetch(path,{...(opt||{}),headers:{...(opt.headers||{}),...auth()}});
   if(r.status===401){document.getElementById('app').innerHTML='<div class="loading">Token 无效，请刷新页面重试</div>';throw new Error('401');}
@@ -317,6 +344,36 @@ function saveSettings(silent){
   api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(SETTINGS)}).catch(()=>{});
   if(!silent)toast('配置已保存 · Settings saved');
 }
+// 实时语音/视频模型配置（2026-10-12）
+async function loadLiveModel(){
+  try{
+    const cfg=await api('/api/live_model');
+    document.getElementById('liveModel').value=cfg.live_model||'';
+    document.getElementById('liveVideoFps').value=cfg.video_fps||1;
+    document.getElementById('liveVideoQ').value=cfg.video_quality||70;
+    document.getElementById('liveVideoQBig').textContent=cfg.video_quality||70;
+    document.getElementById('liveModelStatus').textContent='已加载 · Loaded';
+  }catch(e){
+    document.getElementById('liveModelStatus').textContent='加载失败 · Failed';
+  }
+}
+async function saveLiveModel(){
+  const payload={
+    live_model:document.getElementById('liveModel').value.trim(),
+    video_fps:parseInt(document.getElementById('liveVideoFps').value)||1,
+    video_quality:parseInt(document.getElementById('liveVideoQ').value)||70,
+  };
+  try{
+    const r=await api('/api/live_model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(r.ok)toast('模型配置已保存，重启 perception_server 生效 · Saved');
+    else toast('保存失败 · Failed: '+(r.error||''));
+  }catch(e){toast('保存失败 · Failed');}
+}
+document.addEventListener('input',e=>{
+  if(e.target&&e.target.id==='liveVideoQ'){
+    document.getElementById('liveVideoQBig').textContent=e.target.value;
+  }
+});
 async function boot(){
   loadSettings();
   try{
@@ -374,14 +431,21 @@ function render(){
     <div class="term-out" id="termOut"><div class="hint">Perpetua shell ready<br>工作目录 · Working directory: /home/hatch/data</div></div>
     <div class="term-in"><span class="p">$</span><input id="termIn" placeholder="输入 shell 命令，回车执行" autocomplete="off"><button class="run" onclick="runTerm()">运行 · Run</button></div>
   </div>
+  <div class="tab-layout">
   <nav class="tab-nav">
     <button class="tab-btn ${ACTIVE_TAB==='overview'?'active':''}" data-tab="overview" onclick="switchTab('overview')">📊 概览 · Overview</button>
+    <button class="tab-btn ${ACTIVE_TAB==='battle'?'active':''}" data-tab="battle" onclick="switchTab('battle')">♖ 作战指挥 · Battle</button>
     <button class="tab-btn ${ACTIVE_TAB==='kb'?'active':''}" data-tab="kb" onclick="switchTab('kb')">📚 知识库 · KB</button>
     <button class="tab-btn ${ACTIVE_TAB==='pipeline'?'active':''}" data-tab="pipeline" onclick="switchTab('pipeline')">⚙️ 流水线 · Pipeline</button>
     <button class="tab-btn ${ACTIVE_TAB==='matrix'?'active':''}" data-tab="matrix" onclick="switchTab('matrix')">🌐 分发矩阵 · Matrix</button>
     <button class="tab-btn ${ACTIVE_TAB==='tenants'?'active':''}" data-tab="tenants" onclick="switchTab('tenants')">👥 租户 · Tenants</button>
+    <button class="tab-btn ${ACTIVE_TAB==='plugins'?'active':''}" data-tab="plugins" onclick="switchTab('plugins')">🧩 插件市场 · Plugins</button>
     <button class="tab-btn ${ACTIVE_TAB==='settings'?'active':''}" data-tab="settings" onclick="switchTab('settings')">🔧 设置 · Settings</button>
     <button class="tab-btn ${ACTIVE_TAB==='logs'?'active':''}" data-tab="logs" onclick="switchTab('logs')">📜 实时日志 · Logs</button>
+    <button class="tab-btn ${ACTIVE_TAB==='cadence'?'active':''}" data-tab="cadence" onclick="switchTab('cadence')">⏱️ 节奏门 · Cadence</button>
+    <button class="tab-btn ${ACTIVE_TAB==='quarantine'?'active':''}" data-tab="quarantine" onclick="switchTab('quarantine')">🔒 隔离审批 · Quarantine</button>
+    <button class="tab-btn ${ACTIVE_TAB==='agent'?'active':''}" data-tab="agent" onclick="switchTab('agent')">🤖 Agent 基建 · Agent</button>
+    <button class="tab-btn ${ACTIVE_TAB==='commander'?'active':''}" data-tab="commander" onclick="switchTab('commander')">💬 指挥官对话 · Commander</button>
   </nav>
   <section class="tab-panel ${ACTIVE_TAB==='overview'?'active':''}" id="tab-overview">
   <div class="context-row">${s.sample?'<span class="chip-demo">演示数据 · DEMO</span>':'<span class="chip-live">真实数据 · LIVE</span>'}<span>${updStr}</span><span>每 60 秒自动刷新</span></div>
@@ -487,7 +551,234 @@ function render(){
     ${toggleRow('ask_studio_auto','Ask Studio 自动问询','Ask Studio auto-ask')}
     <div class="settings-foot"><span class="hint">设置保存在此设备 · Saved on this device</span><button class="btn primary" onclick="saveSettings()">保存配置 · Save</button></div>
   </div>
-  </section>`;
+  <div class="settings-block card" id="liveModelCard">
+    <div class="settings-head"><h3>实时语音/视频模型 <span class="en">· Live Model</span></h3><span class="hint" id="liveModelStatus">加载中…</span></div>
+    <div class="set-row"><label>模型 · Model</label>
+      <div class="set-flex"><input type="text" id="liveModel" placeholder="gemini-2.0-flash-exp" style="flex:1"></div>
+      <div class="set-hint">如 gemini-2.0-flash-exp，改完重启 perception_server 生效</div></div>
+    <div class="set-row"><label>视频帧率 · Video FPS</label>
+      <div class="set-flex"><input type="number" id="liveVideoFps" min="1" max="5" value="1" style="width:80px"></div></div>
+    <div class="set-row"><label>视频质量 · Video quality</label>
+      <div class="set-flex"><input type="range" id="liveVideoQ" min="30" max="95" value="70"><span class="set-big" id="liveVideoQBig">70</span></div></div>
+    <div class="settings-foot"><button class="btn primary" onclick="saveLiveModel()">保存模型配置 · Save</button></div>
+  </div>
+  </section>
+  <section class="tab-panel ${ACTIVE_TAB==='cadence'?'active':''}" id="tab-cadence">
+    <div class="card"><h3>⏱️ 发布管线与节奏门 <span class="en">· Pipeline & Cadence Gate</span></h3>
+      <div id="cadenceBody"><div class="hint">加载中…</div></div>
+    </div>
+  </section>
+  <section class="tab-panel ${ACTIVE_TAB==='quarantine'?'active':''}" id="tab-quarantine">
+    <div class="card"><h3>🔒 人工隔离与标题优化 <span class="en">· HITL Quarantine</span></h3>
+      <div id="quarantineBody"><div class="hint">加载中…</div></div>
+    </div>
+  </section>
+  <section class="tab-panel ${ACTIVE_TAB==='agent'?'active':''}" id="tab-agent">
+    <div class="card"><h3>🤖 Agent 基建状态 <span class="en">· Agent Infrastructure</span></h3>
+      <div id="agentBody"><div class="hint">加载中…</div></div>
+    </div>
+  </section>
+  <section class="tab-panel ${ACTIVE_TAB==='plugins'?'active':''}" id="tab-plugins">
+    <div class="card"><h3>🧩 插件市场 <span class="en">· Plugin Market</span></h3>
+      <div id="pluginsBody"><div class="hint">加载中…</div></div>
+    </div>
+  </section>
+  <section class="tab-panel ${ACTIVE_TAB==='battle'?'active':''}" id="tab-battle">
+<!-- HOLO360-INTEGRATED -->
+<style>
+.holo * {margin:0;padding:0;box-sizing:border-box}
+.holo {
+  --bg:#070b12; --panel:#0c1220; --panel2:#0e1526;
+  --line:#1b2a4a; --cyan:#22d3ee; --blue:#1e5bc6;
+  --green:#34d399; --amber:#fbbf24; --red:#f87171;
+  --text:#dbe7ff; --dim:#7d90b8;
+}
+.holo .wrap {position:relative;z-index:1;max-width:1560px;margin:0 auto;padding:18px 22px 40px}
+.holo header {display:flex;align-items:center;gap:18px;padding:14px 20px;background:linear-gradient(180deg,rgba(20,32,58,.85),rgba(12,18,32,.85));border:1px solid var(--line);border-radius:14px;box-shadow:0 0 32px rgba(34,211,238,.08), inset 0 0 60px rgba(30,91,198,.06)}
+.holo .logo {width:46px;height:46px;border-radius:12px;background:conic-gradient(from 40deg,#1e5bc6,#22d3ee,#1e5bc6);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 0 18px rgba(34,211,238,.5);animation:holo-spin 14s linear infinite}
+@keyframes holo-spin {to{transform:rotate(360deg)}}
+.holo h1 {font-size:21px;letter-spacing:3px;font-weight:700}
+.holo h1 small {display:block;font-size:11px;letter-spacing:6px;color:var(--cyan);font-weight:400;margin-top:2px}
+.holo .hdr-right {margin-left:auto;display:flex;align-items:center;gap:14px}
+.holo #clock {font-size:15px;color:var(--cyan);font-variant-numeric:tabular-nums;letter-spacing:1px}
+.holo .verdict {padding:7px 18px;border-radius:20px;font-weight:700;letter-spacing:2px;font-size:14px;border:1px solid}
+.holo .v-HEALTHY {color:var(--green);border-color:var(--green);box-shadow:0 0 14px rgba(52,211,153,.35);animation:holo-pulse 2.4s infinite}
+.holo .v-DEGRADED {color:var(--amber);border-color:var(--amber);box-shadow:0 0 14px rgba(251,191,36,.3);animation:holo-pulse 1.6s infinite}
+.holo .v-DOWN {color:var(--red);border-color:var(--red);box-shadow:0 0 14px rgba(248,113,113,.4);animation:holo-pulse 1s infinite}
+@keyframes holo-pulse {50%{opacity:.65}}
+.holo #upd {font-size:11px;color:var(--dim)}
+.holo .sec {margin-top:18px}
+.holo .sec-t {display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:14px;letter-spacing:4px;color:var(--cyan);font-weight:600}
+.holo .sec-t::after {content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+.holo .flow {background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 14px 16px;position:relative;overflow:hidden}
+.holo #flowSvg {width:100%;height:auto;display:block}
+.holo .fnode {cursor:pointer}
+.holo .fnode circle.bg {fill:#0e1830;stroke:#274067;stroke-width:1.5;transition:.25s}
+.holo .fnode:hover circle.bg {stroke:var(--cyan);filter:drop-shadow(0 0 8px rgba(34,211,238,.6))}
+.holo .fnode text {fill:var(--text);font-size:13px;text-anchor:middle}
+.holo .fnode .cnt {font-size:26px;font-weight:800;fill:#fff}
+.holo .fnode .nm {font-size:12px;fill:var(--dim);letter-spacing:1px}
+.holo .fedge {stroke:#274067;stroke-width:2;fill:none}
+.holo .fedge.flow {stroke:var(--cyan);stroke-width:2;stroke-dasharray:8 10;opacity:.75;animation:holo-dash 1.2s linear infinite}
+@keyframes holo-dash {to{stroke-dashoffset:-18}}
+.holo .grid {display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+.holo .card {background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-height:120px}
+.holo .card h3 {font-size:12px;letter-spacing:3px;color:var(--cyan);margin-bottom:10px;font-weight:600}
+.holo .span4 {grid-column:span 4}
+.holo .span6 {grid-column:span 6}
+.holo .span8 {grid-column:span 8}
+.holo .span12 {grid-column:span 12}
+.holo .svc {display:flex;align-items:center;gap:9px;padding:7px 4px;border-bottom:1px dashed rgba(27,42,74,.7);font-size:13px}
+.holo .svc:last-child {border:none}
+.holo .dot {width:10px;height:10px;border-radius:50%;flex:none}
+.holo .d-ok {background:var(--green);box-shadow:0 0 10px var(--green);animation:holo-pulse 2s infinite}
+.holo .d-bad {background:var(--red);box-shadow:0 0 10px var(--red);animation:holo-pulse 1s infinite}
+.holo .d-warn {background:var(--amber);box-shadow:0 0 10px var(--amber);animation:holo-pulse 1.6s infinite}
+.holo .d-unk {background:#5b6b8c;box-shadow:0 0 10px #5b6b8c}
+.holo .modcard {cursor:pointer;transition:.25s}
+.holo .modcard:hover {border-color:var(--cyan);box-shadow:0 0 18px rgba(34,211,238,.25)}
+.holo .svc .nm {flex:1}
+.holo .svc .note {font-size:11px;color:var(--dim)}
+.holo .plats {display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.holo .plat {padding:9px 10px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.holo .plat .st {font-weight:700;font-size:11px;padding:2px 8px;border-radius:8px}
+.holo .st-ok {color:var(--green);background:rgba(52,211,153,.12)}
+.holo .st-stale {color:var(--amber);background:rgba(251,191,36,.12)}
+.holo .st-error {color:var(--red);background:rgba(248,113,113,.12)}
+.holo .const {margin-bottom:12px}
+.holo .const .row {display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+.holo .const .tgt {color:var(--dim);font-size:11px}
+.holo .bar {height:7px;border-radius:4px;background:#141d33;overflow:hidden}
+.holo .bar i {display:block;height:100%;border-radius:4px;transition:width .6s}
+.holo .b-ok {background:linear-gradient(90deg,#0e9f6e,var(--green));box-shadow:0 0 8px rgba(52,211,153,.5)}
+.holo .b-bad {background:linear-gradient(90deg,#b45309,var(--amber));box-shadow:0 0 8px rgba(251,191,36,.5)}
+.holo #events {height:300px;overflow-y:auto;font-size:12.5px;line-height:1.5}
+.holo #events::-webkit-scrollbar {width:6px}
+.holo #events::-webkit-scrollbar-thumb {background:var(--line);border-radius:3px}
+.holo .ev {padding:7px 9px;margin-bottom:6px;background:var(--panel2);border-left:2px solid var(--cyan);border-radius:0 8px 8px 0;animation:holo-slidein .4s}
+@keyframes holo-slidein {from{opacity:0;transform:translateX(-8px)}}
+.holo .ev .src {color:var(--cyan);font-size:10px;letter-spacing:1px;margin-right:8px}
+.holo .ev.new {border-left-color:var(--green)}
+.holo .stat-row {display:flex;gap:14px;flex-wrap:wrap}
+.holo .stat {flex:1;min-width:130px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}
+.holo .stat .v {font-size:24px;font-weight:800;color:#fff}
+.holo .stat .k {font-size:11px;color:var(--dim);letter-spacing:2px;margin-top:4px}
+.holo #drawer {position:fixed;top:0;right:-420px;width:400px;max-width:92vw;height:100vh;background:#0b1120;border-left:1px solid var(--cyan);z-index:100;transition:right .3s;padding:22px;overflow-y:auto;box-shadow:-20px 0 60px rgba(0,0,0,.6)}
+.holo #drawer.open {right:0}
+.holo #drawer h2 {font-size:16px;letter-spacing:2px;color:var(--cyan);margin-bottom:4px}
+.holo #drawer .sub {font-size:12px;color:var(--dim);margin-bottom:14px}
+.holo #drawerClose {position:absolute;top:14px;right:16px;background:none;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:4px 10px;cursor:pointer}
+.holo .ditem {padding:9px 11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;font-size:13px}
+.holo .ditem .s {float:right;font-size:11px;color:var(--amber)}
+.holo .flash {animation:holo-flash .8s}
+@keyframes holo-flash {0%{box-shadow:0 0 0 rgba(34,211,238,0)}30%{box-shadow:0 0 26px rgba(34,211,238,.45)}}
+.holo .clickable {cursor:pointer;transition:.25s}
+.holo .clickable:hover {border-color:var(--cyan);box-shadow:0 0 18px rgba(34,211,238,.25)}
+.holo .clickable h3::after {content:" ›";color:var(--cyan)}
+.holo #dActions {margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.holo .abtn {background:rgba(30,91,198,.25);border:1px solid var(--blue);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;text-align:left;transition:.2s}
+.holo .abtn:hover {background:rgba(30,91,198,.5);box-shadow:0 0 12px rgba(34,211,238,.3)}
+.holo .abtn:disabled {opacity:.5;cursor:wait}
+.holo .abtn.tier3 {border-color:var(--red);background:rgba(248,113,113,.08)}
+.holo .abtn.tier3:hover {background:rgba(248,113,113,.2)}
+.holo .abtn .tag {font-size:10px;letter-spacing:1px;margin-right:8px;padding:2px 6px;border-radius:6px}
+.holo .tag.direct {color:var(--green);background:rgba(52,211,153,.15)}
+.holo .tag.t3 {color:var(--red);background:rgba(248,113,113,.15)}
+.holo .pitem {padding:9px 11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;font-size:12.5px}
+.holo .pitem .sev {font-weight:700;margin-right:6px}
+.holo .pitem .ack {float:right;background:none;border:1px solid var(--green);color:var(--green);border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer}
+.holo .pitem .ack:hover {background:rgba(52,211,153,.15)}
+.holo .cmdbox {margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.holo .cmdbox .row {display:flex;gap:10px;margin-top:10px}
+.holo .cmdbox input {flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px 14px;font-size:13px;outline:none}
+.holo .cmdbox input:focus {border-color:var(--cyan)}
+.holo .cmdbox button {background:rgba(30,91,198,.4);border:1px solid var(--blue);color:#fff;border-radius:8px;padding:10px 20px;font-size:13px;cursor:pointer}
+.holo .cmdbox button:hover {background:rgba(30,91,198,.7)}
+.holo #cmdReply {margin-top:10px;font-size:13px;line-height:1.7;max-height:220px;overflow-y:auto}
+.holo #cmdReply .u {color:var(--cyan);margin:8px 0 2px}
+.holo #cmdReply .a {color:var(--text);background:var(--panel2);border-radius:8px;padding:8px 12px;margin-bottom:6px}
+.holo .toast {position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0b1120;border:1px solid var(--cyan);color:var(--text);border-radius:10px;padding:10px 22px;font-size:13px;z-index:200;display:none;box-shadow:0 0 24px rgba(34,211,238,.3)}
+@media(max-width:1100px) {.holo .span4, .holo .span6, .holo .span8 {grid-column:span 12}}
+</style>
+<div class="holo">
+<div class="wrap">
+<header>
+  <div class="logo">◈</div>
+  <h1>PERPETUA 作战指挥中心<small>360° 全息实时监控</small></h1>
+  <div class="hdr-right">
+    <span id="upd">连接中…</span>
+    <span id="clock">--:--:--</span>
+    <span id="verdict" class="verdict v-DEGRADED">…</span>
+  </div>
+</header>
+
+<div class="sec">
+  <div class="sec-t">◆ 内容生产管线 · 实时流量</div>
+  <div class="flow"><svg id="flowSvg" viewBox="0 0 1400 190"></svg></div>
+</div>
+
+<div class="sec">
+  <div class="sec-t">◆ 系统状态矩阵</div>
+  <div class="grid">
+    <div class="card span4 clickable" id="cardServices"><h3>服务网格</h3><div id="services"></div></div>
+    <div class="card span4 clickable" id="cardPlats"><h3>九平台分发矩阵</h3><div class="plats" id="plats"></div>
+      <div style="margin-top:10px;font-size:12px;color:var(--dim)" id="platSum"></div></div>
+    <div class="card span4 clickable" id="cardConsts"><h3>健康常量 D20261011-005</h3><div id="consts"></div>
+      <div class="stat-row" style="margin-top:8px">
+        <div class="stat"><div class="v" id="stAnomaly">–</div><div class="k">未解决异常</div></div>
+        <div class="stat"><div class="v" id="stBus">–</div><div class="k">事件总线待处理</div></div>
+      </div></div>
+    <div class="card span8"><h3>实时事件流</h3><div id="events"></div></div>
+    <div class="card span4 clickable" id="cardSnap"><h3>管线快照</h3><div class="stat-row">
+        <div class="stat"><div class="v" id="stSvc">–</div><div class="k">服务在线</div></div>
+        <div class="stat"><div class="v" id="stPlat">–</div><div class="k">平台正常</div></div>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:var(--dim);line-height:1.9" id="verdictNote"></div></div>
+  </div>
+</div>
+</div>
+
+<div class="sec">
+  <div class="sec-t">◆ 扩展作战视图 · 360° 无死角</div>
+  <div class="grid" id="modGrid"></div>
+</div>
+
+<div id="drawer">
+  <button id="drawerClose">✕</button>
+  <h2 id="dTitle"></h2><div class="sub" id="dSub"></div><div id="dItems"></div>
+  <div id="dActions"></div>
+</div>
+<div class="cmdbox">
+  <div class="sec-t" style="margin-bottom:4px">◆ 指挥官命令 · Commander</div>
+  <div style="font-size:11px;color:var(--dim)">自由文本指令 → 主 agent（每 2 分钟处理一次） · 与 💬 指挥官对话 Tab 同一队列</div>
+  <div class="row">
+    <input id="cmdInput" placeholder="输入命令，如：把未解决的 P1 异常列出来 / 刷新矩阵同步…" />
+    <button id="cmdSend">发送</button>
+  </div>
+  <div id="cmdReply"></div>
+</div>
+<div class="toast" id="holoToast"></div>
+</div>
+</section>
+  <section class="tab-panel ${ACTIVE_TAB==='commander'?'active':''}" id="tab-commander">
+    <div class="card"><h3>💬 指挥官对话 <span class="en">· Commander Chat</span></h3>
+      <div style="margin-bottom:10px">
+        <label style="margin-right:12px"><input type="radio" name="cmdTarget" value="muse" checked> 🔵 Muse（主指挥官）</label>
+        <label><input type="radio" name="cmdTarget" value="nano"> 🟢 Nano（热备）</label>
+        <span class="hint" style="margin-left:12px">Muse 简单问题即时答，复杂问题起子 agent 异步（约2-5分钟）</span>
+      </div>
+      <div style="margin-bottom:10px" id="cmdTokenRow">
+        <input type="password" id="cmdToken" placeholder="Muse 对话口令（找 Dash 要）" style="width:280px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">
+        <span class="hint">口令保存在本浏览器，下次不用再输</span>
+      </div>
+      <div id="cmdHistory" style="height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px;background:var(--bg2)"></div>
+      <div style="display:flex;gap:8px">
+        <textarea id="cmdInput" rows="2" style="flex:1" placeholder="输入消息… / Type a message…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCommander()}"></textarea>
+        <button class="btn primary" onclick="sendCommander()">发送</button>
+      </div>
+    </div>
+  </section>
+  </div>`;
   if(!localStorage.getItem(LS_WARN))document.getElementById('warnBar').style.display='flex';
   bindTermInput(); renderLogTabs(); loadLogs(); renderPipeline(); renderTenantTable(); renderSnapSections();
 }
@@ -541,7 +832,7 @@ function renderSnapSections(){
 function toggleRow(key,cn,en){
   return `<div class="toggle-row"><div>${cn}<div class="en hint">${en}</div></div><label class="switch ${SETTINGS[key]?'on':''}"><input type="checkbox" ${SETTINGS[key]?'checked':''} onchange="setCfg('${key}',this.checked)"><span class="tr"></span></label></div>`;
 }
-async function renderPlatformOverview(){
+async function renderPlatformOverview(){window.renderPlatformOverview=renderPlatformOverview;
   const el=document.getElementById('platOverview');if(!el)return;
   try{
     const d=await api('/api/platform_matrix');
@@ -563,14 +854,14 @@ async function renderPlatformOverview(){
       const tr=trends[k]||0;
       const trHtml=tr>0?`<span style="color:#4ade80">▲${tr}</span>`:tr<0?`<span style="color:#f87171">▼${-tr}</span>`:'';
       const staleTag=sh>6?`<span style="color:#f87171;font-size:10px"> ${sh}h未同步</span>`:'';
-      const av=p.avatar?`<img src="${mimg(p.avatar)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'">`:'';
+      const av=p.avatar?`<img src="${mimg(p.avatar)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" onerror="imgErr(this)">`:'';
       return `<div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg2);border-radius:8px">
         ${av}<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600"><span style="color:${dot}">●</span> ${names[k]||k}${staleTag}</div>
         <div style="font-size:11px;color:var(--muted)">${vids.length}条 · ${totalViews.toLocaleString()}播 ${trHtml}</div></div></div>`;
     }).join('');
     const upd=document.getElementById('platUpd');
     if(upd){const ds=Object.values(ps).map(p=>p.synced_at||'').filter(Boolean).sort().pop();upd.textContent=ds?('更新 '+timeAgo(ds)):'';}
-  }catch(e){el.innerHTML='<div class="hint">加载失败</div>';}
+  }catch(e){el.innerHTML='<div class="hint">加载失败 <button onclick="retryLoad(\'renderPlatformOverview\')" style="font-size:12px;margin-left:8px">↻ 重试</button></div>';}
 }
 function setCfg(k,v){SETTINGS[k]=v;if(k==='daily_target'){const e=document.getElementById('cfgTargetBig');if(e)e.textContent=v}if(k==='virality_threshold'){const e=document.getElementById('cfgThrBig');if(e)e.textContent=v}document.querySelectorAll('.switch').forEach(()=>{});saveSettings(true);renderToggles();}
 function renderToggles(){document.querySelectorAll('.toggle-row .switch input').forEach(inp=>{const k=inp.getAttribute('onchange').match(/'(\w+)'/)[1];inp.checked=!!SETTINGS[k];inp.closest('.switch').classList.toggle('on',!!SETTINGS[k])})}
@@ -592,11 +883,11 @@ async function renderPipeline(silent){
         <div class="stage-foot">${st.freshness==='live'?'<span class="ok">正常 · OK</span> / ':''}${esc(ago)}</div>
       </div>`;
     }).join('');
-  }catch(e){if(!silent){const g=document.getElementById('pipeGrid');if(g)g.innerHTML='<div class="hint">加载失败</div>'}}
+  }catch(e){if(!silent){const g=document.getElementById('pipeGrid');if(g)g.innerHTML='<div class="hint">加载失败 <button onclick="retryLoad(\'renderPipeline\')" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}}
   renderPolicyGate(silent);renderDouyin(silent);renderDistributor(silent);
 }
 async function renderPolicyGate(silent){
-  const card=document.getElementById('policyCard');if(!card)return;
+  const card=document.getElementById('policyCard');if(!card)return;window.renderPolicyGate=renderPolicyGate;
   try{
     const d=await api('/api/policy_gate');
     const cnt=document.getElementById('policyCnt');
@@ -609,10 +900,10 @@ async function renderPolicyGate(silent){
       <div><div class="ypp-num" style="font-size:24px">${d.flag_total}</div><div class="ypp-sub">累计 FLAG</div></div>
       <div><div class="ypp-num" style="font-size:24px">${d.manual_pending}</div><div class="ypp-sub">待人工复核</div></div></div>
       ${rows?'<div style="margin-top:4px">'+rows+'</div>':'<div class="hint">暂无 FLAG 记录 · 门运行正常</div>'}`;
-  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败</div>'}
+  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}
 }
 async function renderDouyin(silent){
-  const card=document.getElementById('douyinCard');if(!card)return;
+  const card=document.getElementById('douyinCard');if(!card)return;window.renderDouyin=renderDouyin;
   try{
     const d=await api('/api/douyin');
     const cnt=document.getElementById('douyinCnt');
@@ -627,10 +918,10 @@ async function renderDouyin(silent){
         ${e.failed?`<b style="color:#f87171">失败 ${e.failed}</b>`:''}</div>
         <div class="ypp-bar" style="margin-top:0"><i style="width:${pct}%"></i></div></div>`}).join('');
     card.innerHTML=bars||'<div class="hint">暂无数据</div>';
-  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败</div>'}
+  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}
 }
 async function renderDistributor(silent){
-  const card=document.getElementById('distCard');if(!card)return;
+  const card=document.getElementById('distCard');if(!card)return;window.renderDistributor=renderDistributor;
   try{
     const d=await api('/api/distributor');
     const cnt=document.getElementById('distCnt');
@@ -646,7 +937,7 @@ async function renderDistributor(silent){
       <div><div class="ypp-num" style="font-size:24px;color:#4ade80">${d.gate.accept}</div><div class="ypp-sub">门禁通过</div></div>
       <div><div class="ypp-num" style="font-size:24px;color:#f87171">${d.gate.reject}</div><div class="ypp-sub">门禁拦截</div></div></div>
       ${rows?'<div style="margin-top:4px">'+rows+'</div>':'<div class="hint">暂无门禁决策记录</div>'}`;
-  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败</div>'}
+  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}
 }
 async function matrixSyncNow(btn){
   btn.disabled=true;btn.textContent='同步中…';
@@ -673,11 +964,15 @@ async function matrixSyncNow(btn){
   }catch(e){toast('同步触发失败')}
   btn.disabled=false;btn.textContent='⟳ 立即同步';
 }
-async function renderMatrix(silent){
+async function renderMatrix(silent){window.renderMatrix=renderMatrix;
   const card=document.getElementById('matrixCard');if(!card)return;
   try{
     const d=await api('/api/platform_matrix');
-    if(!d.ok){if(!silent)card.innerHTML='<div class="hint">加载失败</div>';return;}
+    const staleH=d.stale_hours||{};
+    const loginWarn=d.login_warnings||{};
+    const warnBar=document.getElementById('loginWarnBar');
+    if(warnBar){if(loginWarn.length){warnBar.style.display='block';warnBar.innerHTML='⚠️ 登录态可能过期（'+loginWarn.length+' 个平台超12h未同步）：'+loginWarn.join('、')+'，请检查登录';}else{warnBar.style.display='none';}}
+    if(!d.ok){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>';return;}
     const ps=d.platforms||{};
     const order=(Array.isArray(d.order)&&d.order.length===9)?d.order:['douyin','xiaohongshu','kuaishou','shipinhao','bilibili','youtube','facebook','tiktok','x'];
     const synced=order.filter(k=>ps[k]&&ps[k].status==='ok').length;
@@ -689,7 +984,7 @@ async function renderMatrix(silent){
       const p=ps[k]||{};
       const st=p.status==='ok'?'#4ade80':(p.status==='error'?'#f87171':'#fbbf24');
       const vids=(p.videos||[]).slice(0,5).map(v=>`<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:center">
-        ${v.cover?`<img src="${mimg(v.cover)}" referrerpolicy="no-referrer" style="width:64px;height:36px;object-fit:cover;border-radius:4px" loading="lazy" onerror="this.style.display='none'">`:''}
+        ${v.cover?`<img src="${mimg(v.cover)}" referrerpolicy="no-referrer" style="width:64px;height:36px;object-fit:cover;border-radius:4px" loading="lazy" onerror="imgErr(this)">`:''}
         <div style="flex:1;min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.pinned?'📌 ':''}${v.url?`<a href="${esc(v.url)}" target="_blank" style="color:inherit">${esc(v.title||'—')}</a>`:esc(v.title||'—')}</div>
         <div class="hint">${v.views!=null?'▶'+Number(v.views).toLocaleString()+' ':''}${v.likes!=null?'♥'+Number(v.likes).toLocaleString():''}</div></div></div>`).join('');
       const cmts=(p.comments||[]).slice(0,5).map((c,i)=>`<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
@@ -700,12 +995,12 @@ async function renderMatrix(silent){
         ${c.replied?'':`<a href="javascript:void(0)" onclick="document.getElementById('mr-${k}-${i}').style.display='block';this.style.display='none'" style="font-size:12px">回复</a>`}
       </div>`).join('');
       return `<div style="border:1px solid var(--border);border-radius:8px;min-width:0;overflow:hidden;display:flex;flex-direction:column;max-height:640px">
-        ${p.cover?`<img src="${mimg(p.cover)}" referrerpolicy="no-referrer" style="width:100%;height:84px;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">`:''}
+        ${p.cover?`<img src="${mimg(p.cover)}" referrerpolicy="no-referrer" style="width:100%;height:84px;object-fit:cover;flex-shrink:0" loading="lazy" onerror="imgErr(this)">`:''}
         <div style="padding:10px 10px 0;flex-shrink:0">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-          ${p.avatar?`<img src="${mimg(p.avatar)}" referrerpolicy="no-referrer" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="this.style.display='none'">`:''}
+          ${p.avatar?`<img src="${mimg(p.avatar)}" referrerpolicy="no-referrer" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy" onerror="imgErr(this)">`:''}
           <div style="flex:1;min-width:0"><b>${esc(p.name||k)}</b> <span style="font-size:11px;color:${st}">●</span>
-          <div class="hint" style="font-size:11px">${esc(p.channel||'')}${p.cluster?' · '+esc(p.cluster):''} · ${ago(p.synced_at)}</div></div>
+          <div class="hint" style="font-size:11px">${esc(p.channel||'')}${p.cluster?' · '+esc(p.cluster):''} · ${ago(p.synced_at)}${(staleH[k]||0)>6?` <span style="color:#f87171">· ${staleH[k]}h未同步</span>`:''}</div></div>
         </div>
         ${p.description?`<div style="font-size:12px;color:var(--muted);margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(p.description)}</div>`:''}
         </div>
@@ -738,7 +1033,7 @@ async function renderMatrix(silent){
     }catch(e){}
     card.innerHTML=queueHtml+`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${tiles}</div>
       <div class="hint" style="margin-top:6px;font-size:11px">更新于 ${esc((d.updated_at||'').slice(0,19).replace('T',' '))} · 回复经人工批准后发出（09:00/21:00 批量）</div>`;
-  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败</div>'}
+  }catch(e){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>'}
 }
 async function brandingSubmit(platform){
   const desc=(document.getElementById('bd-'+platform)||{}).value||'';
@@ -882,6 +1177,119 @@ function renderPostop(){
 async function loadPostop(){
   try{POSTOP=await api('/api/postop_status');renderPostop()}catch(e){}
 }
+// ---- 统一控制台：四脑议会方案 A（D20261013-001）----
+async function renderCadence(){
+  const el=document.getElementById('cadenceBody');
+  if(!el)return;
+  try{
+    const d=await api('/api/pipeline/queue');
+    if(!d.ok){el.innerHTML='<div class="hint">加载失败: '+esc(d.error||'')+'</div>';return;}
+    const bs=d.by_status||{};
+    const lock=d.burst_locked?'<span style="color:var(--red);font-weight:700">🔒 BURST LOCK（队列延迟>120min）</span>':'<span style="color:var(--green)">✅ 正常</span>';
+    el.innerHTML='<div class="hint">队列延迟: '+(d.queue_delay_min??'—')+' min · '+lock+'</div>'
+      +'<table class="tm"><tr><th>状态</th><th>数量</th></tr>'
+      +Object.keys(bs).map(k=>'<tr><td>'+esc(k)+'</td><td>'+bs[k]+'</td></tr>').join('')
+      +'</table><div class="hint" style="margin-top:8px">门禁常量: 发布间隔≥6h · 标题相似度&lt;0.85 · Shorts 8–11s</div>';
+  }catch(e){el.innerHTML='<div class="hint">加载失败</div>';}
+}
+async function renderQuarantine(){
+  const el=document.getElementById('quarantineBody');
+  if(!el)return;
+  try{
+    const d=await api('/api/quarantine/list');
+    if(!d.ok){el.innerHTML='<div class="hint">加载失败: '+esc(d.error||'')+'</div>';return;}
+    if(!d.items.length){el.innerHTML='<div class="hint">隔离区为空 · 无待审批</div>';return;}
+    el.innerHTML='<table class="tm"><tr><th>视频</th><th>操作</th></tr>'
+      +d.items.map(it=>{
+        const vid=it.video_id||it.id||'';
+        return '<tr><td>'+esc(vid)+'</td>'
+          +'<td><button class="btn" onclick="quarantineUnfreeze(\''+esc(vid)+'\')">解冻审批</button></td></tr>';
+      }).join('')+'</table>';
+  }catch(e){el.innerHTML='<div class="hint">加载失败</div>';}
+}
+async function quarantineUnfreeze(vid){
+  if(!confirm('批准解冻 '+vid+' ?（将记录审计日志）'))return;
+  try{
+    const d=await api('/api/quarantine/unfreeze','POST',{video_id:vid,operator:'console-user'});
+    toast(d.ok?'已记录解冻审批':'失败: '+(d.error||''));
+    renderQuarantine();
+  }catch(e){toast('请求失败');}
+}
+async function renderAgent(){
+  const el=document.getElementById('agentBody');
+  if(!el)return;
+  try{
+    const d=await api('/api/agent/cron-cache');
+    let html='';
+    if(!d.ok){html='<div class="hint">cron 缓存加载失败: '+esc(d.error||'')+'</div>';}
+    else{
+      const st=d.stale?'<span style="color:var(--red);font-weight:700">⚠️ STALE（数据过期）</span>':'<span style="color:var(--green)">✅ 实时</span>';
+      html='<div class="hint">cron 状态: '+st+' · 缓存年龄: '+(d.age_sec??'—')+'s · 任务数: '+d.job_count+' · 心跳: '+esc(d.heartbeat||'unknown')+'</div>'
+        +(d.note?'<div class="hint">'+esc(d.note)+'</div>':'');
+    }
+    // 指挥官热备面板
+    html+='<div style="margin-top:16px"><h4 style="margin:0 0 8px">🛡️ 指挥官热备 <span class="en">· Hot Standby (muse-main ↔ nanoMuse)</span></h4><div id="hsBody"><div class="hint">加载中…</div></div></div>';
+    el.innerHTML=html;
+    renderHotStandby();
+  }catch(e){el.innerHTML='<div class="hint">加载失败</div>';}
+}
+async function renderHotStandby(){
+  const el=document.getElementById('hsBody');
+  if(!el)return;
+  try{
+    const d=await api('/api/agent/hotstandby');
+    if(!d.ok){el.innerHTML='<div class="hint">热备状态加载失败: '+esc(d.error||'')+'</div>';return;}
+    const cfg=d.config||{};
+    const rs=d.router_status||{};
+    const eff=rs.effective_backend||'—';
+    const health=rs.musemain_health||{};
+    const hBadge=health.healthy
+      ?'<span style="color:var(--green)">✅ 健康</span>'
+      :'<span style="color:var(--red)">❌ 异常</span>';
+    const modeBadge=cfg.muse_main_enabled===false
+      ?'<span style="color:var(--orange)">🔶 无 Muse 模式（全走 nano）</span>'
+      :'<span style="color:var(--green)">🟢 双跑模式（muse-main 优先）</span>';
+    const shadowBadge=d.shadow_mode
+      ?'<span style="color:var(--orange)">👻 影子模式（只观察不真切）</span>'
+      :'<span style="color:var(--red)">⚡ 真实降级（自动切 nano）</span>';
+    let html='<div class="hint">当前有效后端: <b>'+esc(eff)+'</b></div>'
+      +'<div class="hint">运行模式: '+modeBadge+'</div>'
+      +'<div class="hint">muse-main 健康: '+hBadge+' <span class="mono">'+esc(health.reason||'')+'</span></div>'
+      +'<div class="hint">降级守护: '+shadowBadge+'</div>';
+    const quota=(rs.quota||{})['muse-main']||{};
+    if(quota.today_used!==undefined){
+      html+='<div class="hint">muse-main 今日用量: '+quota.today_used+(quota.daily_limit?' / '+quota.daily_limit:'（无上限）')+'</div>';
+    }
+    const logs=d.fallback_log_tail||[];
+    if(logs.length){
+      html+='<div class="hint" style="margin-top:8px">降级守护最近日志:</div>'
+        +logs.map(l=>'<div class="log-line mono" style="font-size:11px">'+esc(l)+'</div>').join('');
+    }
+    html+='<div class="hint" style="margin-top:8px;color:var(--muted)">回切永不自动，需人工确认（AI Studio 规格）</div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<div class="hint">热备状态加载失败</div>';}
+}
+async function renderPlugins(){
+  const el=document.getElementById('pluginsBody');
+  if(!el)return;
+  // Perpetua 插件市场：展示可用技能与集成
+  const plugins=[
+    {id:'video-pipeline',name:'视频管线',en:'Video Pipeline',desc:'趋势输入→选题→评审→生成→QC→上传→排期→发布→运营，全自动闭环',status:'enabled',ver:'v5.4'},
+    {id:'matrix-dist',name:'分发矩阵',en:'Matrix Distributor',desc:'九平台梯次分发，Top10-20% 内容自动同步',status:'enabled',ver:'v2.1'},
+    {id:'ask-studio',name:'Ask Studio 传感器',en:'Ask Studio',desc:'YouTube Studio AI 诊断，频道数据传感器',status:'enabled',ver:'v1.0'},
+    {id:'lmarena',name:'LMArena 陪审团',en:'LMArena Jury',desc:'多模型横评，每周一选题方向陪审',status:'enabled',ver:'v1.0'},
+    {id:'aistudio',name:'AI Studio 总工程师',en:'AI Studio',desc:'落可执行规格，模板进化总工程师',status:'enabled',ver:'v1.0'},
+    {id:'redteam',name:'红队',en:'Red Team',desc:'DeepSeek 泼冷水，只输出 KILL/WEAKEN/WATCH',status:'enabled',ver:'v1.0'},
+    {id:'teaser-valid',name:'Teaser 验证环',en:'Teaser Validation',desc:'48h 观众验证，GREEN 自动转正片',status:'enabled',ver:'v1.0'},
+    {id:'ypp-tracker',name:'YPP 追踪器',en:'YPP Tracker',desc:'长视频路径 1000 订阅+4000 小时，每日追踪',status:'enabled',ver:'v1.0'},
+  ];
+  el.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">'
+    +plugins.map(p=>'<div class="card" style="margin:0"><h4 style="margin:0 0 6px">🧩 '+esc(p.name)+' <span class="en">· '+esc(p.en)+'</span></h4>'
+      +'<div class="hint">'+esc(p.desc)+'</div>'
+      +'<div style="margin-top:8px"><span class="chip-live">已启用</span> <span class="tnum" style="color:var(--muted);font-size:12px">'+esc(p.ver)+'</span></div></div>').join('')
+    +'</div>';
+}
+/* HOLO360: 旧 battleMap 已由 360° 全息视图替换，刷新由 holoStart/holoStop 接管 */
 async function loadLogs(silent){
   const sync=document.getElementById('logSync');
   if(sync&&!silent){sync.textContent='同步中 · Syncing';sync.classList.add('syncing')}
@@ -998,7 +1406,360 @@ document.getElementById('ctyp')?.remove();
 addMsg('a','Perpetua',r.reply||'(无回复)');
 }catch(e){document.getElementById('ctyp')?.remove();addMsg('a','Perpetua','请求失败，请稍后重试。')}
 }
+// 指挥官对话
+function cmdAddMsg(who,name,text){
+  const h=document.getElementById('cmdHistory');
+  if(!h)return;
+  const color=who==='u'?'var(--primary)':(name.includes('Nano')?'var(--green)':'var(--purple)');
+  h.insertAdjacentHTML('beforeend',`<div style="margin-bottom:8px"><div style="font-size:11px;color:${color};font-weight:700">${esc(name)}</div><div style="white-space:pre-wrap;word-break:break-word">${esc(text)}</div></div>`);
+  h.scrollTop=h.scrollHeight;
+}
+async function sendCommander(){
+  const inp=document.getElementById('cmdInput'),msg=inp.value.trim();
+  if(!msg)return;inp.value='';
+  const target=document.querySelector('input[name="cmdTarget"]:checked')?.value||'muse';
+  const tname=target==='nano'?'🟢 Nano':'🔵 Muse';
+  // 口令处理（仅 muse 需要）
+  let token='';
+  if(target==='muse'){
+    token=document.getElementById('cmdToken')?.value?.trim()||localStorage.getItem('cmdToken')||'';
+    if(!token){cmdAddMsg('a',tname,'请先输入口令（找 Dash 要）。');return;}
+    localStorage.setItem('cmdToken',token);
+  }
+  // session_id：浏览器内唯一，维持对话上下文
+  let sid=localStorage.getItem('cmdSid');
+  if(!sid){sid='s-'+Math.random().toString(36).slice(2,10);localStorage.setItem('cmdSid',sid);}
+  cmdAddMsg('u','你',msg);
+  cmdAddMsg('a',tname+'（思考中…）','…');
+  const h=document.getElementById('cmdHistory');
+  try{
+    const r=await api('/api/commander/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,message:msg,token,session_id:sid})});
+    h.lastElementChild?.remove();
+    if(!r.ok&&r.error){cmdAddMsg('a',tname,'❌ '+r.error);return;}
+    if(r.async&&r.qid){
+      cmdAddMsg('a',tname,r.reply||'已收到，子 agent 处理中（约2-5分钟）…');
+      pollCommander(r.qid,tname,0);
+    }else{
+      cmdAddMsg('a',tname,r.reply||'(无回复)');
+    }
+  }catch(e){
+    h.lastElementChild?.remove();
+    cmdAddMsg('a',tname,'请求失败，请稍后重试。');
+  }
+}
+async function pollCommander(qid,tname,n){
+  if(n>40)return; // 最多轮询约2分钟
+  await new Promise(r=>setTimeout(r,3000));
+  try{
+    const r=await api('/api/commander/poll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({qid})});
+    if(r.status==='done'&&r.reply){
+      cmdAddMsg('a',tname,r.reply);
+    }else{
+      pollCommander(qid,tname,n+1);
+    }
+  }catch(e){/* 静默重试 */}
+}
 boot();
+</script>
+<script>
+/* HOLO360: 360° 全息作战指挥中心，数据源 /api/command/live */
+(function(){
+
+const h$=id=>document.getElementById(id);
+let lastData=null, seenEvents=new Set();
+const STAGE_POS=[["topics",90],["review",270],["generate",450],["qc",630],["upload",810],["schedule",990],["postop",1170],["reflow",1330]];
+const STAGE_NAMES={topics:"选题池",review:"Ask Studio 评审",generate:"视频生成",qc:"QC 质检",upload:"上传 Private",schedule:"排期翻 Public",postop:"发布后运营",reflow:"数据回流"};
+
+function holoDrawFlow(stages){
+  const svg=h$("flowSvg"); const byId={}; stages.forEach(s=>byId[s.id]=s);
+  let h='<defs><filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>';
+  STAGE_POS.forEach(([id,x],i)=>{
+    if(i<STAGE_POS.length-1){
+      const x2=STAGE_POS[i+1][1]-58;
+      h+=`<line class="fedge" x1="${x+58}" y1="80" x2="${x2}" y2="80"/><line class="fedge flow" x1="${x+58}" y1="80" x2="${x2}" y2="80"/>`;
+    }
+  });
+  STAGE_POS.forEach(([id,x])=>{
+    const s=byId[id]||{count:"?",name:STAGE_NAMES[id],detail:"",items:[]};
+    const c=s.count;
+    const col=c===-1?"#f87171":(c>0?"#22d3ee":"#274067");
+    const cnt=c===-1?"✕":c;
+    h+=`<g class="fnode" data-id="${id}">
+      <circle class="bg" cx="${x}" cy="80" r="56" style="stroke:${col}"/>
+      <text class="cnt" x="${x}" y="88" fill="${col}">${cnt}</text>
+      <text class="nm" x="${x}" y="162">${s.name||STAGE_NAMES[id]}</text>
+    </g>`;
+  });
+  // reflow 回流虚线
+  h+=`<path d="M 1330 136 Q 700 205 90 136" stroke="#1e5bc6" stroke-width="1.5" fill="none" stroke-dasharray="5 6" opacity=".6"/>
+      <text x="700" y="200" fill="#1e5bc6" font-size="11" text-anchor="middle" letter-spacing="3">数据回流 · 进化</text>`;
+  svg.innerHTML=h;
+  svg.querySelectorAll(".fnode").forEach(g=>g.addEventListener("click",()=>holoOpenDrawer(g.dataset.id)));
+}
+function holoOpenDrawer(id){
+  const s=(lastData.stages||[]).find(x=>x.id===id); if(!s) return;
+  h$("dTitle").textContent=s.name; h$("dSub").textContent=s.detail||"";
+  h$("dItems").innerHTML=(s.items||[]).map(i=>`<div class="ditem">${holoEsc(i.t)}<span class="s">${holoEsc(i.s||"")}</span></div>`).join("")||'<div class="ditem">暂无明细</div>';
+  holoSetActions("");
+  if(id==="topics") holoSetActions(`<button class="abtn" id="aSel"><span class="tag direct">直行</span>手动触发 select（选 2 条）</button>`);
+  if(id==="review") holoSetActions(`<button class="abtn" id="aRev"><span class="tag direct">直行</span>手动触发 review（捡答案+提交，不阻塞）</button>`);
+  if(id==="generate") holoSetActions(`<button class="abtn" id="aSub"><span class="tag direct">直行</span>手动触发 submit（提交生成任务）</button>`);
+  const _b1=h$("aSel"),_b2=h$("aRev"),_b3=h$("aSub");
+  if(_b1)_b1.addEventListener("click",e=>holoMutate("pipeline.trigger",{stage:"select",n:2},e.currentTarget));
+  if(_b2)_b2.addEventListener("click",e=>holoMutate("pipeline.trigger",{stage:"review"},e.currentTarget));
+  if(_b3)_b3.addEventListener("click",e=>holoMutate("pipeline.trigger",{stage:"submit"},e.currentTarget));
+  h$("drawer").classList.add("open");
+}
+/* Tier3 审批决策：approve=批准并执行（二次确认），reject=驳回 */
+async function holoTier3List(){
+  try{
+    const r=await fetch("/api/mutate/pending?kind=tier3"); const d=await r.json();
+    if(!d.ok||!d.items.length) return '<div style="font-size:12px;color:var(--dim)">暂无待批 Tier3</div>';
+    return '<div style="font-size:12px;color:var(--red);margin:10px 0 6px">⏳ Tier3 待批（批准即执行，操作记名审计）</div>'+d.items.map(e=>
+      `<div class="pitem"><b>[${holoEsc(e.kind||"")}]</b> ${holoEsc(e.target||"")}${e.emergency?' <span style="color:var(--red)">🚨紧急</span>':""}<br><span style="color:var(--dim);font-size:11px">${holoEsc((e.reason||"").slice(0,140))}</span><br><span style="color:var(--dim);font-size:11px">申请人 ${holoEsc(e.created_by||"")} · ${holoEsc(e.filed_at||"")}</span><br><button class="ack" data-eid="${holoEsc(e.escalation_id)}" data-d="approve" style="border-color:var(--red)">批准并执行</button> <button class="ack" data-eid="${holoEsc(e.escalation_id)}" data-d="reject">驳回</button></div>`
+    ).join("");
+  }catch(e){return '<div style="font-size:12px;color:var(--dim)">Tier3 加载失败</div>';}
+}
+function holoBindTier3Decide(){
+  h$("dActions").querySelectorAll("button.ack[data-d]").forEach(b=>b.addEventListener("click",()=>{
+    const dec=b.dataset.d, eid=b.dataset.eid;
+    if(dec==="approve"&&!confirm("批准并执行该 Tier3 操作？\n\n批准人即执行人（记当前 IP），执行带操作前状态+回读验证，审计留痕。"))return;
+    holoMutate("approval.decide",{escalation_id:eid,decision:dec},b).then(d=>{if(d.ok)holoAnomalyActions();});
+  }));
+}
+function holoBindDrawer(){const b=h$("drawerClose");if(b&&!b._bound){b._bound=1;b.onclick=()=>{const d=h$("drawer");if(d)d.classList.remove("open");};}}
+function holoOpenModule(id){
+  const m=(lastData.modules||[]).find(x=>x.id===id); if(!m) return;
+  h$("dTitle").textContent=m.name; h$("dSub").textContent=m.detail||"";
+  h$("dItems").innerHTML=(m.items||[]).map(i=>`<div class="ditem">${holoEsc(i.t)}<span class="s">${holoEsc(i.s||"")}</span></div>`).join("")||'<div class="ditem">暂无明细</div>';
+  holoSetActions("");
+  h$("drawer").classList.add("open");
+  if(id==="anomaly") holoAnomalyActions();
+  if(id==="pubtruth") holoPubtruthActions(m);
+  if(id==="cron") holoCronActions();
+}
+async function holoAnomalyActions(){
+  holoSetActions('<div style="font-size:12px;color:var(--dim)">加载待 ack 异常…</div>');
+  try{
+    const r=await fetch("/api/mutate/pending?kind=anomaly"); const d=await r.json();
+    if(!d.ok||!d.items.length){holoSetActions('<div style="font-size:12px;color:var(--dim)">暂无待 ack 异常</div>'+await holoTier3List());holoBindTier3Decide();return;}
+    holoSetActions(d.items.map(e=>`<div class="pitem"><button class="ack" data-eid="${holoEsc(e.escalation_id)}">ack</button><span class="sev" style="color:${e.severity==="P1"?"var(--red)":"var(--amber)"}">${holoEsc(e.severity||"")}</span><b>${holoEsc(e.subject||"")}</b><br><span style="color:var(--dim)">${holoEsc(e.condition||"")}</span><br><span style="color:var(--dim);font-size:11px">${holoEsc((e.detail||"").slice(0,120))}</span></div>`).join(""));
+    holoSetActions(h$("dActions").innerHTML+await holoTier3List());
+    h$("dActions").querySelectorAll(".ack[data-eid]:not([data-d])").forEach(b=>b.addEventListener("click",()=>{
+      holoMutate("anomaly.ack",{escalation_id:b.dataset.eid},b).then(d=>{if(d.ok)holoAnomalyActions();});
+    }));
+    holoBindTier3Decide();
+  }catch(e){holoSetActions('<div style="font-size:12px;color:var(--dim)">加载失败</div>');}
+}
+function holoPubtruthActions(m){
+  const vids=(m.items||[]).filter(i=>i.vid&&i.qstatus==="waiting");
+  let html="";
+  if(vids.length){
+    html+='<div style="font-size:12px;color:var(--dim);margin-bottom:6px">Tier 3 操作：只创建逐条审批，绝不直接执行</div>';
+    html+=vids.map(i=>`<button class="abtn tier3" data-vid="${holoEsc(i.vid)}" data-t="${holoEsc(i.t)}"><span class="tag t3">审批</span>申请翻公开 · ${holoEsc(i.t)}</button>`).join("");
+  }
+  html+=`<button class="abtn tier3" id="t3custom"><span class="tag t3">审批</span>自定义 Tier3 申请（发布/删除/翻公开…）</button>`;
+  html+=`<button class="abtn tier3" id="t3bulk"><span class="tag t3">审批</span>批量声誉操作申请（≥2 条视频）</button>`;
+  html+='<div style="font-size:12px;color:var(--dim);margin:10px 0 6px">单视频快捷操作</div>';
+  const allv=(m.items||[]).filter(i=>i.vid);
+  html+=allv.map(i=>`<div class="pitem"><b>${holoEsc(i.t||i.vid)}</b> <span style="color:var(--dim);font-size:11px">${holoEsc(i.vid)}</span><br><button class="abtn tier3" data-emg="${holoEsc(i.vid)}"><span class="tag t3">审批</span>紧急翻公开</button> <button class="abtn" data-tt="${holoEsc(i.vid)}"><span class="tag direct">直行</span>换标题</button> <button class="abtn tier3" data-del="${holoEsc(i.vid)}"><span class="tag t3">审批</span>申请删除</button></div>`).join("");
+  holoSetActions(html);
+  h$("dActions").querySelectorAll(".abtn.tier3[data-vid]").forEach(b=>b.addEventListener("click",()=>holoAskApproval("flip_public",b.dataset.vid+" "+b.dataset.t,b)));
+  const c=h$("t3custom"); if(c)c.addEventListener("click",()=>{
+    const kind=prompt("Tier3 动作类型（publish/delete/flip_public/quarantine/revoke_credential/infra_change/bulk_reputation）：","flip_public");
+    if(!kind)return; const target=prompt("目标（如 video_id / 服务名）：",""); if(!target)return;
+    holoAskApproval(kind.trim(),target.trim(),c);
+  });
+  const bk=h$("t3bulk"); if(bk)bk.addEventListener("click",()=>{
+    const target=prompt("批量操作目标（视频ID列表，逗号分隔，≥2 条）：",""); if(!target)return;
+    holoAskApproval("bulk_reputation",target.trim(),bk);
+  });
+  h$("dActions").querySelectorAll("[data-emg]").forEach(b=>b.addEventListener("click",()=>{
+    const reason=prompt("紧急翻公开申请\n\n视频："+b.dataset.emg+"\n\n请输入理由（必填）：",""); if(!reason||!reason.trim()){holoToast("❌ 理由必填，已取消");return;}
+    holoMutate("flip.emergency",{video_id:b.dataset.emg,reason:reason.trim()},b);
+  }));
+  h$("dActions").querySelectorAll("[data-tt]").forEach(b=>b.addEventListener("click",()=>{
+    const nt=prompt("标题更换（直行，带回读验证）\n\n视频："+b.dataset.tt+"\n\n新标题：",""); if(!nt||!nt.trim())return;
+    holoMutate("title.swap",{video_id:b.dataset.tt,new_title:nt.trim()},b);
+  }));
+  h$("dActions").querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>holoAskApproval("delete",b.dataset.del,b)));
+}
+/* cron 舰队：操作请求（入队待 Dash 执行） */
+function holoCronActions(){
+  const html=`<div style="font-size:12px;color:var(--dim);margin-bottom:6px">cron 操作经请求队列由 Dash 执行（控制台无直连控制面）</div>
+  <div class="pitem"><select id="cronOp" style="background:#0b1120;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px">
+  <option value="run_now">立即运行一次</option><option value="pause">暂停</option><option value="resume">恢复</option><option value="update_body">更新任务体</option><option value="delete">删除任务</option></select>
+  <input id="cronJob" placeholder="job_id" style="background:#0b1120;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px;width:150px;margin:4px">
+  <input id="cronDetail" placeholder="说明（必填）" style="background:#0b1120;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px;width:100%;margin:4px 0">
+  <button class="abtn" id="cronGo"><span class="tag direct">直行</span>提交请求</button></div>
+  <div id="cronReqs" style="font-size:12px;color:var(--dim)">加载请求队列…</div>`;
+  holoSetActions(h$("dActions").innerHTML+html);
+  h$("cronGo").addEventListener("click",e=>{
+    const op=h$("cronOp").value, job=h$("cronJob").value.trim(), dt=h$("cronDetail").value.trim();
+    if(!job){holoToast("❌ job_id 必填");return;} if(!dt){holoToast("❌ 说明必填");return;}
+    holoMutate("cron.request",{op:op,job_id:job,detail:dt},e.currentTarget).then(d=>{if(d.ok)holoCronReqList();});
+  });
+  holoCronReqList();
+}
+async function holoCronReqList(){
+  const el=h$("cronReqs"); if(!el)return;
+  try{
+    const r=await fetch("/api/cron/requests"); const d=await r.json();
+    el.innerHTML=(d.items||[]).slice(-8).reverse().map(q=>`<div>• ${holoEsc(q.op)} ${holoEsc(q.job_id)} <span style="color:${q.status==="pending"?"var(--amber)":"var(--green)"}">${holoEsc(q.status)}</span> <span style="color:var(--dim)">${holoEsc(q.requested_by||"")}</span></div>`).join("")||"暂无请求";
+  }catch(e){el.textContent="加载失败";}
+}
+/* ---- 状态矩阵卡片：点击进抽屉 + 操作按钮 ---- */
+function holoOpenCard(id){
+  const d=lastData; if(!d||!d.ok){holoToast("数据尚未加载");return;}
+  if(id==="cardServices"){
+    h$("dTitle").textContent="服务网格"; h$("dSub").textContent=d.services_ok+"/"+d.services_total+" 在线";
+    h$("dItems").innerHTML=(d.services||[]).map(s=>`<div class="ditem"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;background:${s.ok?"var(--green)":"var(--red)"}"></span>${holoEsc(s.name)}<span class="s">${holoEsc(s.note||"")}</span></div>`).join("");
+    holoSetActions(`<button class="abtn" id="aProbe"><span class="tag direct">直行</span>重试探针 dispatch_health</button>`);
+    h$("aProbe").addEventListener("click",e=>holoMutate("probe.retry",{probe:"dispatch_health"},e.currentTarget));
+  }else if(id==="cardPlats"){
+    const pn={youtube:"YouTube",douyin:"抖音",xiaohongshu:"小红书",kuaishou:"快手",shipinhao:"视频号",bilibili:"B站",facebook:"Facebook",tiktok:"TikTok",x:"X"};
+    h$("dTitle").textContent="九平台分发矩阵"; h$("dSub").textContent=d.platforms_ok+"/"+d.platforms.length+" 平台数据正常";
+    h$("dItems").innerHTML=(d.platforms||[]).map(p=>`<div class="ditem">${holoEsc(pn[p.id]||p.id)}<span class="s">${p.status==="ok"?"正常 · "+p.videos+"条":p.status}</span></div>`).join("");
+    holoSetActions(`<button class="abtn" id="aSync"><span class="tag direct">直行</span>立即同步矩阵</button>`);
+    h$("aSync").addEventListener("click",e=>holoMutate("sync.refresh",{target:"matrix"},e.currentTarget));
+  }else if(id==="cardConsts"){
+    h$("dTitle").textContent="健康常量 D20261011-005"; h$("dSub").textContent="管线健康三常量";
+    h$("dItems").innerHTML=(d.constants||[]).map(c=>`<div class="ditem">${holoEsc(c.name)}<span class="s" style="color:${c.ok===false?"var(--amber)":"var(--green)"}">${holoEsc(c.value)} / 目标${holoEsc(c.target)}</span></div>`).join("")
+      +`<div class="ditem">未解决异常<span class="s">${d.anomaly_open} 条</span></div>`;
+    holoSetActions(`<button class="abtn" id="aPipe"><span class="tag direct">直行</span>刷新管线数据</button>`);
+    h$("aPipe").addEventListener("click",e=>holoMutate("sync.refresh",{target:"pipeline"},e.currentTarget));
+  }else if(id==="cardSnap"){
+    h$("dTitle").textContent="管线快照"; h$("dSub").textContent="当前 verdict: "+d.verdict;
+    h$("dItems").innerHTML=`<div class="ditem">服务在线<span class="s">${d.services_ok}/${d.services_total}</span></div><div class="ditem">平台正常<span class="s">${d.platforms_ok}/${d.platforms.length}</span></div><div class="ditem">更新时间<span class="s">${holoEsc(d.at)}</span></div>`;
+    holoSetActions(`<button class="abtn" id="aSnap"><span class="tag direct">直行</span>刷新快照</button>`);
+    h$("aSnap").addEventListener("click",e=>holoMutate("sync.refresh",{target:"snapshot"},e.currentTarget));
+  }
+  h$("drawer").classList.add("open");
+}
+function holoBindCards(){
+  ["cardServices","cardPlats","cardConsts","cardSnap"].forEach(eid=>{
+    const el=h$(eid); if(el&&!el._bound){el._bound=1;el.addEventListener("click",()=>holoOpenCard(eid));}
+  });
+  const si=h$("cmdSend"), inp=h$("cmdInput");
+  if(si&&!si._bound){si._bound=1;si.addEventListener("click",holoCmdSend);}
+  if(inp&&!inp._bound){inp._bound=1;inp.addEventListener("keydown",e=>{if(e.key==="Enter")holoCmdSend();});}
+}
+/* ---- 指挥官自由文本命令（与 commander Tab 同一队列） ---- */
+let holoCmdSid=null;
+async function holoCmdSend(){
+  const inp=h$("cmdInput"); const box=h$("cmdReply");
+  const msg=(inp.value||"").trim(); if(!msg||!box)return;
+  if(!holoCmdSid){holoCmdSid="s-"+Math.random().toString(36).slice(2,10);}
+  inp.value="";
+  box.innerHTML+=`<div class="u">你</div><div class="a">…</div>`; box.scrollTop=box.scrollHeight;
+  try{
+    const r=await fetch("/api/commander/chat",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target:"muse",message:msg,session_id:holoCmdSid})});
+    const d=await r.json();
+    box.lastElementChild.textContent=d.reply||"已收到";
+    if(d.async&&d.qid) holoCmdPoll(d.qid,0);
+    box.scrollTop=box.scrollHeight;
+  }catch(e){ box.lastElementChild.textContent="请求失败，请稍后重试。"; }
+}
+async function holoCmdPoll(qid,n){
+  if(n>40)return;
+  await new Promise(r=>setTimeout(r,3000));
+  try{
+    const r=await fetch("/api/commander/poll",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({qid})});
+    const d=await r.json(); const box=h$("cmdReply");
+    if(d.status==="done"&&d.reply&&box){box.innerHTML+=`<div class="u">Muse</div><div class="a">${holoEsc(d.reply).slice(0,2000)}</div>`;box.scrollTop=box.scrollHeight;}
+    else holoCmdPoll(qid,n+1);
+  }catch(e){/* 静默重试 */}
+}
+function holoEsc(s){return String(s||"").replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]))}
+/* ---- 可写层 D20261016-003：mutation 前端 ---- */
+function holoNewIdem(){return "web-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10)}
+function holoToast(msg,ms){const t=h$("holoToast");if(!t)return;t.textContent=msg;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>{t.style.display="none"},ms||3200)}
+function holoSetActions(html){const a=h$("dActions");if(a)a.innerHTML=html||""}
+async function holoMutate(action,params,btn){
+  const b=btn||null; if(b)b.disabled=true;
+  try{
+    const r=await fetch("/api/mutate",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:action,idempotency_key:holoNewIdem(),params:params||{}})});
+    const d=await r.json();
+    if(d.ok){
+      const note=d.idempotent?"（幂等：已执行过，直接返回上次结果）":"";
+      holoToast("✅ "+action+" 成功"+note);
+      holoTickSafe();
+    }else if(d.error==="TIER3_BLOCKED"){
+      holoToast("⛔ "+(d.message||"Tier3 禁止直接执行"));
+    }else{
+      holoToast("❌ "+action+" 失败："+(d.error||"未知错误"));
+    }
+    return d;
+  }catch(e){ holoToast("❌ 请求失败："+e.message); return {ok:false}; }
+  finally{ if(b)b.disabled=false; }
+}
+function holoAskApproval(kind,target,btn){
+  const reason=prompt("创建逐条审批\n\n动作："+kind+"\n目标："+target+"\n\n请输入申请理由（必填）：","");
+  if(reason===null) return;
+  if(!reason.trim()){holoToast("❌ 理由必填，已取消");return;}
+  holoMutate("approval.create",{kind:kind,target:target,reason:reason.trim()},btn).then(d=>{
+    if(d.ok&&d.result) holoToast("📝 审批已创建："+d.result.escalation_id+"，待人工批准（不会自动执行）",5000);
+  });
+}
+
+async function holoTick(){
+  try{
+    const r=await fetch("/api/command/live?t="+Date.now()); const d=await r.json();
+    if(!d.ok) throw 0;
+    lastData=d;
+    h$("upd").textContent="更新 "+d.at;
+    const v=h$("verdict"); v.textContent=d.verdict; v.className="verdict v-"+d.verdict;
+    holoDrawFlow(d.stages);
+    // services
+    h$("services").innerHTML=d.services.map(s=>`<div class="svc"><span class="dot ${s.ok?"d-ok":"d-bad"}"></span><span class="nm">${holoEsc(s.name)}</span><span class="note">${holoEsc(s.note||"")}</span></div>`).join("");
+    // platforms
+    const pn={youtube:"YouTube",douyin:"抖音",xiaohongshu:"小红书",kuaishou:"快手",shipinhao:"视频号",bilibili:"B站",facebook:"Facebook",tiktok:"TikTok",x:"X"};
+    h$("plats").innerHTML=d.platforms.map(p=>`<div class="plat"><span>${pn[p.id]||p.id}</span><span class="st st-${p.status}">${p.status==="ok"?"正常":p.status}</span></div>`).join("");
+    h$("platSum").textContent=`${d.platforms_ok}/${d.platforms.length} 平台数据正常 · 视频 ${d.platforms.reduce((a,p)=>a+p.videos,0)} 条`;
+    // constants
+    h$("consts").innerHTML=d.constants.map(c=>{
+      const pct=c.id==="gap"?Math.max(0,100-parseFloat(c.value)/18*100):c.id==="daily"?Math.min(100,parseFloat(c.value)/2*100):100-parseFloat(c.value)/15*100;
+      return `<div class="const"><div class="row"><span>${c.name} <b style="color:${c.ok===false?"var(--amber)":"var(--green)"}">${c.value}</b></span><span class="tgt">目标 ${c.target}</span></div><div class="bar"><i class="${c.ok===false?"b-bad":"b-ok"}" style="width:${Math.max(4,Math.min(100,pct))}%"></i></div></div>`;
+    }).join("");
+    h$("stAnomaly").textContent=d.anomaly_open;
+    const busPend=Object.entries(d.event_bus||{}).filter(([k])=>k==="PENDING").reduce((a,[,v])=>a+v,0);
+    h$("stBus").textContent=busPend;
+    h$("stSvc").textContent=d.services_ok+"/"+d.services_total;
+    h$("stPlat").textContent=d.platforms_ok+"/"+d.platforms.length;
+    h$("verdictNote").textContent=d.verdict_note;
+    // 360° v2: six extension modules
+    const dotm={ok:"d-ok",warn:"d-warn",bad:"d-bad",unknown:"d-unk"};
+    h$("modGrid").innerHTML=(d.modules||[]).map(m=>`<div class="card span4 modcard" data-mid="${m.id}"><h3>${holoEsc(m.name)}</h3><div class="svc"><span class="dot ${dotm[m.status]||"d-unk"}"></span><span class="nm">${holoEsc(m.summary||"")}</span></div><div style="font-size:11px;color:var(--dim);margin-top:6px">${holoEsc((m.detail||"").slice(0,96))}</div></div>`).join("");
+    h$("modGrid").querySelectorAll(".modcard").forEach(c=>c.addEventListener("click",()=>holoOpenModule(c.dataset.mid)));
+    // events
+    const box=h$("events");
+    d.events.forEach(e=>{
+      const key=e.src+e.text;
+      if(seenEvents.has(key)) return; seenEvents.add(key);
+      const div=document.createElement("div"); div.className="ev new";
+      div.innerHTML=`<span class="src">${holoEsc(e.src)}</span>${holoEsc(e.text)}`;
+      box.prepend(div);
+    });
+    while(box.children.length>40) box.lastChild.remove();
+    document.querySelector(".flow").classList.remove("flash"); void document.querySelector(".flow").offsetWidth;
+    document.querySelector(".flow").classList.add("flash");
+  }catch(e){ h$("upd").textContent="连接失败，重试中…"; }
+}
+
+
+
+
+let HOLO_TIMER=null,HOLO_CLOCK=null;
+function holoTickSafe(){try{holoTick();}catch(e){}}
+window.holoStart=function(){holoStop();holoBindDrawer();holoBindCards();holoTickSafe();HOLO_TIMER=setInterval(holoTickSafe,5000);HOLO_CLOCK=setInterval(()=>{try{const c=h$('clock');if(c)c.textContent=new Date().toLocaleTimeString('zh-CN',{hour12:false});}catch(e){}},1000);};
+window.holoStop=function(){if(HOLO_TIMER){clearInterval(HOLO_TIMER);HOLO_TIMER=null;}if(HOLO_CLOCK){clearInterval(HOLO_CLOCK);HOLO_CLOCK=null;}};
+// 初始加载 battle tab 时自启（switchTab 只处理切换）
+const holoBootCheck=setInterval(()=>{const p=document.getElementById('tab-battle');if(p&&p.classList.contains('active')){clearInterval(holoBootCheck);holoStart();}},800);
+setTimeout(()=>clearInterval(holoBootCheck),30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&HOLO_TIMER)holoTickSafe();});
+})();
 </script>
 </body>
 </html>

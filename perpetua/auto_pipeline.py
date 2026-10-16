@@ -21,6 +21,12 @@ import sys
 import uuid
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import graded_assertions as ga
+except Exception:
+    ga = None
+
 
 def _queue_verb_expansion(reason):
     """动词池耗尽触发：往 Ask Studio 队列塞扩充问题。"""
@@ -204,7 +210,8 @@ def select_topics(n=2, slot="12:30"):
     # P1-6 修复（2026-10-08）：transient 失败状态不再永久占坑。
     # 之前只有 uploaded/rejected/review_failed 被排除，review_timeout 等 transient
     # 失败永久留在 used 里，一个 topic 超时一次就永不复选。
-    _TERMINAL = {"uploaded", "rejected", "review_failed"}
+    # D20261015-009：review_failed 去 TERMINAL 化（重审闭环入口）；archived 为新终点
+    _TERMINAL = {"uploaded", "rejected", "archived"}
     _TRANSIENT_FAIL = {"review_timeout", "review_error", "generate_failed",
                        "qc_failed", "qc_error"}
     used = set()
@@ -405,6 +412,238 @@ def _in_control_group(item):
     return (h % CONTROL_GROUP_RATIO_DEN) < CONTROL_GROUP_RATIO_NUM
 
 
+def _fresh_review_answer(qid, submitted_at):
+    """分级断言 M5/M7/M8/N7：只接受「本次提交qid + answered_at晚于提交时间 + TTL内」的答案。
+    返回 (answer_text, answered_at, verdict)。stale/qid失配 → SUSPECT。"""
+    if ga is None:
+        return None, None, "NO_GA"
+    try:
+        q = json.load(open("/home/hatch/data/ask_studio/queue.json", encoding="utf-8"))
+    except Exception:
+        return None, None, "NO_QUEUE"
+    item = None
+    for it in q.get("answered", []):
+        if it.get("id") == qid:
+            item = it
+            break
+    if not item or not (item.get("answer") or "").strip():
+        return None, None, ga.OK  # 无答案：还在等
+    ans_at = item.get("answered_at") or ""
+    # qid 必须对应本次提交：答案时间不得早于提交时间
+    try:
+        sub_dt = datetime.fromisoformat(str(submitted_at))
+        ans_dt = datetime.fromisoformat(str(ans_at))
+        if sub_dt.tzinfo is None:
+            sub_dt = sub_dt.replace(tzinfo=timezone.utc)
+        if ans_dt.tzinfo is None:
+            ans_dt = ans_dt.replace(tzinfo=timezone.utc)
+        if ans_dt < sub_dt:
+            return None, ans_at, ga.SUSPECT  # 旧提交的答案：版本选择 bug
+    except Exception:
+        return None, ans_at, ga.SUSPECT
+    # TTL：评审答案 60min
+    if not ga.evidence_fresh(ans_at, ga.TTL["review_answer"]):
+        return None, ans_at, ga.SUSPECT
+    ans = item.get("answer")
+    if isinstance(ans, dict):
+        ans = ans.get("section") or ans.get("full") or ""
+    return str(ans).strip(), ans_at, ga.CONFIRMED
+
+
+def _suspect_review(topic, qid, reason, detail):
+    """评审 SUSPECT：写 ledger + 升级，保持 selected 不跃迁（M2/N4）。"""
+    if ga is None:
+        return
+    rec = ga.make_verdict(ga.SUSPECT, detail, ga.utcnow(), "review_answer",
+                          checker="auto_pipeline.review_pending",
+                          subject=f"review:{topic}",
+                          checker_health={"probe_ok": True, "last_error": reason})
+    ga.ledger_append(rec)
+    ga.escalate("auto_pipeline.review_pending", f"review:{topic}", reason,
+                severity="P2", detail=detail, evidence_ts=ga.utcnow(),
+                ttl_key="review_answer", checker_health={"probe_ok": True})
+
+
+# ---------------- 重审闭环（D20261015-009，四脑议会） ----------------
+# 评审预算：动态（2026-10-15 用户要求：不固定，按实际需求浮动）
+# 需求=待审条目数；预算=需求+25%余量；下限8（保底）、上限24（防失控）
+DYNAMIC_BUDGET_FLOOR = 8
+DYNAMIC_BUDGET_CEIL = 24
+
+
+def dynamic_review_budget_cap():
+    """按实际待审需求动态计算当日预算。"""
+    try:
+        queue = load_queue()
+    except Exception:
+        queue = []
+    demand = sum(1 for i in queue
+                 if i.get("status") in ("selected", "rewrite_round1", "rewrite_round2")
+                 and not i.get("urgent"))
+    return max(DYNAMIC_BUDGET_FLOOR, min(DYNAMIC_BUDGET_CEIL, int(demand * 1.25) + 2))
+
+
+DAILY_REVIEW_BUDGET_CAP = 16  # 兼容旧引用，实际以 dynamic_review_budget_cap() 为准
+
+
+def _review_budget_path():
+    return "/home/hatch/data/perpetua/review_budget_%s.json" % datetime.now(
+        timezone.utc).strftime("%Y-%m-%d")
+
+
+def review_budget_remaining(cap=None):
+    cap = cap if cap is not None else dynamic_review_budget_cap()
+    try:
+        b = json.load(open(_review_budget_path(), encoding="utf-8"))
+        used = int(b.get("used", 0))
+    except Exception:
+        used = 0
+    return max(0, cap - used)
+
+
+def review_budget_consume(n=1, cap=None):
+    """N7：预算耗尽不提交。返回 True=成功扣减。"""
+    cap = cap if cap is not None else dynamic_review_budget_cap()
+    p = _review_budget_path()
+    try:
+        b = json.load(open(p, encoding="utf-8"))
+    except Exception:
+        b = {"used": 0}
+    used = int(b.get("used", 0))
+    if used + n > cap:
+        return False
+    b["used"] = used + n
+    b["cap"] = cap
+    b["dynamic"] = True
+    json.dump(b, open(p, "w", encoding="utf-8"), ensure_ascii=False)
+    return True
+
+
+def parse_reviewer_fixes(answer_text):
+    """从评审答案提取 Fix 1-3 的 (OLD, NEW) 文本对。M1：verbatim 应用，不改写。"""
+    import re as _re
+    pat = _re.compile(r'Change:\s*"(.+?)"\s*(→|->)\s*"(.+?)"', _re.S)
+    return [(o.strip(), n.strip()) for o, _, n in pat.findall(str(answer_text or ""))]
+
+
+def apply_reviewer_fixes(prompt, fixes):
+    """M1：reviewer 原文 fix 逐字替换。返回 (new_prompt, applied_count)。"""
+    new_prompt = str(prompt or "")
+    applied = 0
+    for old, new in fixes:
+        if old and old in new_prompt and new != old:
+            new_prompt = new_prompt.replace(old, new, 1)
+            applied += 1
+    return new_prompt, applied
+
+
+def _review_answer_text(qid):
+    """取某 qid 的评审答案原文（用于提取 fixes / 判 overlap / 判 FLAG）。"""
+    try:
+        q = json.load(open("/home/hatch/data/ask_studio/queue.json", encoding="utf-8"))
+    except Exception:
+        return ""
+    for it in q.get("answered", []):
+        if it.get("id") == qid:
+            ans = it.get("answer", "")
+            if isinstance(ans, dict):
+                ans = ans.get("section") or ans.get("full") or ""
+            return str(ans)
+    return ""
+
+
+def rewrite_failed_loop():
+    """重审循环：review_failed → rewrite_round1/2 → review_passed/archived。
+    T1-T12 状态机（AI Studio 规格 §2），红队修订 R1/R4 已并入。"""
+    from prompt_review import submit_prompt_review_instant
+    queue = load_queue()
+    changed = False
+    for item in queue:
+        if item.get("status") != "review_failed":
+            continue
+        topic = item.get("topic", "")
+        rounds = int(item.get("rewrite_rounds", 0) or 0)
+        if rounds >= 2:  # N2：最多 2 轮
+            item["status"] = "archived"
+            item["archive_reason"] = "rewrite_rounds_exhausted"
+            pipeline_log("select", "ok", f"重审2轮未过→归档: {topic}", 0)
+            changed = True
+            continue
+        qid = item.get("review_qid")
+        answer = _review_answer_text(qid)
+        # N1：POLICY: FLAG 永不自动重写
+        if "POLICY: FLAG" in answer.upper().replace("：", ":"):
+            item["status"] = "archived"
+            item["archive_reason"] = "policy_flag_human_review"
+            pipeline_log("select", "error", f"POLICY FLAG→人工复核: {topic}", 0)
+            changed = True
+            continue
+        # T4：<60 分结构性失败直接归档
+        parent_score = item.get("review_score")
+        if isinstance(parent_score, (int, float)) and parent_score < 60:
+            item["status"] = "archived"
+            item["archive_reason"] = "score_below_60_structural"
+            pipeline_log("select", "ok", f"终审{parent_score}分结构性失败→归档: {topic}", 0)
+            changed = True
+            continue
+        fixes = parse_reviewer_fixes(answer)
+        if not fixes:
+            item["status"] = "archived"
+            item["archive_reason"] = "no_extractable_fixes"
+            pipeline_log("select", "ok", f"无可提取fix→归档: {topic}", 0)
+            changed = True
+            continue
+        # T2：原创性结构重叠 → 跳过 round1，直接 round2（消耗两轮）
+        overlap = "significant overlap" in answer.lower()
+        consume = 2 if overlap else 1
+        if rounds + consume > 2:
+            item["status"] = "archived"
+            item["archive_reason"] = "overlap_no_rounds_left"
+            pipeline_log("select", "ok", f"原创重叠且轮数不足→归档: {topic}", 0)
+            changed = True
+            continue
+        new_prompt, applied = apply_reviewer_fixes(item.get("prompt", ""), fixes)
+        # N3/M8：必须与父 prompt 有差异
+        if applied == 0 or new_prompt == item.get("prompt", ""):
+            item["status"] = "archived"
+            item["archive_reason"] = "fixes_not_applicable"
+            pipeline_log("select", "ok", f"fix无法应用→归档: {topic}", 0)
+            changed = True
+            continue
+        # N7：预算检查
+        if not review_budget_consume(1):
+            pipeline_log("select", "ok", f"评审预算耗尽，重审等待: {topic}", 0)
+            continue
+        # M3：fresh 提交拿新 qid（N4：绝不用父 qid）
+        try:
+            new_qid, _ = submit_prompt_review_instant(
+                new_prompt, item.get("title", ""), item.get("description", ""),
+                topic=topic, force=True, instant_timeout_minutes=5)
+        except Exception as e:
+            item["status"] = "archived"
+            item["archive_reason"] = f"resubmit_error:{str(e)[:80]}"
+            changed = True
+            continue
+        new_rounds = rounds + consume
+        item["prompt"] = new_prompt
+        item["review_qid"] = new_qid
+        item["review_parent_score"] = parent_score
+        item["review_parent_qid"] = qid
+        item["rewrite_rounds"] = new_rounds
+        item["rewrite_applied_fixes"] = applied
+        item["overlap_rewrite"] = overlap
+        item["review_triggered_at"] = datetime.now(timezone.utc).isoformat()
+        # 注意：答案尚未回来，保持 rewrite_roundN 等答案；下一轮 review_pending 捡答案
+        item["status"] = "rewrite_round2" if new_rounds >= 2 else "rewrite_round1"
+        item["review_score"] = None  # N4 精神：旧分清零，不带入新轮
+        pipeline_log("select", "ok",
+                     f"重审第{new_rounds}轮已送审({applied}处fix): {topic}", 0)
+        changed = True
+    if changed:
+        save_queue(queue)
+    return queue
+
+
 def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
     from prompt_review import (
         submit_prompt_review_instant, wait_for_review_answer,
@@ -412,24 +651,64 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
     queue = load_queue()
     changed = False
     for item in queue:
-        if item.get("status") != "selected" or item.get("urgent"):
+        # D20261015-009：重审轮次的答案也在此捡起（rewrite_round1/2 等同 selected 流程）
+        _st = item.get("status")
+        _is_rewrite = _st in ("rewrite_round1", "rewrite_round2")
+        if (_st != "selected" and not _is_rewrite) or item.get("urgent"):
             continue
         topic = item["topic"]
-        print(f"[review] 送审: {topic} ...", flush=True)
+        # 重审轮次：已送审（qid 已有），只捡答案不重复提交
+        # 2026-10-16 修：普通 selected 项若已有 review_qid，同样只捡答案
+        # （submit_prompt_review_instant 幂等，重调 ask_now 只是返回同一 iid）。
+        # 不重复提交、不扣预算、不刷新 review_triggered_at。
+        # 修复 selected 死状态：此前每轮"重提交"会刷新 submitted_at 并扣预算，
+        # 导致答案永被判 SUSPECT（答案早于提交）且预算耗尽后 pickup 被跳过。
+        _pickup_only = bool(item.get("review_qid"))
+        print(f"[review] {'捡答案' if _pickup_only else '送审'}: {topic} ...", flush=True)
         try:
-            qid, answer = submit_prompt_review_instant(
-                item["prompt"], item["title"], item["description"],
-                topic=topic, instant_timeout_minutes=instant_timeout_minutes)
-            if not answer and max_wait_minutes > 0:
-                answer = wait_for_review_answer(qid, max_wait_minutes, 60)
-            if not answer:
-                # 2026-10-10 修：--wait 0 表示只提交不等待，此时不标 timeout，
-                # 保持 selected 让下一轮继续捡答案；只有真正等过才标超时。
+            if _pickup_only:
+                # qid 已有，只捡答案（N7 预算已在首次送审时扣除）
+                qid = item.get("review_qid")
+                answer = None
+                submitted_at = item.get("review_triggered_at")
+            else:
+                # N7：新提交先扣预算
+                if not review_budget_consume(1):
+                    pipeline_log("select", "ok", f"评审预算耗尽，送审等待: {topic}", 0)
+                    continue
+                qid, answer = submit_prompt_review_instant(
+                    item["prompt"], item["title"], item["description"],
+                    topic=topic, instant_timeout_minutes=instant_timeout_minutes)
+                # 本次提交时间（用于 qid/版本绑定，M5/N7）
+                submitted_at = None
+                try:
+                    reviewed = json.load(open(
+                        "/home/hatch/data/perpetua/prompt_reviewed.json", encoding="utf-8"))
+                    for _k, _v in reviewed.items():
+                        if isinstance(_v, dict) and _v.get("qid") == qid:
+                            submitted_at = _v.get("submitted_at")
+                            break
+                except Exception:
+                    pass
+                if not submitted_at:
+                    submitted_at = item.get("review_triggered_at") or datetime.now(timezone.utc).isoformat()
                 item["review_qid"] = qid
-                # 2026-10-10 补：记录送审时间，供 dead_state_watchdog 识别"等评审中"（非卡死）
-                # 2026-10-11 修：删函数内重复 import（模块 22 行已有；函数内 import 会使
-                # datetime 成为全函数局部变量，answer 分支引用时 UnboundLocalError）
                 item["review_triggered_at"] = datetime.now(timezone.utc).isoformat()
+            # 分级断言：只接受本次提交qid + 新鲜TTL内的答案（M5/M7/M8/N7）
+            fresh_answer, fresh_at, fverdict = _fresh_review_answer(qid, submitted_at)
+            if fverdict == (ga.SUSPECT if ga else "SUSPECT"):
+                # stale/qid失配 → SUSPECT：不写分、不跃迁、保持 selected（M2/N4）
+                _suspect_review(topic, qid, "stale_or_qid_mismatch",
+                                f"评审答案非本次提交或已过期（qid={qid}），不写分不跃迁")
+                pipeline_log("select", "ok", f"评审答案待定(SUSPECT): {topic}", 0)
+                changed = True
+                continue
+            if not fresh_answer and max_wait_minutes > 0:
+                waited = wait_for_review_answer(qid, max_wait_minutes, 60)
+                if waited:
+                    fresh_answer, fresh_at, fverdict = _fresh_review_answer(qid, submitted_at)
+            if not fresh_answer:
+                # M6：--wait 0 永不标 timeout；带等待的超时也不写任何旧分
                 if max_wait_minutes > 0:
                     item["status"] = "review_timeout"
                     pipeline_log("select", "error", f"终审超时: {topic}", 0)
@@ -437,13 +716,25 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
                     pipeline_log("select", "ok", f"已送审待答案: {topic}", 0)
                 changed = True
                 continue
-            fb = find_best_review_answer(qid)
-            best_score = fb[1] if fb else None
-            score = best_score if best_score is not None else parse_review_score(answer)
+            answer = fresh_answer
+            score = parse_review_score(answer)
             item["review_score"] = score
-            item["review_qid"] = qid
+            item["review_answered_at"] = fresh_at
+            # R4 跨 qid 回归检查（T7/N6）：重审分低于父分 → 归档，不再试
+            _parent = item.get("review_parent_score")
+            if _is_rewrite and isinstance(score, (int, float)) \
+                    and isinstance(_parent, (int, float)) and score < _parent:
+                item["status"] = "archived"
+                item["archive_reason"] = f"rewrite_regression:{_parent}->{score}"
+                pipeline_log("select", "ok",
+                             f"重审退化({_parent}→{score})→归档: {topic}", 0)
+                changed = True
+                continue
             if score is not None and score >= REVIEW_THRESHOLD:
                 item["status"] = "review_passed"
+                # R1 反刷门：经重审才过的包打标，48h 真实数据单独跟踪
+                if _is_rewrite:
+                    item["rewrite_pass"] = True
                 pipeline_log("select", "ok", f"终审通过 {score}分: {topic}", 1)
             elif (score is not None and score >= CONTROL_GROUP_MIN
                     and _in_control_group(item)):
@@ -459,7 +750,14 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
                 item["teaser_queued_at"] = datetime.now(timezone.utc).isoformat()
                 pipeline_log("select", "ok", f"终审 {score}分→teaser验证: {topic}", 1)
             else:
-                item["status"] = "review_failed"
+                # T10：rewrite_round2 仍 <85 → 直接归档（轮数已用完，不回 review_failed）
+                if item.get("status") == "rewrite_round2":
+                    item["status"] = "archived"
+                    item["archive_reason"] = f"round2_failed:{score}"
+                    pipeline_log("select", "ok",
+                                 f"重审第2轮 {score}分未过→归档: {topic}", 0)
+                else:
+                    item["status"] = "review_failed"
                 pipeline_log("select", "error", f"终审未达标 {score}分: {topic}", 0)
             changed = True
         except Exception as e:
@@ -512,17 +810,33 @@ def submit_jobs():
         jid = "pipe-%s-%s" % (datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"),
                                uuid.uuid4().hex[:6])
         if GEN_BACKEND == "musemain":
-            # 2026-10-10 主后端：dispatcher → muse-main 内置视频管线。
+            # 2026-10-12 统一路由：muse_or_nano 自动处理主 Muse 优先/异常降级/无 Muse 模式。
             # 不走 mcp_jobs/pending（旧 processor 已无可用供应商）；在途状态记在队列项上，
             # collect_results() 开头的 collect_musemain_results() 负责轮询取回。
+            # nano 降级时：thread_id 记入 item，collect_nano_results() 轮询取回。
             try:
-                import gen_video_musemain as _gvm
-                muse_jid = _gvm.submit(item["prompt"], jid)
+                import muse_or_nano as _router
+                routed = _router.route("generate_video", item["prompt"], 1)
+                backend = routed.get("backend", "")
+                if backend == "nano":
+                    item["job_id"] = jid
+                    item["nano_thread_id"] = routed.get("thread_id", "")
+                    item["nano_job_id"] = routed.get("job_id", "")
+                    item["gen_backend"] = "nano"
+                    item["gen_route_reason"] = routed.get("reason", "")[:200]
+                    item["status"] = "job_submitted"
+                    pipeline_log("submit", "ok",
+                                 f"nano 降级提交 {item.get('topic')}: {item['gen_route_reason']}", 0)
+                    continue
+                elif backend == "muse-main":
+                    muse_jid = routed.get("job_id", "")
+                else:
+                    raise RuntimeError(f"路由拒绝: {routed.get('reason', '')}")
             except Exception as e:
                 pipeline_log("submit", "error",
-                             f"muse-main 提交失败 {item.get('topic')}: {e}", 0)
+                             f"统一路由提交失败 {item.get('topic')}: {e}", 0)
                 item["status"] = "generate_failed"
-                item["generate_error"] = f"musemain submit: {e}"[:200]
+                item["generate_error"] = f"router submit: {e}"[:200]
                 continue
             item["job_id"] = jid
             item["muse_job_id"] = muse_jid
@@ -609,6 +923,89 @@ def collect_musemain_results(queue):
     return changed
 
 
+def collect_nano_results(queue):
+    """nano 降级后端：在途 thread 做单次非阻塞轮询。
+
+    完成的 → 写标准 done 文件 mcp_jobs/done/<jid>.result.json，
+    后续 collect_results() 原有流程（QC→上传）无缝接管。
+    失败的 → 写 {"status":"error",...}，走原有"重试2次→generate_failed"逻辑。
+    pending → 不动，等下一轮 collect（每 20 分钟）。
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "dispatcher_nano_bridge", "/home/hatch/data/perpetua/dispatcher_nano_bridge.py")
+    _bridge = importlib.util.module_from_spec(spec)
+    sys.modules["dispatcher_nano_bridge"] = _bridge
+    spec.loader.exec_module(_bridge)
+
+    changed = False
+    for item in queue:
+        if item.get("status") != "job_submitted" or item.get("gen_backend") != "nano":
+            continue
+        thread_id = item.get("nano_thread_id")
+        jid = item.get("job_id")
+        if not thread_id or not jid:
+            continue
+        rp = os.path.join(MCP_DONE, jid + ".result.json")
+        if os.path.exists(rp):
+            continue
+        try:
+            nano = _bridge.NanoMuseClient()
+            # 桥接线程自动批准 pending 的 approval 卡，避免卡在人工确认
+            nano.auto_approve_pending(thread_id)
+            evts = nano.events(thread_id, limit=30)
+            # 找最新 assistant/tool 事件
+            last = {}
+            for e in reversed(evts):
+                if e.get("type") in ("assistant", "tool"):
+                    last = e
+                    break
+            if not last:
+                continue  # 还没输出，等下轮
+            # 检查 thread 是否还在忙
+            try:
+                r = nano._request("GET", f"/api/threads/{thread_id}/events?limit=1")
+                thread = r.get("thread", {})
+                if thread.get("busy", False) or thread.get("queued", 0):
+                    continue  # 还在跑，等下轮
+            except Exception:
+                continue  # 保守：等下轮
+            success, file_or_summary, raw = _bridge.parse_nano_result(last)
+        except Exception as e:
+            pipeline_log("generate", "error",
+                         f"nano 轮询异常 {item.get('topic')}: {e}", 0)
+            continue  # transient，下轮重试
+
+        sys.path.insert(0, "/home/hatch/data/perpetua")
+        from atomic_json import atomic_write as _aw
+        if success and item.get("job_id"):
+            # generate_video 期望文件路径
+            local_path = file_or_summary.strip()
+            if not (local_path and os.path.exists(local_path)):
+                import re as _re
+                m = _re.search(r"(/[^\s]+\.mp4)", raw)
+                local_path = m.group(1) if m else ""
+            if local_path and os.path.exists(local_path):
+                _aw(rp, {"status": "done", "file": local_path, "backend": "nano",
+                         "nano_thread_id": thread_id, "topic": item.get("topic")})
+                pipeline_log("generate", "ok",
+                             f"nano 取回 {item.get('topic')} → {os.path.basename(local_path)}", 1)
+            else:
+                _aw(rp, {"status": "error", "error": f"nano 未返回有效文件: {file_or_summary[:100]}",
+                         "backend": "nano", "topic": item.get("topic")})
+                pipeline_log("generate", "error",
+                             f"nano 生成无有效文件 {item.get('topic')}", 0)
+        else:
+            _aw(rp, {"status": "error", "error": file_or_summary[:300],
+                     "backend": "nano", "topic": item.get("topic")})
+            pipeline_log("generate", "error",
+                         f"nano 生成失败 {item.get('topic')}: {file_or_summary[:100]}", 0)
+        changed = True
+    if changed:
+        save_queue(queue)
+    return changed
+
+
 def _import_run_qc():
     """导入 pre_upload_qc.run_qc，缺 cv2 时尝试自愈安装。
 
@@ -668,6 +1065,10 @@ def collect_results():
     if collect_musemain_results(queue):
         queue = load_queue()
         changed = True
+    # 2026-10-12：nano 降级后端在途任务轮询（同上，写标准 done 文件后原有流程接管）
+    if collect_nano_results(queue):
+        queue = load_queue()
+        changed = True
     # 2026-10-09 新政：上一轮被间隔门禁拦下的 ready_to_upload，本轮重试
     for item in queue:
         if item.get("status") == "ready_to_upload" and item.get("video_file"):
@@ -686,7 +1087,13 @@ def collect_results():
             retry = item.get("retry_count", 0)
             if retry < 2:
                 item["retry_count"] = retry + 1
-                item["status"] = "selected"  # 打回重选，换动词重试
+                # 2026-10-15 修（同 QC 路径）：已过终审的不重审，直接回
+                # review_passed 走重提；无 score 的（如 urgent 直发）仍走
+                # selected 原流程，避免坏状态修复误伤。
+                if isinstance(item.get("review_score"), (int, float)):
+                    item["status"] = "review_passed"  # 生成失败重提（已过终审，不重审）
+                else:
+                    item["status"] = "selected"  # 打回重选，换动词重试
                 item["retry_reason"] = str(res.get("error", ""))[:200]
                 pipeline_log("generate", "ok",
                              f"生成失败，第 {retry+1} 次重试 {item['topic']}", 0)
@@ -718,10 +1125,23 @@ def collect_results():
             # 标记需要重新走生成流程
             return None  # 返回 None 让 QC 标记 needs_regen，由管线统一重试
 
+        # 2026-10-16 MoviePy 修复层：loop 不达标先试接缝修复（1次），
+        # 修好继续 QC，修不好才重生成。生成性缺陷（AI畸形等）不在此修。
+        def _qc_repair(video_path, similarity):
+            try:
+                from qc_repair import repair_loop_seam
+            except ImportError as e:
+                pipeline_log("qc", "error", f"qc_repair 模块缺失: {e}", 0)
+                return None
+            pipeline_log("qc", "ok",
+                         f"QC 接缝修复尝试 {item['topic']} "
+                         f"(相似度 {similarity:.3f})", 0)
+            return repair_loop_seam(video_path, similarity)
+
         try:
             qc = run_qc(final, title=item["title"],
                         prompt_meta={"expected_duration": item.get("duration", 8)},
-                        regen_fn=_qc_regen)
+                        regen_fn=_qc_regen, repair_fn=_qc_repair)
         except Exception as e:
             item["status"] = "qc_error"
             item["qc_error"] = str(e)[:200]
@@ -731,14 +1151,28 @@ def collect_results():
         item["qc_report"] = {"passed": qc.get("passed"),
                              "warnings": len(qc.get("warnings", [])),
                              "rejects": qc.get("rejects", []),
-                             "regen_used": qc.get("regen_used", 0)}
+                             "regen_used": qc.get("regen_used", 0),
+                             "repair_used": qc.get("repair_used", 0)}
+        # 2026-10-16：接缝修复成功 → video_file 指向修复后文件；
+        # 打 qc_repaired 标记供 48h 单独追踪（同 rewrite_pass 逻辑，防修复刷门）
+        if qc.get("repair_used"):
+            item["video_file"] = qc.get("output_file", item.get("video_file"))
+            item["qc_repaired"] = True
+            pipeline_log("qc", "ok",
+                         f"接缝修复已用，输出文件更新: {item['topic']}", 0)
         if not qc.get("passed"):
             # QC 失败处理：needs_regen 说明自动修不好，需要重生成
             if qc.get("needs_regen"):
                 retry = item.get("qc_retry", 0)
                 if retry < 2:
                     item["qc_retry"] = retry + 1
-                    item["status"] = "selected"  # 打回重选，重新生成
+                    # 2026-10-15 修：QC 失败是生成质量问题，不是选题问题，
+                    # 该条已过 Ask Studio 终审（review_score 在），打回 selected
+                    # 会进重审死循环（幂等送审+--wait 0 永读不到已存在的答案，
+                    # submit 只认 review_passed/urgent+selected）。直接回
+                    # review_passed 走重生成；submit 门禁（≥85/对照组）与
+                    # 无 score 坏状态修复照常兜底。
+                    item["status"] = "review_passed"  # 打回重生成（已过终审，不重审）
                     pipeline_log("qc", "ok",
                                  f"QC 失败，第 {retry+1} 次重生成 {item['topic']}: "
                                  f"{qc.get('rejects', [])[:1]}", 0)
@@ -797,7 +1231,7 @@ def _enqueue_private_flip(video_id, title, slot=None, review_score=None,
     import sys
     sys.path.insert(0, "/home/hatch/data/youtube")
     from slot_config import next_slot
-    from datetime import timezone
+    from datetime import timezone, timedelta
     slot_label, target_cst = next_slot()
     slot = slot_label
     target = target_cst
@@ -810,6 +1244,28 @@ def _enqueue_private_flip(video_id, title, slot=None, review_score=None,
     for e in pq:
         if e.get("video_id") == video_id and e.get("status") == "waiting":
             return e
+    # D20261015-010 R4：禁背靠背批量发出（10-13 曾 23:08/23:20 连发两条）。
+    # 新 target 若距任一 waiting 条目的 scheduled_at 不足 90 分钟，顺延一档。
+    # 红队修订：不做 ±2min 硬卡，只保最小间隔。
+    try:
+        latest = None
+        for e in pq:
+            if e.get("status") != "waiting" or not e.get("scheduled_at"):
+                continue
+            try:
+                t = datetime.fromisoformat(
+                    e["scheduled_at"].replace("Z", "+00:00"))
+                if latest is None or t > latest:
+                    latest = t
+            except Exception:
+                continue
+        target_utc = target.astimezone(timezone.utc)
+        if latest and (target_utc - latest).total_seconds() < 90 * 60:
+            target_utc = latest + timedelta(minutes=90)
+            target = target_utc
+            slot = slot + "+90m"
+    except Exception:
+        pass
     entry = {"video_id": video_id, "title": title,
              "scheduled_at": target.astimezone(timezone.utc).isoformat(),
              "slot": slot, "status": "waiting",
@@ -1020,6 +1476,7 @@ if __name__ == "__main__":
     elif args.cmd == "review":
         review_pending(max_wait_minutes=args.wait,
                          instant_timeout_minutes=args.instant_timeout)
+        rewrite_failed_loop()  # D20261015-009：重审闭环
         show_status()
     elif args.cmd == "submit":
         print(json.dumps({"submitted": submit_jobs()}, ensure_ascii=False))

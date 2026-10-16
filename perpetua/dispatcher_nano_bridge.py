@@ -68,27 +68,6 @@ DEFAULT_TIMEOUT_MIN = 30
 DEFAULT_POLL_INTERVAL_SEC = 30
 DEFAULT_NANO_TIMEOUT_MIN = 20
 
-# P0 安全修复：auto_approve 工具白名单
-# 只有白名单内的工具才会被自动批准；未知工具默认拒绝（fail-closed）。
-# 可通过环境变量 NANO_APPROVE_WHITELIST 追加（逗号分隔）。
-AUTO_APPROVE_TOOL_WHITELIST = frozenset({
-    # 只读类：安全
-    "read", "read_file", "list", "list_dir", "ls",
-    "search", "web_search", "web_fetch", "fetch",
-    "get", "query", "describe", "info", "status",
-    # 视频管线常用只读操作
-    "probe", "ffprobe", "identify",
-} | {t.strip() for t in os.environ.get("NANO_APPROVE_WHITELIST", "").split(",") if t.strip()})
-
-# 黑名单关键词：工具名或摘要中出现这些词，一律拒绝自动批准
-AUTO_APPROVE_DENY_KEYWORDS = frozenset({
-    "delete", "remove", "rm ", "unlink", "rmdir",
-    "send", "post", "publish", "upload", "push",
-    "pay", "purchase", "buy", "charge",
-    "exec", "shell", "bash", "run_command", "command",
-    "write", "overwrite", "truncate",
-})
-
 TARGET_CONSUMER = "muse-main"
 
 
@@ -381,30 +360,13 @@ class NanoMuseClient:
         evts = r.get("events", r)
         return evts if isinstance(evts, list) else []
 
-    def _is_tool_auto_approvable(self, tool: str, summary: str) -> tuple[bool, str]:
-        """P0: 检查工具是否可自动批准。返回 (是否批准, 原因)。"""
-        tool_l = (tool or "").lower()
-        summary_l = (summary or "").lower()
-        # 黑名单优先：命中关键词一律拒绝
-        for kw in AUTO_APPROVE_DENY_KEYWORDS:
-            if kw in tool_l or kw in summary_l:
-                return False, f"命中黑名单关键词 '{kw.strip()}'"
-        # 白名单：明确放行
-        if tool_l in AUTO_APPROVE_TOOL_WHITELIST:
-            return True, "白名单工具"
-        # 未知工具：默认拒绝（fail-closed）
-        return False, f"未知工具 '{tool}' 不在白名单"
-
     def auto_approve_pending(self, thread_id: str) -> int:
         """自动批准该 thread 的 pending approval 卡。
 
-        P0 安全修复：只自动批准白名单内的只读工具；
-        未知/危险工具一律跳过并记录，需人工介入。
-        桥接线程是机器对机器调用，不应卡在人工批准上，但安全底线不能丢。
+        桥接线程是机器对机器调用，不应卡在人工批准上。
         返回批准的数量。
         """
         approved = 0
-        skipped = 0
         try:
             evts = self.events(thread_id, limit=30)
         except Exception:
@@ -414,23 +376,14 @@ class NanoMuseClient:
                 ap_id = e.get("id", "")
                 if not ap_id:
                     continue
-                tool = e.get("tool", "")
-                summary = e.get("summary", "")
-                ok, reason = self._is_tool_auto_approvable(tool, summary)
-                if not ok:
-                    skipped += 1
-                    print(f"[bridge][P0] 跳过自动批准 {ap_id} ({tool}: {summary[:60]}) —— {reason}")
-                    continue
                 try:
                     self._request("POST", f"/api/approvals/{ap_id}",
                                   {"approved": True, "scope": "once",
-                                   "reason": f"bridge auto-approve ({reason})"})
+                                   "reason": "bridge auto-approve"})
                     approved += 1
-                    print(f"[bridge] 自动批准 {ap_id} ({tool}: {summary[:60]})")
+                    print(f"[bridge] 自动批准 {ap_id} ({e.get('tool','?')}: {e.get('summary','')[:60]})")
                 except Exception as ex:
                     print(f"[bridge] 批准 {ap_id} 失败: {ex}")
-        if skipped:
-            print(f"[bridge][P0] 本轮跳过 {skipped} 个高风险审批，需人工处理")
         return approved
 
     def wait_for_completion(

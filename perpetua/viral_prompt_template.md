@@ -238,3 +238,21 @@ delay, not suppression. If a Short is public 6h+ with 0 views:
 2. Add focused niche metadata (4 hashtags above).
 3. Seed engagement: pinned comment + 1 like.
 Do NOT delete and reupload — it resets the testing pool.
+
+## 进化附录 2026-10-15
+
+每日复盘发现（自动写入）：
+- 2 条 RED（teaser 未达 AVD≥75%+views≥30）：检查钩子/前3秒与发布时间
+
+## 进化附录 2026-10-15
+
+每日复盘发现（自动写入）：
+- 2 条 RED（teaser 未达 AVD≥75%+views≥30）：检查钩子/前3秒与发布时间
+
+## 进化附录 2026-10-16（每日进化议会首轮 D20261015-010，红队 R2 修订）
+
+**实证标题 pattern（加权候选，非强制）**：Gas Nozzle（139.3% 完播，重播极多）验证有效。
+结构：`{emoji} Karen {过去式物理报应动词} The {道具名词} {现在分词截断短句}…`
+示例：`⛽ Karen Yanked The Gas Nozzle Demanding A Dis…`
+用法：每日 6 个选题中约 2 个采用此结构，其余保持多样性（红队 KILL：全量复用=同质化互食+品牌风险）。
+注意：2026-10-15 的"2 RED" headline 已被证伪（一条系翻转脏数据误判），此前基于该结论的进化条目冻结，不再追加同类。
