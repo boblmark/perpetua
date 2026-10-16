@@ -53,6 +53,7 @@ STATE_JSON_NAMES = {
     "command_queue.json", "commander_chat_queue.json", "cron_ops_queue.json",
     "executed_commands.json", "pipeline_runs.json",
     "dead_state_alert_dedup.json", "matrix_history.json",
+    "qc_orphan_alerted.json",  # 死状态看门狗运行时告警记录，非源码
     "platform_matrix.json",  # 矩阵同步每5分钟重写，运行时状态
 }
 

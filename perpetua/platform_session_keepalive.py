@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-国内四平台 session 保活：告警落盘 helper。
+八平台 session 保活：告警落盘 helper。
+
+范围（2026-10-17 与 platform-session-keepalive cron body 对齐）：
+抖音 / B站 / 小红书 / 快手 / YouTube / Facebook / TikTok / X。
 
 架构说明（2026-10-11 实测结论）：
 - browser.spawn_task 用的 Chromium profile 是 server-side（runtime 托管），
@@ -31,6 +34,10 @@ RECOVERY = {
     "抖音": "无密码登录，需用户用抖音 App 扫码或手机验证码重登",
     "快手": "无密码登录，需用户扫码/手机验证码重登",
     "小红书": "无密码登录选项，需用户手机验证码或 App 扫码重登",
+    "YouTube": "保险库有 google.com 登录，主 agent 可经批准自动重登",
+    "Facebook": "保险库有 facebook.com 登录，主 agent 可经批准自动重登",
+    "TikTok": "Google SSO 重登",
+    "X": "保险库 x.com 用户名密码直接登录，不要走 Google（Google SSO 从本浏览器 consistently 报 unexpected error）",
 }
 
 BASELINES = {
@@ -38,6 +45,10 @@ BASELINES = {
     "B站": "主站 avatar + 创作中心 dashboard，昵称 bili_33246131808（2026-10-11 19:30 主 agent 复核在登录态）",
     "小红书": "创作服务平台 dashboard，昵称 档案管理员（2026-10-11 19:30 主 agent 复核在登录态）",
     "快手": "创作者服务平台 dashboard，账号正常（2026-10-11 13:00 实测在登录态；19:31 浏览器任务成功提交视频待审核，账号可用）",
+    "YouTube": "YouTube Studio dashboard，Ask Studio 面板可用（2026-10-11 主 agent 复核在登录态）",
+    "Facebook": "个人账号 Mark Bobl，名下有 Page \"Mark Bobl - Karen vs AI\"（2026-10-11 主 agent 复核在登录态）",
+    "TikTok": "账号 @cgb20250（2026-10-11 主 agent 复核在登录态）",
+    "X": "@cgb2025194995，显示名 Cyber Detective 2026（2026-10-11 主 agent 复核在登录态）",
 }
 
 
@@ -79,7 +90,7 @@ def suspect(platforms, detail):
         f"页面所见：{detail}",
         "",
         "注意：2026-10-11 实测 worker 派发的浏览器任务可能被路由到无登录态槽位",
-        "（当日出现过四平台同时掉线的误报，主 agent 亲测同期全部在登录态）。",
+        "（当日出现过多平台同时掉线的误报，主 agent 亲测同期全部在登录态）。",
         "请主 agent 用自己派发的浏览器任务复核后再定论，定论前不要打扰用户。",
         "",
         "若复核确认真掉线，恢复方式：",
@@ -144,11 +155,13 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("suspect")
     a.add_argument("--platform", action="append", required=True,
-                   choices=["抖音", "B站", "小红书", "快手"])
+                   choices=["抖音", "B站", "小红书", "快手",
+                            "YouTube", "Facebook", "TikTok", "X"])
     a.add_argument("--detail", default="")
     b = sub.add_parser("alert")  # 主 agent 复核确认后用
     b.add_argument("--platform", action="append", required=True,
-                   choices=["抖音", "B站", "小红书", "快手"])
+                   choices=["抖音", "B站", "小红书", "快手",
+                            "YouTube", "Facebook", "TikTok", "X"])
     b.add_argument("--detail", default="")
     c = sub.add_parser("clear")  # 复核确认误报/真掉线已恢复后关闭 suspect
     c.add_argument("--notice-id", required=True)
