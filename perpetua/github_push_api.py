@@ -145,15 +145,16 @@ def main():
         print("NO_CHANGES")
         return
 
+    # plan 走 stderr：stdout 只留 SHA/NO_CHANGES，供调用方 $(...) 捕获
     print(f"[plan] 新增 {len(added)} / 更新 {len(updated)} / 删除 {len(deleted)} / "
-          f"保留 {len(preserved)}（非 perpetua/* 原样不动）")
+          f"保留 {len(preserved)}（非 perpetua/* 原样不动）", file=sys.stderr)
     if dry_run:
         for p in sorted(added)[:15]:
-            print("  +", p)
+            print("  +", p, file=sys.stderr)
         for p in sorted(updated)[:15]:
-            print("  ~", p)
+            print("  ~", p, file=sys.stderr)
         for p in sorted(deleted)[:15]:
-            print("  -", p)
+            print("  -", p, file=sys.stderr)
         return
 
     blob_sha = {}

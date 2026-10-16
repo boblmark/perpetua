@@ -53,7 +53,7 @@ if [ "$NEW_SHA" = "NO_CHANGES" ]; then
   # plan 行已由 push 脚本打印
   exit 0
 fi
-# 本地 main 对齐远端新 SHA（repo/ 为同步 staging 区，git status 不作为真相源，
-# 真相源以 GitHub 远端 tree 为准；审计用 git log / GitHub 网页）
-git -C "$REPO" update-ref refs/heads/main "$NEW_SHA" 2>/dev/null || true
+# 推送审计日志（本地 .git 对象库无远端对象，update-ref 不可用；
+# 真相源与完整历史在 GitHub 网页，本地记 SHA 备查）
+echo "{\"at\":\"$DATE\",\"sha\":\"$NEW_SHA\"}" >> "$REPO/.push_log.jsonl"
 echo "[github] 已推送 $DATE，SHA ${NEW_SHA:0:8}"
