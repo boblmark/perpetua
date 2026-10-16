@@ -426,7 +426,7 @@ def _fresh_review_answer(qid, submitted_at):
         if it.get("id") == qid:
             item = it
             break
-    if not item or not (item.get("answer") or "").strip():
+    if not item or not (item.get("answer") or item.get("answer_summary") or "").strip():
         return None, None, ga.OK  # 无答案：还在等
     ans_at = item.get("answered_at") or ""
     # qid 必须对应本次提交：答案时间不得早于提交时间
@@ -444,7 +444,7 @@ def _fresh_review_answer(qid, submitted_at):
     # TTL：评审答案 60min
     if not ga.evidence_fresh(ans_at, ga.TTL["review_answer"]):
         return None, ans_at, ga.SUSPECT
-    ans = item.get("answer")
+    ans = item.get("answer") or item.get("answer_summary")  # 2026-10-16: 兼容只写summary的条目
     if isinstance(ans, dict):
         ans = ans.get("section") or ans.get("full") or ""
     return str(ans).strip(), ans_at, ga.CONFIRMED
