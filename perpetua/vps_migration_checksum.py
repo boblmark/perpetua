@@ -48,7 +48,7 @@ STATE_JSON_NAMES = {
     "private_queue.json", "anomaly_ledger.json", "escalation_inbox.json",
     "command_queue.json", "commander_chat_queue.json", "cron_ops_queue.json",
     "executed_commands.json", "pipeline_runs.json",
-    "dead_state_alert_dedup.json",
+    "dead_state_alert_dedup.json", "matrix_history.json",
 }
 
 INCLUDE_EXTS = {
