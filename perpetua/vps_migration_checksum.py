@@ -22,7 +22,7 @@ EXCLUDE_DIRS = {
     "ep1_qc/qc_out_20261010", "vps_console/img_cache",
     "deploy/perpetua-linux",
     "build", "teaser_splice_check", "gemini_fallback_review",
-    "selftest/.thumbnails",
+    "selftest/.thumbnails", "evolution_reports",  # 日报持续追加，运行时产物
 }
 
 # 文件名/后缀排除
@@ -49,6 +49,7 @@ STATE_JSON_NAMES = {
     "command_queue.json", "commander_chat_queue.json", "cron_ops_queue.json",
     "executed_commands.json", "pipeline_runs.json",
     "dead_state_alert_dedup.json", "matrix_history.json",
+    "platform_matrix.json",  # 矩阵同步每5分钟重写，运行时状态
 }
 
 INCLUDE_EXTS = {
