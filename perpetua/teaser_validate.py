@@ -285,6 +285,62 @@ def _bprime_allows_publish():
 
 def _upload_public(video_file, title, description, topic):
     """经 mcp_server.youtube_upload 公开发布（全部硬门禁照常）。返回 video_id 或 ''。"""
+    vid, _reason = _upload_public_with_reason(video_file, title, description, topic)
+    return vid
+
+
+# 2026-10-16 新增：永久失败 vs 临时失败分类（门铃 teaser #3 卡 6 天/290 轮教训）。
+# 永久拒绝（标题超长/原创度撞车/审批未过/合规拦截/爆款分不足）靠重试永远好不了，
+# 必须标记终态+升级，不能静默空转。唯一的时间型临时拒绝是 [gate1:错峰]。
+_PERMANENT_REJECT_MARKERS = (
+    "[gateway:",          # D1 网关结构性拒绝：title_long/占位标题/标签不足等
+    "[原创度:",            # 90 天设备/钩子/笑点撞车
+    "[pipeline_approval]", # 管线审批未过
+    "[blocked]",          # 合规检查 fail-closed
+    "[pre-upload-qc]",    # 上传前 QC 硬失败
+    "爆款分",              # jev/v2 爆款门槛不足
+)
+_TRANSIENT_REJECT_MARKERS = (
+    "[gate1:错峰]",        # 4 小时/120 分钟发布间隔门：时间到了自然解除
+)
+
+
+def _classify_upload_failure(reason):
+    """返回 'permanent' / 'transient' / 'unknown'。"""
+    r = str(reason or "")
+    if any(m in r for m in _TRANSIENT_REJECT_MARKERS):
+        return "transient"
+    if any(m in r for m in _PERMANENT_REJECT_MARKERS):
+        return "permanent"
+    return "unknown"
+
+
+# 未知原因连续失败上限：24 轮（约 12h）仍失败 → 按永久处理并升级，
+# 防止未知永久失败无限空转。
+_UNKNOWN_FAIL_MAX_ATTEMPTS = 24
+
+
+def _escalate_publish_blocked(item, reason, kind):
+    """永久/超限失败升级：写 escalation inbox（12h 去重+风暴限流由 escalate 负责）。"""
+    try:
+        import sys as _sys, os as _os
+        _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+        from graded_assertions import escalate
+        escalate(
+            checker="teaser_validate",
+            subject=str(item.get("topic", ""))[:40],
+            condition="teaser_publish_blocked",
+            severity="P2",
+            detail="kind=%s reason=%s file=%s" % (
+                kind, str(reason)[:200], str(item.get("teaser_video_file", ""))[:80]),
+        )
+    except Exception as e:
+        plog("escalate", "error", "升级写入失败: %s" % str(e)[:80])
+
+
+def _upload_public_with_reason(video_file, title, description, topic):
+    """与 _upload_public 同逻辑，但返回 (video_id, reason)。
+    成功时 reason=''；失败时 reason 为 youtube_upload 的拒绝原文（或异常摘要）。"""
     venv_py = "/home/hatch/data/mcp_server/venv/bin/python"
     code = (
         "import sys; sys.path.insert(0, '/home/hatch/data/mcp_server');"
@@ -299,16 +355,17 @@ def _upload_public(video_file, title, description, topic):
     out = r.stdout.strip().split("\n")[-1] if r.stdout.strip() else "{}"
     try:
         res = json.loads(out).get("result", "")
-    except Exception:
-        return ""
+    except Exception as e:
+        return "", "upload_subprocess_parse_error: %s" % str(e)[:100]
     if res and not res.startswith("["):
         m = re.search(r"(?:v=|youtu\.be/|shorts/)([\w-]{11})", res)
         if m:
-            return m.group(1)
+            return m.group(1), ""
         if re.match(r"^[\w-]{11}$", res.strip()):
-            return res.strip()
-    plog("upload", "error", "发布失败: %s" % str(res)[:150])
-    return ""
+            return res.strip(), ""
+    reason = str(res)[:300] if res else "empty_result"
+    plog("upload", "error", "发布失败: %s" % reason[:150])
+    return "", reason
 
 
 def collect_teaser_results():
@@ -532,16 +589,41 @@ def _collect_awaiting_check_publish(queue):
             plog("collect", "ok", "B' 限流，人工快检 teaser 发布推迟下轮 %s：%s"
                  % (item.get("topic", "")[:30], breason))
             continue
-        vid = _upload_public(video_file, item.get("title", ""),
-                             item.get("description", ""), item.get("topic", ""))
+        vid, fail_reason = _upload_public_with_reason(
+            video_file, item.get("title", ""),
+            item.get("description", ""), item.get("topic", ""))
         if not vid:
-            plog("collect", "ok", "人工快检已过，硬门禁未过（如 120min 间隔），下轮重试 %s"
-                 % item.get("topic", "")[:30])
+            # 2026-10-16 修：永久失败不再静默空转。门铃 teaser #3 曾因此卡 6 天/290 轮。
+            kind = _classify_upload_failure(fail_reason)
+            attempts = int(item.get("teaser_publish_attempts", 0)) + 1
+            item["teaser_publish_attempts"] = attempts
+            item["teaser_last_fail_reason"] = str(fail_reason)[:300]
+            if kind == "transient":
+                plog("collect", "ok", "临时门禁（如 120min 间隔），下轮重试 %s"
+                     % item.get("topic", "")[:30])
+                changed = True
+                continue
+            if kind == "unknown" and attempts < _UNKNOWN_FAIL_MAX_ATTEMPTS:
+                plog("collect", "ok", "未知原因失败（第 %d 轮），下轮重试 %s：%s"
+                     % (attempts, item.get("topic", "")[:30], str(fail_reason)[:80]))
+                changed = True
+                continue
+            # permanent，或 unknown 超过 24 轮上限 → 终态 + 升级，不再重试
+            item["status"] = "teaser_publish_blocked"
+            item["teaser_block_kind"] = kind
+            item["teaser_block_reason"] = str(fail_reason)[:300]
+            item["teaser_blocked_at"] = _iso()
+            plog("collect", "error", "发布永久阻塞，转终态 %s：%s"
+                 % (item.get("topic", "")[:30], str(fail_reason)[:120]))
+            _escalate_publish_blocked(item, fail_reason, kind)
+            changed = True
             continue
         item["status"] = "teaser_published"
         item["teaser_video_id"] = vid
         item["teaser_url"] = "https://youtu.be/" + vid
         item["teaser_published_at"] = _iso()
+        item.pop("teaser_publish_attempts", None)
+        item.pop("teaser_last_fail_reason", None)
         changed = True
         plog("collect", "ok", "人工快检 teaser 已公开发布 %s %s"
              % (vid, item.get("topic", "")[:30]))

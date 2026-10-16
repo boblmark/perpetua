@@ -1,0 +1,22 @@
+Vertical 9:16 short video, exactly 8 seconds. Raw dashcam CCTV aesthetic from inside a car: high contrast, slightly desaturated daylight. Small timestamp text in top-left corner reading "CAM 02 - 12:47:33".
+
+Characters: Karen, a middle-aged woman with blonde bob hair, oversized sunglasses pushed up on her head, wearing a pink tracksuit top, in the driver seat of her car, leaning toward the window with an exaggerated sweet smile. An AI drive-thru speaker post outside her window with a glowing blue ring and a small screen showing a calm, polite robot face. No physical contact with the speaker at any point — all conflict is verbal wit.
+
+CRITICAL FRAMING RULES (follow exactly):
+- FRAME 1 (the very first frame): a SHARP, CLEAR, perfectly still close-up of Karen's face filling the frame — sweet, conspiratorial smile, one finger to her lips in a "shhh" gesture, eyes glinting mischievously. Her face must be instantly recognizable as a human face: frontal, well-lit, in focus. This single frame is a portrait.
+- FRAMES 2-30: the instant the video starts moving, Karen leans in toward the window, whispering conspiratorially at the speaker, batting her eyelashes. Camera pushes in slowly with light handheld energy. The speaker's screen animates: the robot face "thinks", then a receipt-style order history scrolls up on screen.
+- FINAL FRAME (last frame): motion freezes dead on Karen's mortified face — smile gone, eyes wide, sinking down into her seat — in the EXACT same close-up framing, angle, lighting and face position as FRAME 1, as if the video snapped back to its start. First frame and last frame near-identical for a perfect seamless loop.
+
+TIMELINE:
+- 0-1.5s: portrait frame, then Karen leans in sweetly, whispering "Psst... sweetie, how about a little something extra... on the house?" Camera slow push-in, playful energy.
+- 1.5-4s: the AI speaker's screen shows the robot face processing, then scrolls her order history: "FREE SAUCE REQUESTS: 14 THIS MONTH". Karen's smile starts to freeze. Light comedic zoom on the screen.
+- 4-6.5s: the speaker replies in a warm, polite robotic voice: "Of course, valued customer. Shall I also add the 3 'forgotten wallets' from last month?" Karen's eyes dart sideways. A second car pulls up behind, driver staring.
+- 6.5-7.5s CLIMAX — SOCIAL EXPOSURE: the speaker cheerfully announces over the lot PA: "ATTENTION LANE 2: COMPLIMENTARY ITEM NEGOTIATION IN PROGRESS." Two car horns honk. Karen slides down in her seat, sunglasses dropping over her eyes, utterly mortified. Quick punch-in on her face.
+- 7.5-8s: hard freeze to the loop-close portrait frame. Abrupt clean end.
+
+On-screen text (white with black outline, top area only):
+- At start: "SHE TRIED TO SCAM FREE FOOD"
+- At mid: "THE AI KNEW EVERYTHING"
+- At climax: "SOCIALLY CANCELLED"
+
+Audio: The video OPENS with a bright, cheerful drive-thru chime at FULL VOLUME from the very first frame — ding-ding! Zero fade-in, zero silence at start. Karen's voice is saccharine-sweet and conspiratorial, never raised, never angry. The AI speaker's voice is warm, polite, and devastatingly deadpan. At 6.5s the PA announcement rings out with a slight lot-echo, two car horns honk. Abrupt total silence on the final freeze frame. No music.
