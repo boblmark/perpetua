@@ -43,6 +43,7 @@ STATE_JSON_RES = (
     re.compile(r".*_heartbeat\.json$"),
     re.compile(r"^review_budget_.*\.json$"),
     re.compile(r"^collect_run_.*\.json$"),
+    re.compile(r"^\.tmp_.*\.json$"),  # 2026-10-17: auto_pipeline 运行快照，cron 周期写入的新文件累积，运行时产物
 )
 # 运行时日报 markdown（cron 持续追加/重写，永不烘焙进包；evolution_reports/ 走目录排除）
 RUNTIME_MD_RES = (
@@ -55,6 +56,10 @@ STATE_JSON_NAMES = {
     "dead_state_alert_dedup.json", "matrix_history.json",
     "qc_orphan_alerted.json",  # 死状态看门狗运行时告警记录，非源码
     "platform_matrix.json",  # 矩阵同步每5分钟重写，运行时状态
+    "prompt_reviewed.json",  # 2026-10-17: 评审提交台账，cron 周期追加，运行时产物
+    "awaiting_approval.json",  # 2026-10-17: 待审批评审项，管线状态，运行时产物
+    "reject_window.json",  # 2026-10-17: 拒绝窗口时间戳，cron 周期写入，运行时产物
+    "formula_dedup_daily.json",  # 2026-10-17: 每日去重统计，cron 每天重写，运行时产物
 }
 
 INCLUDE_EXTS = {

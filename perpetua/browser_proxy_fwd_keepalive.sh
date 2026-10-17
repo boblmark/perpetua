@@ -8,12 +8,17 @@ LOG=/home/hatch/data/perpetua/browser_proxy_fwd_keepalive.log
 FWD_LOG=/home/hatch/data/perpetua/browser_proxy_fwd.log
 UPSTREAM_HOST=198.19.0.1
 UPSTREAM_PORT=3128
+# 功能探针目标：必须是上游之外的外部主机。
+# 2026-10-17 22:21 实测：上游对 CONNECT 到 198.19.0.1:3128 自身直接静默断连（空回包），
+# 自连探针恒假阴性（误报"上游也挂"、真中继死时跳过重启）。改用 example.com:443。
+PROBE_TARGET_HOST=example.com
+PROBE_TARGET_PORT=443
 
 # 经转发器做 CONNECT 握手，验证中继真实可用
 functional_probe() {
   exec 9<>/dev/tcp/127.0.0.1/3129 2>/dev/null || return 1
   printf 'CONNECT %s:%s HTTP/1.1\r\nHost: %s\r\n\r\n' \
-    "$UPSTREAM_HOST" "$UPSTREAM_PORT" "$UPSTREAM_HOST" >&9 2>/dev/null \
+    "$PROBE_TARGET_HOST" "$PROBE_TARGET_PORT" "$PROBE_TARGET_HOST" >&9 2>/dev/null \
     || { exec 9>&- 2>/dev/null; return 1; }
   local line
   if ! IFS= read -r -t 8 line <&9 2>/dev/null; then
@@ -27,7 +32,7 @@ functional_probe() {
 upstream_ok() {
   exec 9<>/dev/tcp/$UPSTREAM_HOST/$UPSTREAM_PORT 2>/dev/null || return 1
   printf 'CONNECT %s:%s HTTP/1.1\r\nHost: %s\r\n\r\n' \
-    "$UPSTREAM_HOST" "$UPSTREAM_PORT" "$UPSTREAM_HOST" >&9 2>/dev/null \
+    "$PROBE_TARGET_HOST" "$PROBE_TARGET_PORT" "$PROBE_TARGET_HOST" >&9 2>/dev/null \
     || { exec 9>&- 2>/dev/null; return 1; }
   local line
   if ! IFS= read -r -t 8 line <&9 2>/dev/null; then

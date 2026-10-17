@@ -55,6 +55,9 @@ rsync -a \
   --exclude='*_queue.json' --exclude='*_ledger.json' --exclude='*_inbox.json' \
   --exclude='*_state.json' --exclude='*_runs.json' --exclude='*_heartbeat.json' \
   --exclude='review_budget_*.json' --exclude='collect_run_*.json' \
+  --exclude='.tmp_*.json' --exclude='prompt_reviewed.json' \
+  --exclude='awaiting_approval.json' --exclude='reject_window.json' \
+  --exclude='formula_dedup_daily.json' --exclude='qc_orphan_alerted.json' \
   --exclude='private_queue.json' --exclude='anomaly_ledger.json' \
   --exclude='escalation_inbox.json' --exclude='command_queue.json' \
   --exclude='commander_chat_queue.json' --exclude='cron_ops_queue.json' \

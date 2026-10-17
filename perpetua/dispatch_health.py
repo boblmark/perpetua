@@ -191,6 +191,51 @@ def check_geminigen():
                     "geminigen 探针返回无法识别，无法定论", snap_ts, "session_state")
 
 
+def check_arena():
+    """arena.ai/video：页面可达 + prompt 输入框存在。
+    2026-10-17 接入：Battle 模式一次产出 2 条视频（匿名模型），无付费墙。
+    探针失败 → SUSPECT；登录墙/付费墙 → CONFIRMED（不可用）。
+    """
+    snap_ts = ga.utcnow()
+    js = ("""(async () => {"""
+          """  try {"""
+          """    const r = await fetch('https://arena.ai/video', {method: 'GET', credentials: 'include', mode: 'no-cors'});"""
+          """    return 'fetch_ok';"""
+          """  } catch(e) { return 'fetch_err:' + e.message.slice(0,80); }"""
+          """})()""")
+    # 经 VPS 浏览器探针（带登录态）
+    out0, rc0 = ssh(f"/usr/bin/agent-browser --cdp http://127.0.0.1:9222 open https://arena.ai/video", timeout=30)
+    if rc0 != 0:
+        return _suspect("check_arena", "arena", f"探针 open 失败: {out0[:80]}",
+                        "arena.ai/video 探针打不开页面，无法定论可用性", snap_ts, "session_state")
+    time.sleep(3)
+    probe_js = ("(function(){"
+                "var t=(document.body.innerText||'').slice(0,800).toLowerCase();"
+                "var hasBox=!!document.querySelector('textarea');"
+                "var blocked=/sign in|log in|subscribe|upgrade|payment|paywall/.test(t);"
+                "return JSON.stringify({hasBox:hasBox,blocked:blocked,snip:t.slice(0,120)});"
+                "})()")
+    out, rrc = ssh(f"/usr/bin/agent-browser --cdp http://127.0.0.1:9222 eval \"{probe_js}\"", timeout=30)
+    if rrc != 0:
+        return _suspect("check_arena", "arena", f"探针 eval 失败: {out[:80]}",
+                        "arena.ai/video 探针执行失败，无法定论", snap_ts, "session_state")
+    try:
+        info = json.loads(out.strip().strip('"').replace('\\"', '"'))
+    except Exception:
+        return _suspect("check_arena", "arena", f"探针返回解析失败: {out[:80]}",
+                        "arena.ai/video 探针返回无法解析", snap_ts, "session_state")
+    if info.get("blocked"):
+        return ga.make_verdict(ga.CONFIRMED, "arena.ai/video 被登录/付费墙拦截（不可用）",
+                               snap_ts, "session_state", checker=CHECKER,
+                               subject="arena", checker_health={"probe_ok": True})
+    if info.get("hasBox"):
+        return ga.make_verdict(ga.OK, "arena.ai/video 可用（prompt 输入框就绪，Battle 模式）",
+                               snap_ts, "session_state", checker=CHECKER,
+                               subject="arena", checker_health={"probe_ok": True})
+    return _suspect("check_arena", "arena", f"页面结构异常: {info.get('snip','')[:80]}",
+                    "arena.ai/video 页面无 prompt 输入框，疑似改版或异常", snap_ts, "session_state")
+
+
 def check_h3():
     """H3 tunnel：动态检查，不硬编码。
     无配置 → UNKNOWN（用户 2026-10-15 明确要求：h3 有配置地址则实测连通性、
@@ -320,6 +365,7 @@ def main():
         "dispatcher": check_dispatcher(),
         "queue": check_queue(),
         "geminigen": check_geminigen(),
+        "arena": check_arena(),
         "h3": check_h3(),
         "vids": check_vids(),
         "builtin": check_builtin(),
