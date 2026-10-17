@@ -125,8 +125,8 @@ def _parse_json_out(out):
 
 
 def try_backends(prompt, job_id, out_dir):
-    """auto 模式：vps 优先，失败切 local"""
-    backends = ["vps", "local"] if BACKEND == "auto" else [BACKEND]
+    """auto 模式：local 优先（有 arena 登录态），失败切 vps"""
+    backends = ["local", "vps"] if BACKEND == "auto" else [BACKEND]
     last_err = ""
     for be in backends:
         try:
@@ -191,12 +191,14 @@ def generate(prompt, job_id, out_dir, backend):
         box.dispatchEvent(new Event('input', {{bubbles: true}}));
         box.dispatchEvent(new Event('change', {{bubbles: true}}));
         await new Promise(r => setTimeout(r, 1500));
-        // 找发送按钮
+        // 找发送按钮：优先 aria-label="Send message"
         const btns = document.querySelectorAll('button');
-        let send = null;
-        for (const b of btns) {{
-            const t = (b.innerText || b.getAttribute('aria-label') || '').toLowerCase();
-            if (t.includes('send') || b.type === 'submit') {{ send = b; break; }}
+        let send = document.querySelector('button[aria-label="Send message"]');
+        if (!send) {{
+            for (const b of btns) {{
+                const t = (b.innerText || b.getAttribute('aria-label') || '').toLowerCase();
+                if (t.includes('send') && b.type === 'submit') {{ send = b; break; }}
+            }}
         }}
         if (!send) return JSON.stringify({{ok: false, error: 'no send button'}});
         const before = location.href;
