@@ -1,0 +1,10 @@
+name: local_youtube_oauth_reauth
+title: Local youtube oauth reauth
+description: Recovered local skill; review its instructions before reuse.
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: true

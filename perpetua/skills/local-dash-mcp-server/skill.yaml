@@ -1,0 +1,10 @@
+name: local_dash_mcp_server
+title: Local dash mcp server
+description: 把 Dash 本机 MCP server 通过 VPS 反向隧道暴露给外部智能体（如腾讯 Marvis）。覆盖架构、鉴权、6 个可用工具、隧道保活、inbox 异步取货协作模式。触发词：MCP server、Marvis 接入、外部 agent 调用、反向隧道、inbox 取货。
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: true

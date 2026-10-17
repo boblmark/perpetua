@@ -1,0 +1,28 @@
+name: local_viralloop_content_studio
+title: ViralLoop Content Studio
+description: 为 @karenvsai 频道做全链路内容：品牌简报、选题评估、钩子、文案、打分、翻新、排期。触发词：品牌简报、brand brief、品牌手册、内容指导、选题方向、content guide、这个话题能不能做、爆款钩子、钩子、开场钩子、viral hooks、文案撰写、写标题、标题文案、copywriter、贴文评分、标题打分、打几分、post score、内容重塑、翻拍、老视频新做、repurpose、发帖排期、排期、发布时间表、scheduler
+category: Creation
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  status: active
+  needs_review: false
+  evidence_handles:
+  - skill-inventory:local_viralloop_brand_briefing
+  - skill-inventory:local_viralloop_content_guide
+  - skill-inventory:local_viralloop_copywriter
+  - skill-inventory:local_viralloop_post_score
+  - skill-inventory:local_viralloop_repurpose
+  - skill-inventory:local_viralloop_scheduler
+  - skill-inventory:local_viralloop_viral_hooks
+  measurement:
+    proxy_metric_id: custom_skill_discovery_resolution
+    success_criterion: skill_search resolves the merged trigger sets (brand brief, content guide, hooks, copywriter, post score, repurpose, scheduler) to local_viralloop_content_studio, the merged skill loads without shape errors, and content requests stop matching the seven retired names
+    window_days: 14
+  rationale: Inventory lists 15 active managed learned skills, past the 10-skill consolidation threshold. Seven of them (brand_briefing, content_guide, copywriter, post_score, repurpose, scheduler, viral_hooks) all serve the same @karenvsai content pipeline, read the same data files (criteria.json, karma_verbs.json, sequel_candidates.json) and repeat the same rules (verb tiers, banned words, 58-point threshold, purity checks, human-approval gate). Separate discovery entries force the agent to choose among overlapping triggers for one workflow. The merged studio skill preserves every trigger phrase and every rule while removing the discovery ambiguity; the seven superseded documents are retired in the same batch.
+  review_after: 2026-10-27T22:22:04.643818+00:00
+  reviewed_at: 2026-10-13T22:22:04.643818+00:00
+  run_id: sirun_9c7384fa3d1a46fe95d0700397c09154

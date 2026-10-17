@@ -1,0 +1,21 @@
+name: local_viralloop_repurpose
+title: Local viralloop repurpose
+description: 输入历史爆款 video_id 或话题，读爆款续集清单，输出 3 个重塑角度（续集/反转/跨界）+ 90 天去重提醒。触发词：内容重塑、翻拍、老视频新做、repurpose
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: false
+  status: retired
+  evidence_handles:
+  - skill-inventory:local_viralloop_repurpose
+  measurement:
+    proxy_metric_id: custom_skill_discovery_resolution
+    success_criterion: retired skill no longer appears in skill_search results or prompt listings; repurpose requests route to local_viralloop_content_studio
+    window_days: 14
+  rationale: Superseded by the merged local_viralloop_content_studio in the same consolidation batch. Its triggers and method are preserved in the merged skill; retiring removes the duplicate discovery entry.
+  review_after: 2026-10-27T22:22:04.643818+00:00
+  reviewed_at: 2026-10-13T22:22:04.643818+00:00
+  run_id: sirun_9c7384fa3d1a46fe95d0700397c09154

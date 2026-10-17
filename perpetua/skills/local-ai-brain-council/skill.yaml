@@ -1,0 +1,26 @@
+name: local_ai_brain_council
+title: AI Brain Council（四脑议会）
+description: 四脑议会调度协议：带实时数据调度 Ask Studio/LMArena/AI Studio/DeepSeek 红队做诊断、横评、规格、泼冷水，把未知变量变成可写进管线的常量，并用 browser 浏览器编排机制亲自调度。触发词：三脑、四脑、大脑议会、brain council、调度大脑、多模型会诊、多模型编排、外部模型调用、browser 调大脑、红队。覆盖各脑定位、调度链、browser 调度机制、提问模板、升级梯子、议会闭环与诚实局限。
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  evidence_handles:
+  - message:assistant-msg-aa925c05
+  - message:assistant-msg-01249032
+  - message:assistant-msg-94e9cd39
+  - custom-skills/local-ai-brain-council/SKILL.md
+  - custom-skills/local-multi-model-orchestration/SKILL.md
+  - custom-skills/local-ai-brain-council/references/browser-recipes.md
+  measurement:
+    proxy_metric_id: skill_discovery_precision
+    success_criterion: 'Within 30 days: skill_search for the merged trigger sets resolves to local_ai_brain_council only; the retired names stop appearing in discovery and prompt listings; council dispatch still loads with references/browser-recipes.md intact.'
+    window_days: 30
+  needs_review: false
+  rationale: 'WHAT: two active managed skills teach the same dispatch mechanism, local_ai_brain_council (protocol) and local_multi_model_orchestration (mechanism). Two discovery entries for one workflow re-creates the ambiguity the 2026-10-13 content_studio consolidation removed. WHY: in-window evidence shows the mechanism is only ever exercised as the council implementation; every browser dispatch this run was council-brain related. The merged document preserves every trigger phrase and mechanism rule, plus the worker-channel escalation ladder observed in-window.'
+  review_after: 2026-11-15T23:25:46.582591+00:00
+  reviewed_at: 2026-10-16T23:25:46.582591+00:00
+  run_id: sirun_e99499d0a6e4497899ffb109a2ee09db
+  status: active

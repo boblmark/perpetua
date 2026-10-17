@@ -1,0 +1,10 @@
+name: local_nano_live_voice
+title: Local nano live voice
+description: nanoMuse 实时语音视频对话：Gemini Live 全双工语音+视频+指令执行。触发词：实时语音、Live 对话、语音指令、视频通话、nano 说话。
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: true

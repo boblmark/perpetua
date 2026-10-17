@@ -1,0 +1,10 @@
+name: local_aliyun_domain_https
+title: Local aliyun domain https
+description: 阿里云万网一键买域名：查域名是否可注册→下单→实名信息模板→用户付款→配 DNS A 解析→VPS 上 nginx + Let's Encrypt 配 HTTPS。触发词：买域名、申请域名、域名+HTTPS、DNS 解析、配证书。
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: true

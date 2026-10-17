@@ -43,6 +43,22 @@ if [ -d /home/hatch/workspace/cron.d ]; then
   ls -t "$MIRROR"/crons/cron_export_*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
 fi
 
+# ===== 1b. custom-skills -> repo/perpetua/skills/（2026-10-18 用户要求纳入自动同步）=====
+# Muse 技能包（四脑议会调度、nano 实时语音、内容工作室等），与运行系统同一推送链路、
+# 同一全量接管语义（repo/perpetua/* 由本地接管）。技能目录只含 curated 文档与脚本，
+# 无运行时状态，故 *.json 允许进入（与主树排除 *.json 不同）。
+SKILLS_SRC=/home/hatch/workspace/custom-skills
+if [ -d "$SKILLS_SRC" ]; then
+  mkdir -p "$MIRROR/skills"
+  rsync -a --delete \
+    --exclude='__pycache__/***' --exclude='*.log' \
+    --include='*/' \
+    --include='*.md' --include='*.py' --include='*.sh' --include='*.txt' \
+    --include='*.yaml' --include='*.yml' --include='*.json' \
+    --exclude='*' \
+    "$SKILLS_SRC/" "$MIRROR/skills/" 2>/dev/null || true
+fi
+
 # ===== 2. 经 API 推送 =====
 if [ "$DRY" = "--dry-run" ]; then
   python3 "$SRC/github_push_api.py" "$REPO" "auto-sync $DATE" --dry-run

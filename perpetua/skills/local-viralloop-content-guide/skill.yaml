@@ -1,0 +1,21 @@
+name: local_viralloop_content_guide
+title: Local viralloop content guide
+description: 输入一个趋势/话题，输出内容方向指导：适配度评估、推荐角度、避坑点。触发词：内容指导、选题方向、content guide、这个话题能不能做
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: false
+  status: retired
+  evidence_handles:
+  - skill-inventory:local_viralloop_content_guide
+  measurement:
+    proxy_metric_id: custom_skill_discovery_resolution
+    success_criterion: retired skill no longer appears in skill_search results or prompt listings; topic-evaluation requests route to local_viralloop_content_studio
+    window_days: 14
+  rationale: Superseded by the merged local_viralloop_content_studio in the same consolidation batch. Its triggers and method are preserved in the merged skill; retiring removes the duplicate discovery entry.
+  review_after: 2026-10-27T22:22:04.643818+00:00
+  reviewed_at: 2026-10-13T22:22:04.643818+00:00
+  run_id: sirun_9c7384fa3d1a46fe95d0700397c09154

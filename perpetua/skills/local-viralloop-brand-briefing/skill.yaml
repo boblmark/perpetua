@@ -1,0 +1,23 @@
+name: local_viralloop_brand_briefing
+title: Local viralloop brand briefing
+description: 输出 ViralLoop 频道品牌简报：品牌 voice、受众画像、爆款公式、禁忌清单、KPI 口径。触发词：品牌简报、brand brief、品牌手册
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: false
+  status: retired
+  evidence_handles:
+  - inventory:local_viralloop_brand_briefing rev f7ab3bdd4b5f0fd7f1e52b9f7215ec0007a7059f72feaeaa785e0ede55567725
+  - 'skill_search 2026-10-16: ''QC gate threshold calibration exemption'' result shows local_viralloop_content_studio description already covers ''品牌简报、brand brief、品牌手册、内容指导、选题方向...'''
+  - 'run inventory: 10 active managed learned skills, 6 retired'
+  measurement:
+    proxy_metric_id: skill_discovery_precision
+    success_criterion: Brand-brief requests resolve to local_viralloop_content_studio with no user-visible confusion and no request invoking the retired brand-briefing entry in the window.
+    window_days: 30
+  rationale: 'WHAT: local_viralloop_brand_briefing''s discovery triggers (''品牌简报、brand brief、品牌手册'', per its skill.yaml description) are a strict subset of local_viralloop_content_studio''s trigger list, which skill_search confirms already covers brand brief plus the full content chain (''全链路内容：品牌简报、选题评估、钩子、文案、打分、翻新、排期''). Two active discovery entries for the same workflow re-create exactly the ambiguity the 2026-10-13 consolidation (content_studio merging content_guide, copywriter, post_score, repurpose, scheduler, viral_hooks) was meant to remove. WHY: with 10 active managed learned skills this loop must consolidate before adding anything new; retiring the redundant entry is that consolidation and leaves the brand-brief workflow fully discoverable via content_studio, whose description already preserves the triggers and method.'
+  review_after: 2026-11-14T23:03:27.225062+00:00
+  reviewed_at: 2026-10-15T23:03:27.225062+00:00
+  run_id: sirun_06d2d9c3854f43ac985aedb3d6bc9630

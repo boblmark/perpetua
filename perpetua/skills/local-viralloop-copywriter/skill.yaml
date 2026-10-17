@@ -1,0 +1,21 @@
+name: local_viralloop_copywriter
+title: Local viralloop copywriter
+description: 输入话题/钩子，输出 3 个英文标题（走标题公式+纯度自检）、1 段描述（含 3-4 个标签）、1 条置顶评论。触发词：文案撰写、写标题、标题文案、copywriter
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: false
+  status: retired
+  evidence_handles:
+  - skill-inventory:local_viralloop_copywriter
+  measurement:
+    proxy_metric_id: custom_skill_discovery_resolution
+    success_criterion: retired skill no longer appears in skill_search results or prompt listings; copywriting requests route to local_viralloop_content_studio
+    window_days: 14
+  rationale: Superseded by the merged local_viralloop_content_studio in the same consolidation batch. Its triggers and method are preserved in the merged skill; retiring removes the duplicate discovery entry.
+  review_after: 2026-10-27T22:22:04.643818+00:00
+  reviewed_at: 2026-10-13T22:22:04.643818+00:00
+  run_id: sirun_9c7384fa3d1a46fe95d0700397c09154

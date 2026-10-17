@@ -1,0 +1,21 @@
+name: local_viralloop_scheduler
+title: Local viralloop scheduler
+description: 输入一周选题列表（含分数），输出 7 天三档排期表：10:00 赌高分、12:30、00:00，周五/周一加权。触发词：发帖排期、排期、发布时间表、scheduler
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: false
+  status: retired
+  evidence_handles:
+  - skill-inventory:local_viralloop_scheduler
+  measurement:
+    proxy_metric_id: custom_skill_discovery_resolution
+    success_criterion: retired skill no longer appears in skill_search results or prompt listings; scheduling requests route to local_viralloop_content_studio
+    window_days: 14
+  rationale: Superseded by the merged local_viralloop_content_studio in the same consolidation batch. Its triggers and method are preserved in the merged skill; retiring removes the duplicate discovery entry.
+  review_after: 2026-10-27T22:22:04.643818+00:00
+  reviewed_at: 2026-10-13T22:22:04.643818+00:00
+  run_id: sirun_9c7384fa3d1a46fe95d0700397c09154

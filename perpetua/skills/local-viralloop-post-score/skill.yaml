@@ -1,0 +1,21 @@
+name: local_viralloop_post_score
+title: Local viralloop post score
+description: 按 criteria.json v2 规则给标题打分：判是否过 58 分线，给改进建议。触发词：贴文评分、标题打分、打几分、post score
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  needs_review: false
+  status: retired
+  evidence_handles:
+  - skill-inventory:local_viralloop_post_score
+  measurement:
+    proxy_metric_id: custom_skill_discovery_resolution
+    success_criterion: retired skill no longer appears in skill_search results or prompt listings; title-scoring requests route to local_viralloop_content_studio
+    window_days: 14
+  rationale: Superseded by the merged local_viralloop_content_studio in the same consolidation batch. Its triggers and method are preserved in the merged skill; retiring removes the duplicate discovery entry.
+  review_after: 2026-10-27T22:22:04.643818+00:00
+  reviewed_at: 2026-10-13T22:22:04.643818+00:00
+  run_id: sirun_9c7384fa3d1a46fe95d0700397c09154

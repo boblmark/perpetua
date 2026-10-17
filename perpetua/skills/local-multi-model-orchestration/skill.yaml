@@ -1,0 +1,23 @@
+name: local_multi_model_orchestration
+title: Local multi model orchestration
+description: 多模型浏览器编排机制：通过 browser.spawn_task 调度外部 AI 模型（LMArena/AI Studio/Ask Studio等）做评审、横评、规格输出。触发词：多模型编排、外部模型调用、browser 调大脑、模型会诊机制。覆盖技术原理、调用模板、结果综合、局限。
+include_in_prompt: true
+availability:
+  confidential_vm: true
+  needs_speech: false
+skill_improvement:
+  managed: true
+  status: retired
+  evidence_handles:
+  - message:assistant-msg-aa925c05
+  - message:assistant-msg-01249032
+  - custom-skills/local-multi-model-orchestration/SKILL.md
+  measurement:
+    proxy_metric_id: skill_discovery_precision
+    success_criterion: Retired skill no longer appears in skill_search results or prompt listings; dispatch requests route to local_ai_brain_council.
+    window_days: 30
+  needs_review: false
+  rationale: Superseded by the merged local_ai_brain_council in the same consolidation batch. Its triggers and mechanism are preserved in the merged skill; retiring removes the duplicate discovery entry.
+  review_after: 2026-11-15T23:25:46.582591+00:00
+  reviewed_at: 2026-10-16T23:25:46.582591+00:00
+  run_id: sirun_e99499d0a6e4497899ffb109a2ee09db

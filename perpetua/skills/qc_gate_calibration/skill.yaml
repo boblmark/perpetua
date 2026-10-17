@@ -1,0 +1,24 @@
+name: qc_gate_calibration
+title: QC Gate Calibration
+description: Calibrate QC thresholds and exemptions against your own first-party data, with exemptions written as machine-checkable specs and a format freshness cutoff.
+category: Creation
+include_in_prompt: false
+skill_improvement:
+  managed: true
+  status: active
+  evidence_handles:
+  - message:f063d23d-e9ae-4ded-a838-6340ab944a15 (user '对' approving the renderer/motion council via Rule-13 restatement)
+  - MEMORY.md D20261016-002
+  - 'message:assistant-msg-fccbc533-6102-4b2a-92db-089d36d1969c (competitor top10: 7 of 10 use far-shot openings while QC hookmotion 1.4 < 3.0 gate blocked our own)'
+  - message:assistant-msg-22ba0f69-5197-459c-b723-2890f75bccef (hoa_tow_format.svml format DNA)
+  - /home/hatch/data/brain_council/council-20261016-renderer-motion/synthesis.md
+  - 'skill_search 2026-10-16: no existing QC gate calibration, evidence-graded watchdog, or QC repair skill'
+  measurement:
+    proxy_metric_id: qc_gate_evidence_adoption
+    success_criterion: At least one QC gate or exemption is calibrated, added, or retired using first-party data under the detectable-spec method, with zero fuzzy waivers written and zero exemption-gaming incidents in the window. A window with no QC gate work is inconclusive, not a failure.
+    window_days: 45
+  needs_review: false
+  rationale: 'WHAT: QC gates were blocking good output while the evidence contradicted them. The REAL4 sample failed hookmotion 1.4 < 3.0 on a far-shot opening even though 7 of the competitor top10 use far-shot openings, and v1 misses were motion 1.94 < 2.5 and loop 0.59 < 0.75. WHY: the renderer/motion four-brain council (D20261016-002, user-approved) produced a distinct reusable method, not just a one-off fix: (1) falsify thresholds with first-party retention data (Ask Studio data falsified the 3.0 motion threshold: far-shot openings held 61 to 73 percent stayed vs 45 percent for high-motion openings), (2) write exemptions as machine-checkable alternative gates with fail-closed fallbacks instead of fuzzy waivers (red-team KILL stood: any slow opening will be retroactively relabeled an establishing wide shot to dodge the check, so a waiver eats the rule; the adopted spec uses measurable entry conditions, an alternative check at 1.5 to 3.0s, 7 fail-closed conditions, and a 180-day log validation), (3) expire competitor format sources after 30 days (red-team WEAKEN: by the time a format is templatized, replicated, and through QC, the viral format has rotated). No existing skill teaches this; skill_search found no overlap.'
+  review_after: 2026-11-29T23:03:27.225062+00:00
+  reviewed_at: 2026-10-15T23:03:27.225062+00:00
+  run_id: sirun_06d2d9c3854f43ac985aedb3d6bc9630
