@@ -256,9 +256,9 @@ def trig_kill(st):
     now = _now()
     # 日期触发：one-shot
     if now.strftime("%Y-%m-%d") >= KILL_DATE and not st.get("kill_date_fired"):
-        _kill_jury(st, "日期到达 kill 线前 7 天（2026-12-08）")
-        st["kill_date_fired"] = now.isoformat()
-        return
+        if _kill_jury(st, "日期到达 kill 线前 7 天（2026-12-08）"):
+            st["kill_date_fired"] = now.isoformat()
+            return
     # metric 触发：14天 pace < 30% 所需
     last = st.get("kill_metric_last_fired")
     if last:
@@ -272,8 +272,8 @@ def trig_kill(st):
         return
     now_h, pace, required = p
     if required > 0 and pace < required * 0.3:
-        _kill_jury(st, "连续14天 pace %.1f h/天 < 所需 %.1f h/天 的 30%%" % (pace, required))
-        st["kill_metric_last_fired"] = now.isoformat()
+        if _kill_jury(st, "连续14天 pace %.1f h/天 < 所需 %.1f h/天 的 30%%" % (pace, required)):
+            st["kill_metric_last_fired"] = now.isoformat()
 
 
 def _kill_jury(st, reason):
@@ -299,6 +299,7 @@ def _kill_jury(st, reason):
     res = _dispatch("kill_arbitration", prompt)
     if res:
         st["last_kill_verdict"] = {"result": res, "at": _now().isoformat(), "reason": reason}
+    return res
 
 
 def trig_collapse(st):
