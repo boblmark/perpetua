@@ -124,6 +124,33 @@ def _parse_json_out(out):
     return json.loads(s)
 
 
+def ab_run(args_list, backend, timeout=60):
+    """跑一条 agent-browser 原生命令（真点击/填写，可信事件）"""
+    if backend == "local":
+        cmd = [LOCAL_AB, "--cdp", "9335"] + args_list
+        env = {**os.environ, "AGENT_BROWSER_PROXY": "http://127.0.0.1:3129"}
+    else:
+        # VPS：经 SSH
+        inner = " ".join(f"'{a}'" for a in [VPS_AB, "--cdp", VPS_CDP] + args_list)
+        cmd = SSH_BASE + [inner]
+        env = None
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+    return r.stdout.strip(), r.returncode
+
+
+def find_refs(snapshot_text):
+    """从 snapshot 里找 prompt 输入框和发送按钮的 ref"""
+    import re
+    box_ref, send_ref = None, None
+    for m in re.finditer(r'@(\S+).*?(textarea|textbox).*?(Describe your video|prompt)', snapshot_text, re.I):
+        box_ref = "@" + m.group(1)
+        break
+    for m in re.finditer(r'@(\S+).*?button.*?Send message', snapshot_text, re.I):
+        send_ref = "@" + m.group(1)
+        break
+    return box_ref, send_ref
+
+
 def try_backends(prompt, job_id, out_dir):
     """auto 模式：local 优先（有 arena 登录态），失败切 vps"""
     backends = ["local", "vps"] if BACKEND == "auto" else [BACKEND]
@@ -170,51 +197,35 @@ def generate(prompt, job_id, out_dir, backend):
             raise RuntimeError(f"blocked by login/paywall: {snippet[:150]}")
         raise RuntimeError(f"prompt box not found: {snippet[:150]}")
 
-    # 3. 填 prompt 并提交
-    js_submit = f"""(async () => {{
-        const prompt = atob('{prompt_b64}');
-        let box = null;
-        const els = document.querySelectorAll('textarea, [contenteditable="true"]');
-        for (const el of els) {{
-            const ph = (el.placeholder || el.getAttribute('aria-label') || '').toLowerCase();
-            if (ph.includes('describe') || ph.includes('video')) {{ box = el; break; }}
-        }}
-        if (!box && els.length) box = els[els.length - 1];
-        if (!box) return JSON.stringify({{ok: false, error: 'no box'}});
-        box.focus();
-        // React 受控组件：用 native setter
-        const setter = Object.getOwnPropertyDescriptor(
-            box.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
-            'value')?.set || Object.getOwnPropertyDescriptor(Object.getPrototypeOf(box), 'value')?.set;
-        if (setter) setter.call(box, prompt);
-        else box.value = prompt;
-        box.dispatchEvent(new Event('input', {{bubbles: true}}));
-        box.dispatchEvent(new Event('change', {{bubbles: true}}));
-        await new Promise(r => setTimeout(r, 1500));
-        // 找发送按钮：优先 aria-label="Send message"
-        const btns = document.querySelectorAll('button');
-        let send = document.querySelector('button[aria-label="Send message"]');
-        if (!send) {{
-            for (const b of btns) {{
-                const t = (b.innerText || b.getAttribute('aria-label') || '').toLowerCase();
-                if (t.includes('send') && b.type === 'submit') {{ send = b; break; }}
-            }}
-        }}
-        if (!send) return JSON.stringify({{ok: false, error: 'no send button'}});
-        const before = location.href;
-        send.click();
-        await new Promise(r => setTimeout(r, 8000));
-        return JSON.stringify({{ok: true, before, after: location.href}});
-    }})()"""
-    out = browser_eval(js_submit, backend, 60)
-    try:
-        res = _parse_json_out(out)
-    except Exception:
-        raise RuntimeError(f"submit parse failed: {out[:200]}")
-    if not res.get("ok"):
-        raise RuntimeError(f"submit failed: {res.get('error')}")
-    battle_url = res.get("after", "")
-    if battle_url == res.get("before"):
+    # 3. 填 prompt 并提交（用 agent-browser 原生命令：可信事件）
+    snap, _ = ab_run(["snapshot"], backend, 30)
+    box_ref, send_ref = find_refs(snap)
+    if not box_ref:
+        raise RuntimeError(f"snapshot 未找到 prompt 输入框")
+    if not send_ref:
+        raise RuntimeError(f"snapshot 未找到发送按钮")
+    # 填写 prompt（原生 fill = 可信输入事件）
+    _, rc = ab_run(["fill", box_ref, prompt], backend, 30)
+    if rc != 0:
+        raise RuntimeError("fill prompt 失败")
+    time.sleep(2)
+    # 重新 snapshot（按钮启用后 ref 可能变），找发送按钮再点
+    snap2, _ = ab_run(["snapshot"], backend, 30)
+    _, send_ref2 = find_refs(snap2)
+    send_ref = send_ref2 or send_ref
+    before_url = browser_eval("location.href", backend, 15).strip().strip('"')
+    _, rc = ab_run(["click", send_ref], backend, 30)
+    if rc != 0:
+        raise RuntimeError("click 发送按钮失败")
+    # 等待跳转（最多 30 秒）
+    battle_url = before_url
+    for _ in range(6):
+        time.sleep(5)
+        cur = browser_eval("location.href", backend, 15).strip().strip('"')
+        if cur != before_url and "/c/" in cur:
+            battle_url = cur
+            break
+    if battle_url == before_url:
         raise RuntimeError("submit did not navigate to battle page")
 
     # 4. 轮询等待两条视频完成（最长 15 分钟）
