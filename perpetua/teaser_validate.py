@@ -534,8 +534,15 @@ def collect_teaser_results():
         save_queue(queue)
 
 
-def _analytics_for_video(video_id):
-    """返回 (averageViewPercentage, views) 或 (None, None)。"""
+def _analytics_for_video(video_id, pub_at=None):
+    """返回 (averageViewPercentage, views) 或 (None, None)。
+
+    2026-10-17 修：查询窗口改为以发布为锚点的 [pub_date, pub_date+3d]
+    （48h 窗口 +1 天 Analytics 回传缓冲）。之前用滚动最近 3 天，视频
+    发布超过 3 天后恒返回空 rows → "数据未回传" 死循环，48h 判决永不
+    到达，14 天超时也因 verdict 恒为空而失效。
+    pub_at 为空时回退到滚动 3 天（kill-switch 等 24-48h 内场景）。
+    """
     sys.path.insert(0, os.path.join(DATA, "youtube"))
     from yt_upload import _load, _refresh
     import urllib.request, urllib.parse
@@ -544,8 +551,18 @@ def _analytics_for_video(video_id):
         token = _refresh(d)
     except Exception:
         return None, None
-    end = _now().date().isoformat()
-    start = (_now() - timedelta(days=3)).date().isoformat()
+    pub_date = None
+    if pub_at:
+        try:
+            pub_date = datetime.fromisoformat(pub_at).date()
+        except Exception:
+            pub_date = None
+    if pub_date:
+        start = pub_date.isoformat()
+        end = (pub_date + timedelta(days=3)).isoformat()
+    else:
+        end = _now().date().isoformat()
+        start = (_now() - timedelta(days=3)).date().isoformat()
     params = {"ids": "channel==MINE", "startDate": start, "endDate": end,
               "metrics": "views,averageViewPercentage",
               "dimensions": "video",
@@ -782,7 +799,7 @@ def check_teaser_metrics():
             changed = True
             continue
         vid = item.get("teaser_video_id", "")
-        avd, views = _analytics_for_video(vid)
+        avd, views = _analytics_for_video(vid, pub_at=pub_at)
         if avd is None:
             plog("metrics", "ok", "%s 数据未回传，下轮重试" % vid)
             continue

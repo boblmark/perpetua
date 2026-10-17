@@ -139,15 +139,30 @@ def ab_run(args_list, backend, timeout=60):
 
 
 def find_refs(snapshot_text):
-    """从 snapshot 里找 prompt 输入框和发送按钮的 ref"""
+    """从 snapshot 里找 prompt 输入框和发送按钮的 ref
+    snapshot 格式：- textbox "Describe your video…" [ref=e46]
+                - button "Send message" [disabled, ref=e122]
+    """
     import re
     box_ref, send_ref = None, None
-    for m in re.finditer(r'@(\S+).*?(textarea|textbox).*?(Describe your video|prompt)', snapshot_text, re.I):
-        box_ref = "@" + m.group(1)
-        break
-    for m in re.finditer(r'@(\S+).*?button.*?Send message', snapshot_text, re.I):
-        send_ref = "@" + m.group(1)
-        break
+    for line in snapshot_text.split('\n'):
+        ll = line.lower()
+        # ref 可能在 [ref=X] 或 [disabled, ref=X] 里
+        m = re.search(r'ref=([a-z0-9]+)', ll)
+        if not m:
+            continue
+        ref = m.group(1)
+        if 'textbox' in ll and 'describe your video' in ll and not box_ref:
+            box_ref = ref
+        elif 'button' in ll and 'send message' in ll and 'disabled' not in ll and not send_ref:
+            send_ref = ref
+    if not send_ref:
+        for line in snapshot_text.split('\n'):
+            ll = line.lower()
+            m = re.search(r'ref=([a-z0-9]+)', ll)
+            if m and 'button' in ll and 'send message' in ll:
+                send_ref = m.group(1)
+                break
     return box_ref, send_ref
 
 
@@ -202,8 +217,7 @@ def generate(prompt, job_id, out_dir, backend):
     box_ref, send_ref = find_refs(snap)
     if not box_ref:
         raise RuntimeError(f"snapshot 未找到 prompt 输入框")
-    if not send_ref:
-        raise RuntimeError(f"snapshot 未找到发送按钮")
+    # 发送按钮在 fill 后才启用，这里不强制要求；fill 后重新 snapshot 获取
     # 填写 prompt（原生 fill = 可信输入事件）
     _, rc = ab_run(["fill", box_ref, prompt], backend, 30)
     if rc != 0:
