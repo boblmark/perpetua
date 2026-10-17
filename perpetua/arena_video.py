@@ -106,6 +106,24 @@ def browser_open(url, backend):
     return r.returncode == 0
 
 
+def _parse_json_out(out):
+    """稳健解析 vm_eval 返回的 JSON（处理双层转义，引自 geminigen_api.py）"""
+    s = out.strip()
+    # 先解一层（agent-browser 把 JS 返回值又包了一层 JSON）
+    try:
+        inner = json.loads(s)
+        if isinstance(inner, str):
+            return json.loads(inner)
+        return inner
+    except Exception:
+        pass
+    # 兜底：手动去转义
+    if s.startswith('"') and s.endswith('"'):
+        s = s[1:-1]
+    s = s.replace('\\\\"', '"').replace('\\\\', '\\')
+    return json.loads(s)
+
+
 def try_backends(prompt, job_id, out_dir):
     """auto 模式：vps 优先，失败切 local"""
     backends = ["vps", "local"] if BACKEND == "auto" else [BACKEND]
@@ -143,7 +161,7 @@ def generate(prompt, job_id, out_dir, backend):
     })()"""
     out = browser_eval(js_ready, backend, 30)
     try:
-        info = json.loads(out)
+        info = _parse_json_out(out)
     except Exception:
         raise RuntimeError(f"ready check parse failed: {out[:200]}")
     if not info.get("ok"):
@@ -188,7 +206,7 @@ def generate(prompt, job_id, out_dir, backend):
     }})()"""
     out = browser_eval(js_submit, backend, 60)
     try:
-        res = json.loads(out)
+        res = _parse_json_out(out)
     except Exception:
         raise RuntimeError(f"submit parse failed: {out[:200]}")
     if not res.get("ok"):
@@ -215,7 +233,7 @@ def generate(prompt, job_id, out_dir, backend):
         time.sleep(20)
         out = browser_eval(js_poll, backend, 30)
         try:
-            st = json.loads(out)
+            st = _parse_json_out(out)
         except Exception:
             continue
         vids = [v for v in st.get("videos", []) if v.get("src")]
@@ -225,7 +243,7 @@ def generate(prompt, job_id, out_dir, backend):
             time.sleep(10)
             out2 = browser_eval(js_poll, backend, 30)
             try:
-                st2 = json.loads(out2)
+                st2 = _parse_json_out(out2)
             except Exception:
                 continue
             vids2 = [v for v in st2.get("videos", []) if v.get("src")]
@@ -257,7 +275,7 @@ def generate(prompt, job_id, out_dir, backend):
         }})()"""
         out = browser_eval(js_dl, backend, 120)
         try:
-            dl = json.loads(out)
+            dl = _parse_json_out(out)
         except Exception:
             raise RuntimeError(f"download {i} parse failed")
         if not dl.get("ok"):
