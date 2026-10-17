@@ -1,7 +1,8 @@
 #!/bin/bash
 # 保活：确保 tunnel_18738.sh 在运行
 if ! pgrep -f "tunnel_18738.sh" > /dev/null; then
-  nohup /home/hatch/data/perpetua/vps_console/tunnel_18738.sh > /dev/null 2>&1 &
+  setsid nohup /home/hatch/data/perpetua/vps_console/tunnel_18738.sh > /dev/null 2>&1 < /dev/null &
+  disown 2>/dev/null || true
   echo "$(date) restarted tunnel_18738.sh" >> /home/hatch/data/perpetua/vps_console/tunnel_18738_keepalive.log
 fi
 # 也确保端口在监听
