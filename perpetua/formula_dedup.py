@@ -40,6 +40,11 @@ REJECT_LOG = os.path.join(BASE, "perpetua", "formula_dedup_reject.log.json")
 DEVICE_WINDOW_DAYS = 90
 VERB_WINDOW_DAYS = 30
 HOOK_OVERLAP_THRESHOLD = 0.60
+# D20261017-00X KILL#9：90 天去重窗口政策——窗口放宽（缩短天数/放宽规则）
+# 需议会 + 用户拍板，不再是"永不放宽"；每 30 天数据复核一次
+# （见 dedup_window_review.py；block 率>80% 连续 3 天提前触发复核）。
+DEDUP_WINDOW_POLICY = "90d-window:loosening_requires_council_and_user_approval"
+DEDUP_DAILY_COUNTER = os.path.join(BASE, "perpetua", "formula_dedup_daily.json")
 
 KARMA_VERBS = [
     "spray", "sprays", "sprayed", "soak", "soaks", "soaked",
@@ -84,6 +89,27 @@ KARMA_VERBS = [
     # (eject 已有) EJECTED
     "false-alarm", "false-alarms", "false-alarmed",  # FALSE-ALARM: 拉响火警插队反被围观社死
     "auto-lock", "auto-locks", "auto-locked",       # AUTO-LOCK: 智能门主动反锁
+    # 2026-10-17 Ask Studio 动词扩充 10 词（q_verbauto_20261016030152 答案入库；
+    # 此前答案在 ask_studio/queue.json answered 里无人消费，动词池"耗尽"误报）
+    "deflate", "deflates", "deflated",             # DEFLATE: 充气物泄气瘪掉
+    "tilt", "tilts", "tilted",                     # TILT: 设备倾斜打翻
+    "spin", "spins", "spun",                       # SPIN: 高速旋转甩飞
+    "retract", "retracts", "retracted",             # RETRACT: 部件缩回夹住
+    "clamp", "clamps", "clamped",                   # CLAMP: 机械夹钳住道具
+    "perch", "perches", "perched",                 # PERCH: 高处落下停住
+    "shield", "shields", "shielded",               # SHIELD: 防护罩弹开
+    "fold", "folds", "folded",                     # FOLD: 折叠收起带走
+    "pucker", "puckers", "puckered",               # PUCKER: 吸盘式嘬住
+    "blink", "blinks", "blinked",                  # BLINK: 灯光狂闪社死
+    # 2026-10-17 Ask Studio 动词扩充 7 词（q_verbauto_20261016235819；原问法被 Ask Studio 安全过滤拒绝，
+    # 改写为 family-friendly cartoon comedy 后通过；retract/tilt/mirror 已在池中不再重复）
+    "confetti", "confettis", "confettied",       # CONFETTI: 门铃彩纸爆开糊脸+小号庆祝曲
+    "inflate", "inflates", "inflated",           # INFLATE: 扫地机弹出霓虹缓冲气垫弹开
+    "launch", "launches", "launched",            # LAUNCH: 收银机优惠券托盘弹簧射出橡皮鸡
+    "telescope", "telescopes", "telescoped",     # TELESCOPE: 音箱伸出六英尺复古喇叭怼脸说No
+    "bubble", "bubbles", "bubbled",             # BUBBLE: 扫地机顶盖开泡泡瀑布遮脸+顺走遮阳帽
+    "disguise", "disguises", "disguised",        # DISGUISE: 咪表扣上风衣领+胡子牌"我是路灯"
+    "tiptoe", "tiptoes", "tiptoed",              # TIPTOE: 扫地机伸出四条小鸡腿木琴步溜走
 ]
 
 STOPWORDS = {
@@ -235,6 +261,29 @@ def _yt_recent_devices(days=90):
     return out
 
 
+def _bump_dedup_counter(is_reject):
+    """D20261017-00X KILL#9：每日去重计数（checks/rejects），供
+    dedup_window_review.py 算 block 率。fail-open：计数失败绝不影响去重本身。"""
+    try:
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        cnt = {}
+        try:
+            cnt = json.load(open(DEDUP_DAILY_COUNTER, encoding="utf-8"))
+        except Exception:
+            cnt = {}
+        d = cnt.get(day, {"checks": 0, "rejects": 0})
+        d["checks"] = int(d.get("checks", 0)) + 1
+        if is_reject:
+            d["rejects"] = int(d.get("rejects", 0)) + 1
+        cnt[day] = d
+        # 只保留最近 60 天
+        for k in sorted(cnt.keys())[:-60]:
+            cnt.pop(k, None)
+        atomic_write_json(DEDUP_DAILY_COUNTER, cnt)
+    except Exception:
+        pass
+
+
 def _log_reject(entry):
     log = []
     try:
@@ -282,6 +331,7 @@ def check_formula(topic, hook, prompt="", ab_group=None, skip_self_topic=None):
             detail = {"rule": "device_collision", "device": device,
                       "matched": h["source"], "title": h["title"][:60]}
             _log_reject({"topic": topic, "hook": hook[:80], **detail})
+            _bump_dedup_counter(True)
             return True, "device_collision", detail
         # 2. 同一标题关键词隐含同设备（YouTube 侧无 prompt，只有标题）
         if device and not hfp["device"] and h["title"]:
@@ -292,6 +342,7 @@ def check_formula(topic, hook, prompt="", ab_group=None, skip_self_topic=None):
                           "matched": h["source"], "title": h["title"][:60],
                           "via": "title_keywords"}
                 _log_reject({"topic": topic, "hook": hook[:80], **detail})
+                _bump_dedup_counter(True)
                 return True, "device_collision", detail
 
     # 3. 同一 karma 动词 30 天内用过 → 笑点机制重复
@@ -303,6 +354,7 @@ def check_formula(topic, hook, prompt="", ab_group=None, skip_self_topic=None):
                 detail = {"rule": "karma_verb_reuse", "verb": verb,
                           "matched": h["source"], "title": h["title"][:60]}
                 _log_reject({"topic": topic, "hook": hook[:80], **detail})
+                _bump_dedup_counter(True)
                 return True, "karma_verb_reuse", detail
 
     # 4. 钩子关键词 90 天内重叠 >60% → 钩子撞车
@@ -319,8 +371,10 @@ def check_formula(topic, hook, prompt="", ab_group=None, skip_self_topic=None):
                           "overlap": round(ov, 3),
                           "matched": h["source"], "title": h["title"][:60]}
                 _log_reject({"topic": topic, "hook": hook[:80], **detail})
+                _bump_dedup_counter(True)
                 return True, "hook_collision", detail
 
+    _bump_dedup_counter(False)
     return False, None, {"fingerprint": fp}
 
 

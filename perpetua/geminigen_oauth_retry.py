@@ -31,7 +31,7 @@ AB = "agent-browser --cdp 9344"
 
 def vps(shell_cmd, timeout=90):
     r = subprocess.run(
-        SSH_BASE + [ENV + " " + shell_cmd],
+        SSH_BASE + [ENV + "; " + shell_cmd],  # 2026-10-17 修：export 后必须用分号隔断，否则 agent-browser 被当成 export 参数（not a valid identifier），此前所有轮次都是空跑
         capture_output=True, text=True, timeout=timeout,
     )
     return r.stdout.strip()
@@ -74,12 +74,26 @@ def js_click_account():
 
 def main():
     vps(f"{AB} open https://geminigen.link > /dev/null 2>&1")
-    time.sleep(6)
-    snap = vps(f"{AB} snapshot 2>&1")
-    if "cgb2025" in snap and "Sign In" not in snap.split("cgb2025")[0][-200:]:
-        # 已是 cgb2025 登录态（快照里出现账号名且不是登录按钮上下文）
-        print("ALREADY_CGB2025")
-        return
+    # header 会话态异步渲染：轮询最多 ~30s，等 avatar 或 Sign In 稳定后再判定
+    # （2026-10-17 实测：6s 快照常撞到 "Sign In" 链接先渲染、avatar 后替换的中间态，
+    #  导致已登录的 cgb2025 会话被误判为 NO_SIGNIN_FOUND）
+    snap = ""
+    settled_signin = False
+    for _ in range(6):
+        time.sleep(5)
+        snap = vps(f"{AB} snapshot 2>&1")
+        has_avatar = "cgb2025" in snap
+        has_signin = "sign in" in snap.lower()
+        if has_avatar and not has_signin:
+            # 已是 cgb2025 登录态（Google 头像 + 全站无 Sign In 入口）
+            print("ALREADY_CGB2025")
+            return
+        if has_signin:
+            settled_signin = True
+            break
+    if not settled_signin and "cgb2025" not in snap:
+        # 30s 后既无 avatar 也无 Sign In：页面异常，保持旧行为（尝试点击，失败即 NO_SIGNIN_FOUND）
+        pass
 
     if not js_click_by_text("button", "Sign In"):
         print("NO_SIGNIN_FOUND")

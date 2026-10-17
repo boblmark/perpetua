@@ -44,6 +44,8 @@
 ## 管线自驱
 | 触发场景 | 动作 | 频率/条件 | 状态 |
 |---|---|---|---|
+| 每日两条发布铁律（自然日 2 条上传，含 private 预传） | publish_health 判 WARNING 即动手补：按管线顺序推（送审→追答案→生成→QC→private），卡住环节 2h 内必须有动作或升级；铁律不降任何硬门禁（≥85/QC/去重/120分钟门），宁缺勤不降质 | publish-health-watch 每 30 分钟检测 | 半自动（2026-10-17 用户亲立；诚实约束：后端容量不足如实报缺口） |
+| 重写直到过 85（评审 <85 不静默归档） | rewrite 取消 2 轮硬上限：<78 回 review_failed 继续改；5 轮未过经 escalate 升级人工；对照组豁免（control_group_overridden） | review 捡答案后自动 | cron自动（2026-10-17 用户亲立；质量熔断：<60/无fix/FLAG 仍归档） |
 | 48h 主题评估（两振出局+贝叶斯收缩） | evaluator_48h.py | 每小时 | cron自动（2026-10-12，B计划 R4；feed份额<50%或APV<70%为MISS，首振watchlist、连振blocklist，配额故障fail-open） |
 | 生成任务积压 | perpetua-pipeline-collect | 每 20 分钟 | cron自动 |
 | 死状态/超时 | dead-state-watchdog | 每 30 分钟 | cron自动 |

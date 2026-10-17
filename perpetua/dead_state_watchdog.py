@@ -131,6 +131,20 @@ def check_status_mismatch():
     # 这里检查是否有这种不匹配导致的卡死
     return issues
 
+def _load_reject_calib_samples():
+    """读 aesthetic_calibration.json 的 reject 负样本名集合（容错：读失败返回空集）。"""
+    try:
+        d = load(f"{DATA}/perpetua/aesthetic_calibration.json", [])
+        items = d if isinstance(d, list) else d.get("samples", [])
+        out = set()
+        for it in items:
+            if isinstance(it, dict) and it.get("label") == "reject" and it.get("file"):
+                out.add(os.path.basename(str(it["file"])))
+        return out
+    except Exception:
+        return set()
+
+
 def check_qc_orphans():
     """2026-10-09 新增：QC 通过但未进入任何队列的 veo_inbox 成品。
 
@@ -139,7 +153,11 @@ def check_qc_orphans():
     （2026-10-09 drive-thru）在 inbox 里躺 8 小时无人认领。
     只告警不自动修复：送上传需要标题决策，留给用户/主 agent。
     同一文件 12 小时内只告警一次。
+    2026-10-17 补：排除 aesthetic_calibration.json 中 label=reject 的样片
+    （如 h3_20261008_160708_seed28311100.mp4，画面烧录乱码字幕+监控时间码，
+    为美学口径校准的负样本，绝不可送排期），避免每 12h 误报一次。
     """
+    reject_samples = _load_reject_calib_samples()
     latest = {}
     try:
         with open(QC_LOG_PATH, encoding="utf-8", errors="replace") as f:
@@ -184,6 +202,8 @@ def check_qc_orphans():
         bn = os.path.basename(vf)
         if "test" in bn.lower():
             continue
+        if bn in reject_samples:
+            continue  # 2026-10-17：美学校准负样本（测试样片），永不送排期建议
         if not vf.startswith(VEO_INBOX + "/"):
             continue
         if bn in referenced:
@@ -284,6 +304,113 @@ def check_pipeline_stuck():
     if changed:
         queue_db.pipeline_save(q)  # D20261011-001 P1: pipeline_queue 已迁 SQLite
     return issues, auto_fixed
+
+def check_selected_timeout():
+    """D20261017-00X KILL#12/#13：selected 状态超时告警 + 7 天自动归档。
+
+    - selected 超 24h 未出评审结果 → 告警（Rule 15：状态必须有超时告警）。
+    - selected 超 7 天（168h）仍无评审答案 → 自动归档（附原因），不永久锁定。
+    有 review_score 的条目不归档（那是路由 bug，不是无评审，交其他检查处理）。
+    6h 内触发过评审的视为"等答案中"，跳过（与 check_pipeline_stuck 同口径）。
+    返回 (issues, auto_archived)。
+    """
+    issues = []
+    auto_archived = []
+    q = queue_db.pipeline_load()
+    items = q if isinstance(q, list) else q.get("items", [])
+    changed = False
+    for it in items:
+        if not isinstance(it, dict) or it.get("status") != "selected":
+            continue
+        ts = (it.get("selected_at") or it.get("review_triggered_at")
+              or it.get("updated_at") or it.get("created_at", ""))
+        base = parse_time(ts)
+        if not base:
+            continue
+        age_h = (now() - base).total_seconds() / 3600
+        topic = it.get("topic", "?")
+        # 6h 内触发过评审 = 等答案中，跳过
+        rt = parse_time(it.get("review_triggered_at", ""))
+        if rt and (now() - rt) < timedelta(hours=6):
+            continue
+        if age_h >= 168 and not it.get("review_score"):
+            it["status"] = "archived"
+            it["archive_reason"] = "selected_timeout_7d:7天无评审答案自动归档"
+            it["updated_at"] = now().isoformat()
+            auto_archived.append(f"{topic}（selected {age_h:.1f}h 无评审→已自动归档）")
+            changed = True
+        elif age_h >= 24:
+            issues.append(
+                f"selected 超时：{topic} 已 {age_h:.1f}h 未出评审结果 "
+                f"（review_qid={it.get('review_qid', '无')}）")
+    if changed:
+        queue_db.pipeline_save(q)
+    return issues, auto_archived
+
+
+def check_boundary_hold():
+    """D20261017-00X KILL#3：boundary-hold 消费者（Rule 15：状态必须有执行者）。
+
+    boundary_hold 超 24h（自 boundary_hold_at）仍无独立复核确认 >=79
+    → 自动归档。复核已回但晋档待人工（rescore_pending_confirm）的不动。
+    """
+    issues = []
+    q = queue_db.pipeline_load()
+    items = q if isinstance(q, list) else q.get("items", [])
+    changed = False
+    for it in items:
+        if not isinstance(it, dict) or it.get("status") != "boundary_hold":
+            continue
+        base = parse_time(it.get("boundary_hold_at", ""))
+        if not base:
+            continue
+        age_h = (now() - base).total_seconds() / 3600
+        if age_h >= 24:
+            topic = it.get("topic", "?")
+            it["status"] = "archived"
+            it["archive_reason"] = ("boundary_hold_expired:24h无独立复核确认>=79"
+                                    "(D20261010-007:78<79复核线)")
+            it["updated_at"] = now().isoformat()
+            issues.append(f"boundary-hold 到期归档：{topic}（{age_h:.1f}h 无复核）")
+            changed = True
+    if changed:
+        queue_db.pipeline_save(q)
+    return issues
+
+
+def check_rescore_pending():
+    """D20261017-00X KILL#6：rescore_pending_confirm 消费者。
+
+    24h 无人工确认 → 告警；7 天无人工确认 → 自动归档（按原分档位无晋档）。
+    """
+    issues = []
+    q = queue_db.pipeline_load()
+    items = q if isinstance(q, list) else q.get("items", [])
+    changed = False
+    for it in items:
+        if not isinstance(it, dict) or it.get("status") != "rescore_pending_confirm":
+            continue
+        base = parse_time(it.get("rescore_pending_at", ""))
+        if not base:
+            continue
+        age_h = (now() - base).total_seconds() / 3600
+        topic = it.get("topic", "?")
+        if age_h >= 168:
+            it["status"] = "archived"
+            it["archive_reason"] = (
+                "rescore_pending_confirm_timeout:7天无人工确认晋档，"
+                f"原分{it.get('review_score')}未晋档")
+            it["updated_at"] = now().isoformat()
+            issues.append(f"rescore 待确认超时归档：{topic}（{age_h:.1f}h 无人工确认）")
+            changed = True
+        elif age_h >= 24:
+            issues.append(
+                f"rescore 待人工确认：{topic} 重审 {it.get('review_score')}→"
+                f"{it.get('rescore_pending_score')} 已 {age_h:.1f}h 无人确认")
+    if changed:
+        queue_db.pipeline_save(q)
+    return issues
+
 
 def check_ask_studio_pending():
     """P1-4: 检查 ask_studio queue pending 超时（>2h 告警）。"""
@@ -447,6 +574,27 @@ def main():
         print(f"  STUCK: {msg}")
         alert(f"死状态：{msg}")
 
+    # D20261017-00X KILL#12/#13：selected 24h 超时告警 + 7 天自动归档
+    s_issues, s_archived = check_selected_timeout()
+    for msg in s_archived:
+        print(f"  AUTO-ARCHIVE: {msg}")
+        alert(f"死状态：{msg}")
+    for msg in s_issues:
+        print(f"  SELECTED-TIMEOUT: {msg}")
+        alert(f"死状态：{msg}")
+
+    # D20261017-00X KILL#3：boundary-hold 24h 到期自动归档
+    b_issues = check_boundary_hold()
+    for msg in b_issues:
+        print(f"  BOUNDARY-HOLD: {msg}")
+        alert(f"死状态：{msg}")
+
+    # D20261017-00X KILL#6：rescore 待人工确认超时
+    r2_issues = check_rescore_pending()
+    for msg in r2_issues:
+        print(f"  RESCORE-PENDING: {msg}")
+        alert(f"死状态：{msg}")
+
     # P1-4: ask_studio pending 超时
     a_issues = check_ask_studio_pending()
     for msg in a_issues:
@@ -479,7 +627,9 @@ def main():
         alert(msg)
 
     print("=== 扫描完成 ===")
-    return len(stuck) + len(p_issues) + len(a_issues) + len(d_issues) + len(e_issues) + len(r_issues) + len(o_issues)
+    return (len(stuck) + len(p_issues) + len(a_issues) + len(d_issues)
+            + len(e_issues) + len(r_issues) + len(o_issues)
+            + len(s_issues) + len(s_archived) + len(b_issues) + len(r2_issues))
 
 if __name__ == "__main__":
     with run_lock("dead_state_watchdog"):

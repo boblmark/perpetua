@@ -117,6 +117,176 @@ def check_forever():
     return subjects
 
 
+def check_council_watches():
+    """D20261017-00X：议会 7 WATCH 转监控（W2 跳过：tripwire 无机器可读定义，
+    见 kill_implementation_log.md；W6 由 dead_state_watchdog 覆盖）。
+    返回 tripwire 命中列表（每条已写 inbox）。
+    """
+    hits = []
+    now = datetime.now(timezone.utc)
+
+    def _within(iso_s, days):
+        try:
+            dt = datetime.fromisoformat(str(iso_s))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return (now - dt).total_seconds() < days * 86400
+        except Exception:
+            return False
+
+    # W1：空档计数/周 → 代理指标：publish_health_runlog trailing 7 天中
+    # 日发布<2条的天数；>=3 → 强制政策复核
+    try:
+        per_day = {}
+        with open("/home/hatch/data/perpetua/publish_health_runlog.txt",
+                  encoding="utf-8") as f:
+            for line in f:
+                m = __import__("re").search(
+                    r"^(20\d\d-\d\d-\d\d).*?publishes_last_24h:(\d+)", line)
+                if m:
+                    per_day[m.group(1)] = max(per_day.get(m.group(1), 0),
+                                              int(m.group(2)))
+        days = sorted(per_day.keys())[-7:]
+        low = [d for d in days if per_day[d] < 2]
+        if len(low) >= 3:
+            hits.append("W1 tripwire：7天内%d天日发布<2条（%s）→ 强制政策复核"
+                        % (len(low), ",".join(low)))
+    except Exception:
+        pass
+
+    # W3：逐字粘贴核验 log
+    try:
+        bad, skips = [], 0
+        seen_topics = set()
+        with open("/home/hatch/data/perpetua/verbatim_verify.log.jsonl",
+                  encoding="utf-8") as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                if not _within(e.get("at", ""), 30):
+                    continue
+                seen_topics.add(e.get("topic", ""))
+                if not e.get("ok"):
+                    bad.append(e.get("topic", "?"))
+        # mismatch 是否到达 ready：join queue
+        if bad:
+            try:
+                sys.path.insert(0, "/home/hatch/data/perpetua")
+                import queue_db as _qdb
+                q = _qdb.pipeline_load()
+                items = q if isinstance(q, list) else q.get("items", [])
+                ready = {str(i.get("topic")) for i in items
+                         if isinstance(i, dict)
+                         and i.get("teaser_manual_check") == "passed"}
+                reached = [t for t in bad if t in ready]
+                if reached:
+                    hits.append("W3 tripwire：逐字核验 mismatch 仍到达 ready：%s"
+                                % ",".join(reached))
+                else:
+                    hits.append("W3 提示：30天内 %d 个逐字核验 mismatch（已被门拦截，需人工复核）"
+                                % len(bad))
+            except Exception:
+                hits.append("W3 提示：30天内 %d 个逐字核验 mismatch（queue join 失败未验证是否到达 ready）"
+                            % len(bad))
+        # 跳过核验：30天内标记 ready 但无核验记录
+        try:
+            sys.path.insert(0, "/home/hatch/data/perpetua")
+            import queue_db as _qdb2
+            q2 = _qdb2.pipeline_load()
+            items2 = q2 if isinstance(q2, list) else q2.get("items", [])
+            for i in items2:
+                if not isinstance(i, dict):
+                    continue
+                if (i.get("teaser_manual_check") == "passed"
+                        and _within(i.get("teaser_manual_check_at", ""), 30)
+                        and str(i.get("topic", "")) not in seen_topics):
+                    skips += 1
+            if skips >= 2:
+                hits.append("W3 tripwire：30天内 %d 次跳过逐字核验" % skips)
+        except Exception:
+            pass
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    # W4：备胎评审验证运行
+    try:
+        with open("/home/hatch/data/perpetua/backup_judge_validation_runs.jsonl",
+                  encoding="utf-8") as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                if e.get("hard_violations"):
+                    hits.append("W4 tripwire：备胎 %s 在验证集上放行已知应拒 %d 个"
+                                % (e.get("judge", "?"), len(e["hard_violations"])))
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    # W5：亲派计数（7天内>=3 → 通道机制检修）
+    try:
+        n = 0
+        with open("/home/hatch/data/ask_studio/personal_dispatch_log.jsonl",
+                  encoding="utf-8") as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                if _within(e.get("at", ""), 7):
+                    n += 1
+        if n >= 3:
+            hits.append("W5 tripwire：7天内亲派 %d 次（>=3）→ 通道机制检修，"
+                        "不再无脑亲派" % n)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    # W7：去重拦截率（连续3天>80%，或单日100%且无复核记录）
+    try:
+        cnt = json.load(open("/home/hatch/data/perpetua/formula_dedup_daily.json",
+                             encoding="utf-8"))
+        days = sorted(cnt.keys())[-3:]
+        rates = []
+        for d in days:
+            c = cnt[d]
+            ch = int(c.get("checks", 0) or 0)
+            rj = int(c.get("rejects", 0) or 0)
+            rates.append((rj / ch) if ch else None)
+        if len(rates) == 3 and all(r is not None and r > 0.80 for r in rates):
+            hits.append("W7 tripwire：去重 block 率连续3天>80%%（%s）→ 提前复核窗口"
+                        % ",".join("%.0f%%" % (r * 100) for r in rates))
+        state = {}
+        try:
+            state = json.load(open(
+                "/home/hatch/data/perpetua/dedup_window_review_state.json",
+                encoding="utf-8"))
+        except Exception:
+            pass
+        reviewed = set(state.get("reviewed_days", []))
+        for d in sorted(cnt.keys())[-7:]:
+            c = cnt[d]
+            ch = int(c.get("checks", 0) or 0)
+            rj = int(c.get("rejects", 0) or 0)
+            if ch > 0 and rj == ch and d not in reviewed:
+                hits.append("W7 tripwire：%s 去重 100%% block 且无复核记录" % d)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    for h in hits:
+        _inbox_append("议会 WATCH：" + h)
+    return hits
+
+
 def main():
     report = {
         "at": ga.utcnow(),
@@ -124,6 +294,7 @@ def main():
         "grader_unhealthy": check_grader_health(),
         "sla_paged": check_sla(),
         "forever_p1": check_forever(),
+        "council_watches": check_council_watches(),
     }
     as_json = "--json" in sys.argv
     if as_json:

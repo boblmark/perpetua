@@ -192,7 +192,12 @@ def check_geminigen():
 
 
 def check_h3():
-    """H3 tunnel：动态检查，不硬编码。无配置 → SUSPECT（未配置≠不可用，M9 精神）。"""
+    """H3 tunnel：动态检查，不硬编码。
+    无配置 → UNKNOWN（用户 2026-10-15 明确要求：h3 有配置地址则实测连通性、
+    无配置 unknown；不写 ledger、不升级、不污染 SUSPECT 口径）。
+    2026-10-17 anomaly-watchdog 修复：此前误判 SUSPECT，导致 grader SUSPECT 率
+    100% 被判不健康、每日重复 P1 升级。
+    """
     snap_ts = ga.utcnow()
     h3_addr = os.environ.get("H3_ADDR", "")
     if not h3_addr:
@@ -206,9 +211,11 @@ def check_h3():
             except Exception:
                 pass
     if not h3_addr:
-        return _suspect("check_h3", "h3", "未配置地址",
-                        "H3 未配置地址（tunnel 自 10-13 断开，待配置新地址）",
-                        snap_ts, "session_state")
+        return ga.make_verdict("UNKNOWN",
+                               "H3 未配置地址（tunnel 自 10-13 断开，待配置新地址）",
+                               snap_ts, "session_state",
+                               checker=CHECKER, subject="h3",
+                               checker_health={"probe_ok": True, "unconfigured": True})
     try:
         r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
                             "-m", "10", h3_addr],

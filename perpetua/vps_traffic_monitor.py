@@ -114,11 +114,12 @@ def compute_stats(snaps, cfg):
     if not snaps:
         return 0.0, 0.0, ["无历史快照"]
 
-    # 当日增量：今日快照 - 今日之前最近一次快照
+    # 当日增量：今日快照 - 最近一次有该键值的快照（跳过云账单等特殊行）
     prev = None
     for s in reversed(snaps[:-1]):
-        prev = s
-        break
+        if key in s:
+            prev = s
+            break
     cur = snaps[-1]
     if prev is None:
         day_delta = 0.0
@@ -131,13 +132,16 @@ def compute_stats(snaps, cfg):
         else:
             day_delta = d / GB
 
-    # 当月累计：按月内快照逐段累加，处理重置
-    month_snaps = [s for s in snaps if s.get("date", "").startswith(month_prefix)]
+    # 当月累计：按月内快照逐段累加，处理重置（跳过无该键值的特殊行）
+    month_snaps = [s for s in snaps if s.get("date", "").startswith(month_prefix) and key in s]
     if not month_snaps:
-        return day_delta, 0.0, notes + ["本月无快照"]
-    # 月初基线：本月第一条之前最近的一条
-    idx_first = snaps.index(month_snaps[0])
-    baseline = snaps[idx_first - 1][key] if idx_first > 0 else None
+        return day_delta, 0.0, notes + ["本月无有效快照"]
+    # 月初基线：本月第一条之前最近的一条有效快照
+    baseline = None
+    for s in reversed(snaps[:snaps.index(month_snaps[0])]):
+        if key in s:
+            baseline = s[key]
+            break
     cum = 0
     prev_v = baseline
     for s in month_snaps:

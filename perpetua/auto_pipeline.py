@@ -88,6 +88,16 @@ import queue_db
 REVIEW_THRESHOLD = 85
 # D20261010-007 三级放行：>=85 直进正片；78-84 进 teaser 验证；<78 归档。
 TEASER_THRESHOLD = 78
+# D20261017-00X KILL#5：归档原因必须显式引用三级放行规则，承认阈值本身即规则
+# （77 vs 78 的一分悬崖不虚构质的差异）。
+BAND_RULE_REF = "D20261010-007"
+# D20261017-00X KILL#3：78.0-78.9 为边界档——不进标准 teaser，标记 boundary-hold；
+# 24h 内无独立复核确认 >=79 则自动归档（见 dead_state_watchdog.check_boundary_hold）。
+BOUNDARY_HOLD_MIN = 78.0
+BOUNDARY_HOLD_MAX = 79.0  # [78.0, 79.0)
+BOUNDARY_HOLD_CONFIRM = 79  # 独立复核确认线
+# D20261017-00X KILL#6：7 天内重审的记分窗口（留 log；晋档需人工确认）。
+RESCORE_WINDOW_DAYS = 7
 # D20261011-002 B-稳：对照组配额。Ask Studio 2026-10-11 实测：库里全是 >=85，
 # 无 <85 对照组，>=85 与真实播放的相关性数学上算不出（r≈0 只是"无数据"）。
 # 20% 配额放行 70-84 分走完全生产链（标记 control_group=True），60 天样本冲刺用。
@@ -405,7 +415,10 @@ def select_topics(n=2, slot="12:30"):
 
 
 def _in_control_group(item):
-    """D20261011-002 B-稳对照组：topic 哈希确定性 20% 选中。"""
+    """D20261011-002 B-稳对照组：topic 哈希确定性 20% 选中。
+    2026-10-17：被用户指令豁免的（control_group_overridden）永不进对照组。"""
+    if item.get("control_group_overridden"):
+        return False
     import hashlib
     key = str(item.get("topic") or item.get("id") or "")
     h = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16)
@@ -622,9 +635,12 @@ def _review_answer_text(qid):
     return ""
 
 
-def rewrite_failed_loop():
-    """重审循环：review_failed → rewrite_round1/2 → review_passed/archived。
-    T1-T12 状态机（AI Studio 规格 §2），红队修订 R1/R4 已并入。"""
+def rewrite_failed_loop(instant_timeout_minutes=0):
+    """重审循环：review_failed → rewrite_roundN → review_passed/升级人工。
+    T1-T12 状态机（AI Studio 规格 §2），红队修订 R1/R4 已并入。
+    2026-10-17 修：instant_timeout_minutes 由调用方传入（默认 0 只提交不阻塞），
+    此前硬编码 5 导致 review --wait 0 --instant-timeout 0 每轮空等最多 10 分钟。
+    2026-10-17 用户铁律：取消 2 轮硬上限，没过 85 一直改；5 轮未过升级人工，不静默归档。"""
     from prompt_review import submit_prompt_review_instant
     queue = load_queue()
     changed = False
@@ -633,10 +649,20 @@ def rewrite_failed_loop():
             continue
         topic = item.get("topic", "")
         rounds = int(item.get("rewrite_rounds", 0) or 0)
-        if rounds >= 2:  # N2：最多 2 轮
-            item["status"] = "archived"
-            item["archive_reason"] = "rewrite_rounds_exhausted"
-            pipeline_log("select", "ok", f"重审2轮未过→归档: {topic}", 0)
+        # 2026-10-17 用户铁律：取消 2 轮硬上限——没过 85 就一直改，不静默归档；
+        # 5 轮仍未过则升级人工判别（换题/继续），避免无限烧评审预算。
+        if rounds >= 5:
+            try:
+                ga.escalate("auto_pipeline.rewrite", topic,
+                            "rewrite_rounds_exhausted_5",
+                            severity="P2",
+                            detail=f"5轮重写仍未过85(父分{item.get('review_parent_score')})，请人工判断换题或继续")
+            except Exception:
+                pass
+            item["status"] = "review_failed"
+            item["needs_human_review"] = True
+            item["human_reason"] = "5轮重写仍未过85，已升级人工"
+            pipeline_log("select", "error", f"重审5轮未过→升级人工: {topic}", 0)
             changed = True
             continue
         qid = item.get("review_qid")
@@ -664,14 +690,9 @@ def rewrite_failed_loop():
             changed = True
             continue
         # T2：原创性结构重叠 → 跳过 round1，直接 round2（消耗两轮）
+        # 2026-10-17：取消轮数上限后不再因轮数不足归档
         overlap = "significant overlap" in answer.lower()
         consume = 2 if overlap else 1
-        if rounds + consume > 2:
-            item["status"] = "archived"
-            item["archive_reason"] = "overlap_no_rounds_left"
-            pipeline_log("select", "ok", f"原创重叠且轮数不足→归档: {topic}", 0)
-            changed = True
-            continue
         new_prompt, applied = apply_reviewer_fixes(item.get("prompt", ""), fixes)
         # N3/M8：必须与父 prompt 有差异
         if applied == 0 or new_prompt == item.get("prompt", ""):
@@ -688,7 +709,8 @@ def rewrite_failed_loop():
         try:
             new_qid, _ = submit_prompt_review_instant(
                 new_prompt, item.get("title", ""), item.get("description", ""),
-                topic=topic, force=True, instant_timeout_minutes=5)
+                topic=topic, force=True,
+                instant_timeout_minutes=instant_timeout_minutes)
         except Exception as e:
             item["status"] = "archived"
             item["archive_reason"] = f"resubmit_error:{str(e)[:80]}"
@@ -714,6 +736,120 @@ def rewrite_failed_loop():
     return queue
 
 
+def _score_tier(score):
+    """D20261017-00X KILL#6：分数档位。None=-1；<78=0（归档档）；78-84=1（teaser档）；>=85=2（正片档）。"""
+    if not isinstance(score, (int, float)):
+        return -1
+    if score >= REVIEW_THRESHOLD:
+        return 2
+    if score >= TEASER_THRESHOLD:
+        return 1
+    return 0
+
+
+def _within_days(iso_s, days):
+    try:
+        dt = datetime.fromisoformat(str(iso_s))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds() < days * 86400
+    except Exception:
+        return False
+
+
+def _log_rescore(item, old_score, new_score, qid):
+    """D20261017-00X KILL#6：7 天内重审必须留 log。返回 True=本次是窗口内重审。"""
+    old_at = item.get("review_answered_at")
+    if not (isinstance(old_score, (int, float)) and isinstance(new_score, (int, float))):
+        return False
+    if not (old_at and _within_days(old_at, RESCORE_WINDOW_DAYS)):
+        return False
+    log = item.setdefault("rescore_log", [])
+    log.append({
+        "at": datetime.now(timezone.utc).isoformat(),
+        "old_score": old_score,
+        "new_score": new_score,
+        "qid": qid,
+    })
+    item["rescore_log"] = log[-10:]  # 只保留最近 10 条
+    return True
+
+
+def confirm_rescore_promotion(topic_substr):
+    """D20261017-00X KILL#6：人工确认重审晋档（Dash 手工执行）。
+
+    对 status=rescore_pending_confirm 的条目，按 rescore_pending_score
+    的档位执行正常路由（review_passed/teaser_validation/review_failed）。
+    返回 True=已确认并路由。
+    """
+    queue = load_queue()
+    items = queue if isinstance(queue, list) else queue.get("items", [])
+    hit = False
+    for it in items:
+        if it.get("status") != "rescore_pending_confirm":
+            continue
+        if topic_substr not in str(it.get("topic", "")):
+            continue
+        score = it.get("rescore_pending_score")
+        it["review_score"] = score
+        it["review_answered_at"] = it.get("rescore_pending_at")
+        it.pop("rescore_pending_score", None)
+        it.pop("rescore_pending_at", None)
+        if score is not None and score >= REVIEW_THRESHOLD:
+            it["status"] = "review_passed"
+        elif score is not None and score >= TEASER_THRESHOLD:
+            it["status"] = "teaser_validation"
+            it["teaser_queued_at"] = datetime.now(timezone.utc).isoformat()
+        else:
+            it["status"] = "review_failed"
+        it["rescore_confirmed_by"] = "human"
+        it["rescore_confirmed_at"] = datetime.now(timezone.utc).isoformat()
+        pipeline_log("select", "ok",
+                     f"人工确认重审晋档 {score}分: {it.get('topic')}", 1)
+        hit = True
+    if hit:
+        save_queue(queue)
+    return hit
+
+
+def request_archive_reentry(topic_substr):
+    """D20261017-00X KILL#8：归档话题重入（Dash 手工执行，非自动）。
+
+    条件：已归档超 24h（禁同一评审人 24h 内反复刷分）；重入后 status=selected
+    等待新一轮独立评审，旧分保留在 rescore 守卫视野内（7 天内重审留 log）。
+    返回 True=已重入。
+    """
+    queue = load_queue()
+    items = queue if isinstance(queue, list) else queue.get("items", [])
+    hit = False
+    for it in items:
+        if it.get("status") != "archived":
+            continue
+        if topic_substr not in str(it.get("topic", "")):
+            continue
+        arch_at = it.get("updated_at") or it.get("archived_at") or ""
+        if arch_at and not _within_days(arch_at, 1):
+            pass  # 超 24h，可重入
+        elif arch_at:
+            pipeline_log("select", "error",
+                         f"重入被拒（归档未满24h，防刷分）: {it.get('topic')}", 0)
+            continue
+        it["status"] = "selected"
+        it["selected_at"] = datetime.now(timezone.utc).isoformat()
+        rlog = it.setdefault("reentry_log", [])
+        rlog.append({
+            "at": datetime.now(timezone.utc).isoformat(),
+            "from": "archived",
+            "archive_reason": it.get("archive_reason", ""),
+            "by": "human",
+        })
+        pipeline_log("select", "ok", f"归档重入→selected 待独立评审: {it.get('topic')}", 0)
+        hit = True
+    if hit:
+        save_queue(queue)
+    return hit
+
+
 def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
     from prompt_review import (
         submit_prompt_review_instant, wait_for_review_answer,
@@ -722,10 +858,15 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
     changed = False
     for item in queue:
         # D20261015-009：重审轮次的答案也在此捡起（rewrite_round1/2 等同 selected 流程）
+        # D20261017-00X KILL#3：boundary_hold 同 selected 流程参与独立复核
+        # （新 qid、新一轮评审），送审时打 second_review=True。
         _st = item.get("status")
         _is_rewrite = _st in ("rewrite_round1", "rewrite_round2")
-        if (_st != "selected" and not _is_rewrite) or item.get("urgent"):
+        _is_boundary = _st == "boundary_hold"
+        if (_st != "selected" and not _is_rewrite and not _is_boundary) or item.get("urgent"):
             continue
+        if _is_boundary and not item.get("review_qid"):
+            item["second_review"] = True
         topic = item["topic"]
         # 重审轮次：已送审（qid 已有），只捡答案不重复提交
         # 2026-10-16 修：普通 selected 项若已有 review_qid，同样只捡答案
@@ -795,8 +936,26 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
                 continue
             answer = fresh_answer
             score = parse_review_score(answer)
+            # D20261017-00X KILL#6：7 天内重审必须留 log；重审分晋档
+            # （新档位高于旧档位）不得自动路由，转人工确认。
+            # 注：rewrite 流程旧分已清零（review_score=None），天然豁免，
+            # D20261015-009 重审机制不受影响。
+            _old_score = item.get("review_score")
+            if _log_rescore(item, _old_score, score, qid) \
+                    and _score_tier(score) > _score_tier(_old_score):
+                item["status"] = "rescore_pending_confirm"
+                item["rescore_pending_score"] = score
+                item["rescore_pending_at"] = datetime.now(timezone.utc).isoformat()
+                pipeline_log("select", "ok",
+                             f"重审晋档待人工确认({_old_score}→{score}): {topic}", 0)
+                changed = True
+                continue
             item["review_score"] = score
             item["review_answered_at"] = fresh_at
+            # 边界复核完成：清标记（无论最终去向）
+            if item.pop("second_review", None) is not None:
+                item.pop("boundary_hold_at", None)
+                item.pop("boundary_hold_reason", None)
             # R4 跨 qid 回归检查（T7/N6）：重审分低于父分 → 归档，不再试
             _parent = item.get("review_parent_score")
             if _is_rewrite and isinstance(score, (int, float)) \
@@ -821,18 +980,38 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
                 item["status"] = "review_passed"
                 item["control_group"] = True
                 pipeline_log("select", "ok", f"终审 {score}分→对照组放行: {topic}", 1)
+            elif (score is not None
+                    and BOUNDARY_HOLD_MIN <= score < BOUNDARY_HOLD_MAX):
+                if item.get("second_review"):
+                    # 独立复核回来了，但仍 <79（未达确认线）→ 归档
+                    item["status"] = "archived"
+                    item["archive_reason"] = (
+                        f"boundary_hold_failed:second_review_{score}<79"
+                        f"({BAND_RULE_REF})")
+                    pipeline_log("select", "ok",
+                                 f"边界复核未达79({score})→归档: {topic}", 0)
+                else:
+                    # D20261017-00X KILL#3：78.0-78.9 边界分不进标准 teaser，
+                    # 标记 boundary-hold；24h 内无独立复核确认 >=79 则自动归档
+                    #（dead_state_watchdog.check_boundary_hold 消费）。
+                    item["status"] = "boundary_hold"
+                    item["boundary_hold_at"] = datetime.now(timezone.utc).isoformat()
+                    item["boundary_hold_reason"] = "boundary:78.0-78.9→hold待独立复核>=79"
+                    pipeline_log("select", "ok",
+                                 f"终审 {score}分→boundary-hold(24h待复核): {topic}", 0)
             elif score is not None and score >= TEASER_THRESHOLD:
                 # D20261010-007/008：78-84（非对照组）进观众验证环，不直接判死
                 item["status"] = "teaser_validation"
                 item["teaser_queued_at"] = datetime.now(timezone.utc).isoformat()
                 pipeline_log("select", "ok", f"终审 {score}分→teaser验证: {topic}", 1)
             else:
-                # T10：rewrite_round2 仍 <85 → 直接归档（轮数已用完，不回 review_failed）
-                if item.get("status") == "rewrite_round2":
-                    item["status"] = "archived"
-                    item["archive_reason"] = f"round2_failed:{score}"
+                # T10（2026-10-17 修）：重审多轮仍 <85 → 回 review_failed 继续改，
+                # 不再静默归档；5 轮上限在 rewrite_failed_loop 入口处升级人工。
+                if item.get("status") in ("rewrite_round1", "rewrite_round2"):
+                    item["status"] = "review_failed"
+                    item["archive_reason"] = None
                     pipeline_log("select", "ok",
-                                 f"重审第2轮 {score}分未过→归档: {topic}", 0)
+                                 f"重审{score}分未过→回review_failed继续改: {topic}", 0)
                 else:
                     item["status"] = "review_failed"
                 pipeline_log("select", "error", f"终审未达标 {score}分: {topic}", 0)
@@ -1617,7 +1796,7 @@ if __name__ == "__main__":
     elif args.cmd == "review":
         review_pending(max_wait_minutes=args.wait,
                          instant_timeout_minutes=args.instant_timeout)
-        rewrite_failed_loop()  # D20261015-009：重审闭环
+        rewrite_failed_loop(instant_timeout_minutes=args.instant_timeout)  # D20261015-009：重审闭环
         show_status()
     elif args.cmd == "submit":
         print(json.dumps({"submitted": submit_jobs()}, ensure_ascii=False))

@@ -318,16 +318,63 @@ def _misdeed_from_hook(hook):
 
 
 def build_suspense_title(lead, misdeed, reversal, tail, max_len=95):
-    """组装悬念型标题。[emoji]Karen [作恶]—Then [反转] [emoji]"""
-    title = f"{lead} Karen {misdeed}—Then {reversal} {tail}"
-    if len(title) > max_len:
-        # 缩短反转事件，在词边界截断
-        overflow = len(title) - max_len
-        cut_at = len(reversal) - overflow - 3
-        if cut_at > 10:
-            cut = reversal[:cut_at].rsplit(" ", 1)[0]
-            reversal = cut + "..."
-            title = f"{lead} Karen {misdeed}—Then {reversal} {tail}"
+    """组装悬念型标题。
+    D20261016-005 标题规格 v1（Shorts，2026-10-16 起 30 天试行）：
+      - 总长 <=60 字符（含空格+emoji）
+      - 单词数 <=12
+      - emoji 0-2 个且必须位于末尾（禁开头 emoji）
+    格式：Karen {misdeed}—Then {reversal} {tail}
+    lead 参数保留兼容（旧调用位），不再前置（规格 NEVER：标题禁以 emoji 开头）。
+    截断策略：先压 reversal（词边界），再压 misdeed，最后整体兜底；
+    保证输出 <=60 且 >=25（v53 门禁下限）。
+    2026-10-17 修复：旧实现只截 reversal，misdeed 过长时标题 130+ 字符，
+    被 v53 门禁 title_length 全部拦截 → select 连续 0 选题。
+    """
+    SPEC_MAX = 60  # D20261016-005 Shorts MUST
+    SPEC_MIN = 25  # v53 门禁下限
+    tail = (tail or "").strip()
+    misdeed = (misdeed or "").strip()
+    reversal = (reversal or "").strip()
+
+    def _cut(text, budget, min_keep=10):
+        """词边界截断到 budget 字符（含 '...' 后缀）；压不到 min_keep 返回 None。"""
+        text = text.strip()
+        if len(text) <= budget:
+            return text
+        cut = text[:max(budget - 3, 0)].rsplit(" ", 1)[0].strip()
+        if len(cut) < min_keep:
+            return None
+        return cut + "..."
+
+    def _assemble(m, r):
+        return f"Karen {m}—Then {r} {tail}".strip()
+
+    overhead = len(_assemble("", ""))  # "Karen " + "—Then " + " " + tail
+    # 优先保留 misdeed（冲突主体），先压 reversal
+    r_budget = SPEC_MAX - overhead - len(misdeed)
+    r2 = _cut(reversal, r_budget, min_keep=12)
+    if r2 is None:
+        # reversal 实在压不下：misdeed 也让位
+        r2 = _cut(reversal, 20, min_keep=12)
+        if r2 is None:  # 极端情况：reversal 取前词
+            r2 = (reversal.split() or ["..."])[0][:17]
+        m_budget = SPEC_MAX - len(_assemble("", r2))
+        m2 = _cut(misdeed, m_budget, min_keep=10) or misdeed
+    else:
+        m2 = misdeed
+    title = _assemble(m2, r2)
+    if len(title) > SPEC_MAX:
+        # 终极兜底：整体词边界截断，保留尾部 emoji
+        body = title
+        if tail and body.endswith(tail):
+            body = body[:-len(tail)].rstrip()
+            room = SPEC_MAX - len(tail) - 1 - 3
+            cut = body[:max(room, 0)].rsplit(" ", 1)[0].strip()
+            title = f"{cut}... {tail}" if cut else body[:max(room, 0)].strip() + f"... {tail}"
+        else:
+            cut = body[:SPEC_MAX - 3].rsplit(" ", 1)[0].strip()
+            title = f"{cut}..."
+    # 保底：极端短标题（<25 会被 v53 门禁拒）直接返回，不再硬凑
     return title
 
 VIRAL_WORDS = ["instant", "karma", "caught", "instantly"]

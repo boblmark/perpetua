@@ -565,13 +565,16 @@ def _analytics_for_video(video_id):
         return None, None
 
 
-def mark_teaser_manual_check_passed(topic_substr):
+def mark_teaser_manual_check_passed(topic_substr, verify_fixes=None):
     """人工浏览器快检通过后调用（Dash 手工执行）。
 
     同时设置 browser_checked=True 与上传网关要求的
     teaser_manual_check="passed"。2026-10-10 修：两字段曾不一致，
     导致 server.py _verify_pipeline_approval 以 [pipeline_approval]
     拒绝已快检 teaser 的发布。以后只调这一个函数，不手工改 JSON。
+    D20261017-00X KILL#4：verify_fixes 非空时（reviewer_fixes.json 中
+    该 topic 的 {"title","desc","prompt"}），先跑逐字比对核验；
+    核验不通过 → 拒绝标记 ready（返回 False），差异记 item 字段。
     返回 True=找到并标记。
     """
     q = load_queue()
@@ -579,8 +582,26 @@ def mark_teaser_manual_check_passed(topic_substr):
     hit = False
     for it in items:
         if topic_substr in str(it.get("topic", "")):
+            if verify_fixes:
+                try:
+                    from reviewer_fix_verify import verify_item_against_reviewer_fixes
+                    ok, report = verify_item_against_reviewer_fixes(it, verify_fixes)
+                    it["verbatim_verify"] = {
+                        "at": report["at"], "ok": ok,
+                        "fields": report["fields"],
+                        "compliance_adjustments": report.get("compliance_adjustments", []),
+                    }
+                    if not ok:
+                        plog("manual_check", "error",
+                             "逐字核验不通过，拒绝标记 ready %s" % topic_substr)
+                        continue
+                except Exception as e:
+                    plog("manual_check", "error", "核验异常: %s" % str(e)[:100])
+                    continue
             it["browser_checked"] = True
             it["teaser_manual_check"] = "passed"
+            # D20261017-00X W3：ready 标记时间戳，供逐字核验跳过计数
+            it["teaser_manual_check_at"] = _iso()
             hit = True
     if hit:
         save_queue(q)
@@ -671,6 +692,54 @@ def _collect_awaiting_check_publish(queue):
         except Exception as e:
             plog("collect", "error", "实验记录更新失败: %s" % str(e)[:80])
     return changed
+
+
+def check_teaser_killswitch():
+    """24h kill-switch（议会 D20261017-00X KILL#2 修订）。
+
+    teaser_published 满 24h 但未满 48h、尚无终局 verdict：
+      数据可得且 views == 0 → 提前 RED 永久归档，不占满 48h 窗口。
+    数据不可得（avd is None）→ fail-open 跳过，下轮重试，绝不因探针
+    故障误杀（Rule 14）。
+    48h 终审规则（D20261010-008）不变。
+    """
+    queue = load_queue()
+    changed = False
+    for item in queue:
+        if item.get("status") != "teaser_published":
+            continue
+        if item.get("teaser_verdict") not in (None, "", "INCONCLUSIVE"):
+            continue
+        pub_at = item.get("teaser_published_at", "")
+        try:
+            age_h = (_now() - datetime.fromisoformat(pub_at)).total_seconds() / 3600
+        except Exception:
+            continue
+        if age_h < 24 or age_h >= 48:
+            continue
+        if item.get("teaser_killswitch_checked_at"):
+            continue
+        vid = item.get("teaser_video_id", "")
+        avd, views = _analytics_for_video(vid)
+        if avd is None:
+            # 无数据：fail-open，不杀
+            plog("killswitch", "ok", "%s 24h 数据未回传，跳过 kill-switch" % vid)
+            continue
+        item["teaser_killswitch_checked_at"] = _iso()
+        item["teaser_views_24h"] = views
+        if views == 0:
+            item["status"] = "archived_permanent"
+            item["teaser_verdict"] = "RED"
+            item["teaser_red_reason"] = "killswitch_24h_zero_views"
+            plog("killswitch", "ok",
+                 "RED %s 24h views=0 → 提前终止归档（kill-switch）" % vid)
+            changed = True
+        else:
+            plog("killswitch", "ok",
+                 "%s 24h views=%d avd=%.1f → 存活，继续 48h 终审" % (vid, views, avd))
+            changed = True
+    if changed:
+        save_queue(queue)
 
 
 def check_teaser_metrics():
@@ -781,6 +850,7 @@ def _append_episode_backlog(item):
 def main():
     n_sub = submit_teaser_jobs()
     collect_teaser_results()
+    check_teaser_killswitch()
     check_teaser_metrics()
     print("teaser_validate done (submit=%d)" % n_sub)
 
