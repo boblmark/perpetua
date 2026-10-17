@@ -5,6 +5,9 @@
 - 命令队列只有跃迁门能发射（transition() → emit_command）
 - 命令类型：GENERATE / INGEST_ARTIFACT / PUBLISH / SET_PRIVATE / QUARANTINE
 - 幂等键：gate:{video_key}:{from}:{to}:{run_id}；executed_commands.json 防重放
+- 2026-10-18 新增：① 归因门——自称 human:* 的 actor 无核验一律降级为
+  agent:unverified-*（防 worker 冒充用户批准）；② 提前量门禁——PUBLISH 早于
+  排期档超过 15 分钟 → skip 并交 privateq 排期执行（用户拍板规则）
 - worker 执行副作用（YouTube API），结果写回 pipeline_state
 
 用法：
@@ -49,11 +52,37 @@ def save_executed(e):
     atomic_write_json(str(EXECUTED_FILE), e)
 
 
+def _verify_human_actor(actor, reason):
+    """2026-10-18 归因门：任何自称 human:* 的 actor 必须可核验。
+
+    背景：2026-10-09（VID_T5×2）与 2026-10-17（冰箱 xtcUVlQKmIM）三次出现
+    worker 手写 actor="human:emergency" + reason="emergency_flip:user_approved"
+    冒充用户批准；全仓库无任何代码路径会合法产生 human:* 前缀。
+    处理：未核验的一律降级为 agent:unverified-*，原值保留在 claimed_actor，
+    命令照常入队（fail-open 不中断流程），但下游不得再误读为"用户批准"。
+    audit_log 留 loud 记录供追查。
+    """
+    if not (isinstance(actor, str) and actor.startswith("human:")):
+        return actor, None
+    claimed = actor
+    downgraded = "agent:unverified-" + claimed[len("human:"):]
+    try:
+        audit_log("unverified_human_actor_claim", "", "", "", "executor",
+                  {"claimed_actor": claimed, "downgraded_to": downgraded,
+                   "reason": str(reason)[:200],
+                   "note": "no code path legitimately emits human:*; "
+                           "treat as worker claim, NOT user approval"})
+    except Exception:
+        pass
+    return downgraded, claimed
+
+
 def emit_command(command, video_key, from_state, to_state, idempotency_key,
                  actor, reason, run_id=None):
     """跃迁门发射命令（MUST-7）。幂等：已执行或已在队列则返回 duplicate。"""
     if command not in COMMANDS:
         raise ValueError(f"未知命令: {command}")
+    actor, claimed_actor = _verify_human_actor(actor, reason)
     executed = load_executed()
     if idempotency_key in executed:
         return {"emitted": False, "duplicate": True,
@@ -64,7 +93,7 @@ def emit_command(command, video_key, from_state, to_state, idempotency_key,
            c.get("status") == "pending":
             return {"emitted": False, "duplicate": True,
                     "reason": "already queued"}
-    q.append({
+    entry = {
         "command": command,
         "video_key": video_key,
         "from_state": from_state,
@@ -76,7 +105,10 @@ def emit_command(command, video_key, from_state, to_state, idempotency_key,
         "enqueued_at": _now_utc().isoformat(),
         "status": "pending",
         "attempts": 0,
-    })
+    }
+    if claimed_actor:
+        entry["claimed_actor"] = claimed_actor
+    q.append(entry)
     save_queue(q)
     audit_log("command_enqueued", video_key, from_state, to_state, actor,
               {"command": command, "idempotency_key": idempotency_key})
@@ -191,6 +223,108 @@ def _is_stale_command(cmd):
         return False  # 检测失败时不拦截，避免误杀正常命令
 
 
+FLIP_LEAD_MINUTES = 15  # 2026-10-18 用户拍板：翻转提前量超过 15 分钟 → 走排期
+
+
+def _resolve_flip_slot(cmd):
+    """解析 PUBLISH 命令对应的排期档时间（UTC）。返回 (slot_dt, source)。
+
+    source: "privateq"（SQLite 真相源）或 "idempotency_key"
+    （形如 private_flip:<vid>:<ISO8601 slot>:<actor>）。都找不到返回 (None, None)。
+    """
+    import re
+    vid = _vid_from_key(cmd.get("video_key", ""))
+    # 1) SQLite privateq 真相源
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from queue_db import privateq_load
+        for e in privateq_load() or []:
+            if not isinstance(e, dict):
+                continue
+            if e.get("video_id") == vid and e.get("status") == "waiting" \
+                    and e.get("scheduled_at"):
+                dt = datetime.fromisoformat(
+                    str(e["scheduled_at"]).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt, "privateq"
+    except Exception as ex:
+        print(f"WARN: privateq 读排期失败，fallback 到幂等键: {ex}",
+              file=sys.stderr)
+    # 2) 幂等键里的时间戳
+    try:
+        m = re.search(
+            r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?"
+            r"(?:Z|[+-]\d{2}:?\d{2})?)",
+            str(cmd.get("idempotency_key", "")))
+        if m:
+            dt = datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt, "idempotency_key"
+    except Exception:
+        pass
+    return None, None
+
+
+def _ensure_privateq_flip(vid, slot_dt):
+    """确保排期真相源里有该视频的 waiting 翻转条目（bypass 命令重路由用）。
+
+    成功返回 True；失败返回 False（调用方此时不应 skip 命令，留 pending 下轮重试）。
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from queue_db import privateq_load, privateq_save
+        pq = privateq_load() or []
+        for e in pq:
+            if isinstance(e, dict) and e.get("video_id") == vid \
+                    and e.get("status") == "waiting":
+                return True
+        pq.append({
+            "video_id": vid,
+            "title": f"(executor lead-time reroute {vid})",
+            "scheduled_at": slot_dt.astimezone(timezone.utc).isoformat(),
+            "slot": "executor-reroute",
+            "status": "waiting",
+            "review_score": None,
+            "video_file": "",
+            "gemini_verdict": "",
+            "queued_at": _now_utc().isoformat(),
+            "note": "2026-10-18 lead-time rule：bypass 的 PUBLISH 命令重路由到排期，"
+                    "到点由 private_flip 按档翻转",
+        })
+        privateq_save(pq)
+        return True
+    except Exception as ex:
+        print(f"WARN: privateq 补条目失败: {ex}", file=sys.stderr)
+        return False
+
+
+def _lead_time_gate(cmd):
+    """2026-10-18 用户拍板规则：PUBLISH 提前量 >15 分钟 → 走排期，不立即执行。
+
+    返回 (action, detail)，action ∈ {"execute","skip","hold"}：
+    - execute：无排期信息（fail-open）或提前量 ≤15 分钟 → 正常执行
+    - skip：排期真相源已拥有该翻转 → 命令记 skipped 终态（无孤儿状态，Rule 15）
+    - hold：排期条目补写失败 → 留 pending 下轮重试，不丢翻转
+    """
+    if cmd.get("command") != "PUBLISH":
+        return "execute", ""
+    slot_dt, src = _resolve_flip_slot(cmd)
+    if slot_dt is None:
+        return "execute", "no slot info, fail-open"
+    lead_min = (slot_dt - _now_utc()).total_seconds() / 60
+    if lead_min <= FLIP_LEAD_MINUTES:
+        return "execute", f"lead {lead_min:.1f}min within tolerance"
+    vid = _vid_from_key(cmd.get("video_key", ""))
+    ensured = _ensure_privateq_flip(vid, slot_dt)
+    detail = (f"lead {lead_min:.1f}min > {FLIP_LEAD_MINUTES}min "
+              f"(slot {slot_dt.isoformat()} via {src}) → deferred to schedule")
+    if ensured:
+        return "skip", detail
+    return "hold", detail + "; privateq write failed, hold for retry"
+
+
 def process_queue(handler_overrides=None, max_batch=20):
     """worker：取 pending 命令 → 执行 → 记 executed → 写回。返回处理统计。"""
     handlers = dict(DEFAULT_HANDLERS)
@@ -216,6 +350,26 @@ def process_queue(handler_overrides=None, max_batch=20):
                           "executor", {"command": cmd["command"],
                                       "idempotency_key": key,
                                       "enqueued_at": cmd.get("enqueued_at")})
+                continue
+            # 提前量门禁（2026-10-18 用户拍板）：PUBLISH 早于排期档 >15 分钟 → 走排期
+            action, gate_detail = _lead_time_gate(cmd)
+            if action == "skip":
+                cmd["status"] = "skipped"
+                cmd["skip_reason"] = gate_detail
+                skipped += 1
+                audit_log("command_deferred_to_slot", cmd["video_key"],
+                          cmd.get("from_state", ""), cmd.get("to_state", ""),
+                          "executor", {"command": cmd["command"],
+                                      "idempotency_key": key,
+                                      "detail": gate_detail})
+                continue
+            if action == "hold":
+                cmd["hold_reason"] = gate_detail
+                audit_log("command_hold_retry", cmd["video_key"],
+                          cmd.get("from_state", ""), cmd.get("to_state", ""),
+                          "executor", {"command": cmd["command"],
+                                      "idempotency_key": key,
+                                      "detail": gate_detail})
                 continue
             handler = handlers.get(cmd["command"])
             if not handler:
