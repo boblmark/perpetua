@@ -31,6 +31,9 @@ token 经 authd 实时获取，永不落盘、永不打印。
 - 排除：*.bak*/*.lock/*.log/*.json（状态文件不进版本库）、
   videos/snapshots/db_backups/deleted_backup/artifacts/logs/hidden_logs/
   audit/auth/tenants/billing/models/jobs/__pycache__/repo/build/dist（运行时/大体积）
+- custom-skills（2026-10-18 用户要求纳入）：~/workspace/custom-skills/ -> repo/perpetua/skills/，
+  同一推送链路、同一全量接管语义；技能目录只含 curated 文档与脚本无运行时状态，
+  故 *.json 允许进入（与主树不同）；不进安装包（build_install_package.sh 按显式文件清单打包，不受影响）
 - 教训：rsync 的目录排除必须放在 `--include='*/'` 之前，否则会被穿透；
   用 `dir/***` 写法确保目录内容整体排除。
 

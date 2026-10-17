@@ -302,6 +302,10 @@ _PERMANENT_REJECT_MARKERS = (
 )
 _TRANSIENT_REJECT_MARKERS = (
     "[gate1:错峰]",        # 4 小时/120 分钟发布间隔门：时间到了自然解除
+    "[gateway:spacing]",  # 2026-10-18 修：120 分钟发布间隔门（gateway 间隔拒绝），
+                          # 时间型临时失败。注意检查顺序：transient 先于 "[gateway:"
+                          # 永久前缀匹配，否则会被误判 permanent（robot lawnmower
+                          # 2026-10-17 曾因此被错打入 teaser_publish_blocked 终态）。
 )
 
 
