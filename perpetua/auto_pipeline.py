@@ -1634,7 +1634,7 @@ def _auto_upload_private(item):
                       "qc_passed": qc.get("passed"),
                       "review_score": item.get("review_score")})
         return True, False
-    retryable = "gateway:spacing" in res  # 120 分钟间隔门禁 → 下一轮重试
+    retryable = ("gateway:spacing" in res or "[gate1:错峰]" in res)  # 2026-10-17 修：间隔门禁真实文本是 [gate1:错峰]，旧串从不命中导致可重试拒绝被判 upload_failed 终态
     # 2026-10-16 P2-6 修（四脑议会 anti-idle）：网络异常/API 5xx 判 transient，
     # 最多重试 2 次再终态（此前直接进 upload_failed 终态）
     _rl = str(res).lower()
