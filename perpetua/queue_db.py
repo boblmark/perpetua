@@ -538,7 +538,7 @@ def _save_all(queue_name, items, owner, consumer_fn, event_type):
                 continue
             k = p.get("_row_key") if isinstance(p, dict) else None
             if k:
-                existing[k] = r["id"]
+                existing[k] = (r["id"], r["payload"])
         now = datetime.now(timezone.utc)
         alarm = (now + timedelta(hours=SHIM_TIMEOUT_HOURS)).isoformat()
         seen_ids = set()
@@ -546,10 +546,21 @@ def _save_all(queue_name, items, owner, consumer_fn, event_type):
             k = it.get("_row_key") if isinstance(it, dict) else None
             payload_json = json.dumps(it, ensure_ascii=False)
             consumer = str(consumer_fn(it))
-            rid = existing.pop(k, None) if k else None
+            rid, old_payload = None, None
+            if k:
+                _hit = existing.pop(k, None)
+                if _hit:
+                    rid, old_payload = _hit
             if rid is not None:
                 # UPDATE：只刷新 payload/consumer/时间；保留行 status/retry_count
                 #（旧实现每次 save 把全表重置为 PENDING，会踩掉别人的 lease）。
+                # 2026-10-18：payload 实变才刷新条目内 updated_at。死状态看门狗读
+                # 该字段判 stale，但此前 collect/QC/review 各路径改了字段却不碰它，
+                # 导致条目当天走完"评审→生成→QC"全程仍显示旧时间戳（如 10-18 hub
+                # 被误报 60.8h 卡死）。无实质变化的重存不刷新，避免掩盖真卡死。
+                if isinstance(it, dict) and payload_json != (old_payload or ""):
+                    it["updated_at"] = now.isoformat()
+                    payload_json = json.dumps(it, ensure_ascii=False)
                 c.execute(
                     """UPDATE event_bus SET payload=?, consumer=?,
                        updated_at=datetime('now') WHERE id=?""",
