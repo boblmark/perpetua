@@ -23,6 +23,7 @@ EXCLUDE_DIRS = {
     "deploy/perpetua-linux",
     "build", "teaser_splice_check", "gemini_fallback_review",
     "selftest/.thumbnails", "evolution_reports",  # 日报持续追加，运行时产物
+    "arena_agent/jury_prompts",  # 2026-10-18: 陪审团 timestamped prompt/结果，cron 周期生成累积，运行时产物（曾致每轮 jury 后误报漂移重建）
 }
 
 # 文件名/后缀排除
