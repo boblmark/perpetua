@@ -4,8 +4,8 @@
 
 LOG=/home/hatch/data/perpetua/vps_console/tunnel_nano_keepalive.log
 
-if pgrep -f "tunnel_nano\.sh" > /dev/null 2>&1; then
-    exit 0  # 脚本在运行
+if pgrep -f "[/]tunnel_nano\.sh" > /dev/null 2>&1; then
+    exit 0  # 脚本在运行（[/] 字符类避免 pgrep 匹配到执行器自身命令行，Rule 9 自匹配教训）
 fi
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') tunnel_nano.sh 不在运行，拉起" >> "$LOG"
