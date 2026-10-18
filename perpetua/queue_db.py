@@ -561,10 +561,19 @@ def _save_all(queue_name, items, owner, consumer_fn, event_type):
                 if isinstance(it, dict) and payload_json != (old_payload or ""):
                     it["updated_at"] = now.isoformat()
                     payload_json = json.dumps(it, ensure_ascii=False)
+                # 2026-10-19：行级 updated_at 同样只在 payload 实变时刷新。
+                # 此前 UPDATE 无条件 datetime('now')，任何 save 全表 44 行时间戳
+                # 一起刷新（如 2026-10-19 01:03 dead_state_watchdog 一轮 save 就把
+                # 全表刷成同一秒），行级 updated_at 完全丧失 stale 判别力——与
+                # 10-18 hub 误报同类（Rule 10-18 未覆盖到行级列）。SQLite SET 右值
+                # 按旧行求值，故 CASE WHEN payload IS ? 可原子判定是否实变。
                 c.execute(
                     """UPDATE event_bus SET payload=?, consumer=?,
-                       updated_at=datetime('now') WHERE id=?""",
-                    (payload_json, consumer, rid))
+                       updated_at=CASE WHEN payload IS ?
+                                      THEN updated_at
+                                      ELSE datetime('now') END
+                       WHERE id=?""",
+                    (payload_json, consumer, payload_json, rid))
                 seen_ids.add(rid)
             else:
                 cur = c.execute(
