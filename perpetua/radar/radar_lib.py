@@ -169,17 +169,38 @@ def insert_snapshot(con, platform, video_id, views, likes, comments, title, thum
     )
 
 
+def _download_bytes(url, timeout=15):
+    """下载 URL 字节；SSL 握手卡死时线程 join 硬兜底，超时/失败返回 None。
+
+    2026-10-19 修：egress 代理后 urllib urlopen(timeout) 拦不住 SSL do_handshake
+    无限等待（youtube_snapshot 连续 3 轮被 timeout kill）。网络 I/O 放 daemon
+    线程，join(timeout+5) 硬上限；线程内异常静默，调用方按 None 处理。
+    """
+    box = {}
+
+    def _fetch():
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                box["data"] = r.read(2 * 1024 * 1024)
+        except Exception:
+            pass
+
+    import threading
+    t = threading.Thread(target=_fetch, daemon=True)
+    t.start()
+    t.join(timeout + 5)
+    return box.get("data")
+
+
 def thumbnail_hash(url, timeout=15):
     """下载缩略图并返回 sha256；失败返回 None（不阻断快照）。"""
     if not url:
         return None
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = r.read(2 * 1024 * 1024)
-        return hashlib.sha256(data).hexdigest()[:32]
-    except Exception:
+    data = _download_bytes(url, timeout)
+    if not data:
         return None
+    return hashlib.sha256(data).hexdigest()[:32]
 
 
 def append_run_log(name, line):
@@ -199,9 +220,9 @@ def thumb_phash(url, timeout=15):
     try:
         import io
         from PIL import Image
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = r.read(2 * 1024 * 1024)
+        data = _download_bytes(url, timeout)
+        if not data:
+            return None
         img = Image.open(io.BytesIO(data)).convert("L").resize((9, 8), Image.LANCZOS)
         px = list(img.getdata())
         bits = 0

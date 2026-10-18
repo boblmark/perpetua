@@ -24,6 +24,8 @@ EXCLUDE_DIRS = {
     "build", "teaser_splice_check", "gemini_fallback_review",
     "selftest/.thumbnails", "evolution_reports",  # 日报持续追加，运行时产物
     "arena_agent/jury_prompts",  # 2026-10-18: 陪审团 timestamped prompt/结果，cron 周期生成累积，运行时产物（曾致每轮 jury 后误报漂移重建）
+    "arena_agent/jury_results",  # 2026-10-19: 陪审团 teardown 结果 md，timestamped 累积，运行时产物（同类 bug 复发）
+    "radar/reports",  # 2026-10-19: 雷达 metrics/prune 日报，cron 周期生成累积，运行时产物
 }
 
 # 文件名/后缀排除
@@ -33,6 +35,7 @@ EXCLUDE_NAMES = {
     ".github_push_pending",
     "vps_traffic.jsonl", "viralloop_oa_live_cache.json", "video_quota.json",
     "formula_dedup_reject.log.json",
+    "publish_health_runlog.txt",  # 2026-10-19: publish_health 运行日志，cron 周期追加（.txt 漏网）
 }
 # 运行时状态 JSON（快照由 snapshot.sh 在迁移窗口实时生成，永不烘焙进包）
 STATE_JSON_RES = (
@@ -61,6 +64,8 @@ STATE_JSON_NAMES = {
     "awaiting_approval.json",  # 2026-10-17: 待审批评审项，管线状态，运行时产物
     "reject_window.json",  # 2026-10-17: 拒绝窗口时间戳，cron 周期写入，运行时产物
     "formula_dedup_daily.json",  # 2026-10-17: 每日去重统计，cron 每天重写，运行时产物
+    "dynamic_constraints.json",  # 2026-10-19: feature_extractor/daily_topic_feedback 周期 merge 重写，进化数据非手写源码
+    "platform_health.json",  # 2026-10-19: 雷达 snapshot 脚本 cron 周期重写，运行时健康状态
 }
 
 INCLUDE_EXTS = {
