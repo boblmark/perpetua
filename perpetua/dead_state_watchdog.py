@@ -191,6 +191,40 @@ def check_qc_orphans():
                 referenced.add(os.path.basename(str(it["video_file"])))
     except Exception as ex:
         print(f"  WARN: 读 SQLite 队列失败（orphan 检查降级用 JSON）: {ex}")
+    # 2026-10-18 修：已发布的 item 只留 video_id 不回填 video_file
+    # （如 kiosk geminigen-browser-20261017-v3 发布为 5gcdjQ0SdrU），
+    # 其本地同宗文件会被误判 orphan 每 12h 误报一次。建立"已发布 lineage"
+    # 集合：item 有 video_id 且其 (job 日期 token + device/backend token)
+    # 均命中文件名 stem 时，视为已出片 lineage，跳过告警。
+    published_lineage = []
+    try:
+        for it in (_qitems if "_qitems" in dir() else []):
+            if not isinstance(it, dict):
+                continue
+            up = it.get("upload_result")
+            up_vid = up.get("video_id") if isinstance(up, dict) else None
+            vid = (it.get("youtube_video_id") or up_vid
+                   or it.get("teaser_video_id")
+                   or it.get("video_id"))
+            if not vid or str(vid).lower() in ("none", ""):
+                continue
+            job = str(it.get("job_id") or "")
+            m = re.search(r"(\d{8})", job)
+            date_tok = m.group(1) if m else None
+            dev_toks = {t for t in re.split(r"[^a-z0-9]+", str(it.get("device") or "").lower()) if len(t) > 2}
+            be_tok = re.split(r"[^a-z0-9]+", str(it.get("gen_backend") or "").lower())[0]
+            published_lineage.append((date_tok, dev_toks, be_tok))
+    except Exception as ex:
+        print(f"  WARN: lineage 集合构建失败（跳过此项）: {ex}")
+    def _lineage_published(bn: str) -> bool:
+        stem = bn.lower()
+        for date_tok, dev_toks, be_tok in published_lineage:
+            date_hit = bool(date_tok and date_tok in stem)
+            dev_hit = any(t in stem for t in dev_toks)
+            be_hit = bool(be_tok and len(be_tok) > 2 and be_tok in stem)
+            if date_hit and (dev_hit or be_hit):
+                return True
+        return False
     now_t = now()
     state = load(ORPHAN_STATE_PATH, {})
     if not isinstance(state, dict):
@@ -208,6 +242,8 @@ def check_qc_orphans():
             continue
         if bn in referenced:
             continue
+        if _lineage_published(bn):
+            continue  # 2026-10-18：同宗已发布（只留 video_id），非孤儿
         if not os.path.exists(vf):
             continue
         age_h = (now_t.timestamp() - os.path.getmtime(vf)) / 3600
