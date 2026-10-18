@@ -18,7 +18,12 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
 import graded_assertions as ga
 
-MEMORY_LOG = os.path.expanduser("~/memory/2026-10-15.md")
+try:
+    from zoneinfo import ZoneInfo
+    _today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+except Exception:
+    _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+MEMORY_LOG = os.path.expanduser("~/memory/%s.md" % _today)
 INBOX_PATH = "/home/hatch/data/collab/inbox.json"
 
 # R2：分级器自证检测阈值 —— 24h 内同一 checker 的 SUSPECT 占比
