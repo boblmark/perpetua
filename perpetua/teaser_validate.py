@@ -576,7 +576,23 @@ def _analytics_for_video(video_id, pub_at=None):
     try:
         req = urllib.request.Request(
             url, headers={"Authorization": "Bearer " + token})
-        rows = json.load(urllib.request.urlopen(req, timeout=30)).get("rows", [])
+        # 2026-10-18 修：出口代理偶发截断连接（IncompleteRead / remote closed，
+        # 实测截断字节数恰为完整响应长度），函数内自带 3 轮重试+退避，
+        # 不让偶发抖动浪费整轮。3 轮全败才回 (None, None) 由上层按未知失败处理。
+        rows = None
+        last_err = None
+        for attempt in range(3):
+            try:
+                rows = json.load(
+                    urllib.request.urlopen(req, timeout=30)).get("rows", [])
+                last_err = None
+                break
+            except Exception as e:
+                last_err = e
+                import time as _t
+                _t.sleep(3 * (attempt + 1))
+        if last_err is not None:
+            raise last_err
         if not rows:
             return None, None
         # rows: [video, views, averageViewPercentage]
