@@ -33,6 +33,7 @@ TTL = {
 }
 
 LEDGER_PATH = os.path.join(BASE, "anomaly_ledger.json")
+LEDGER_DEDUP_TTL_S = 6 * 3600  # 同一 (checker,subject,verdict) 6h 内不重复写新条目
 ESCALATION_PATH = os.path.join(BASE, "escalation_inbox.json")
 
 # 具名 fallback 响应人（R4）：升级无人 ack 时的接手链
@@ -106,8 +107,30 @@ def dedup_key(checker, subject, condition):
 # ---------------- anomaly ledger（R1：SUSPECT 必须留机器可读痕迹） ----------------
 
 def ledger_append(verdict_rec):
-    """SUSPECT 写入 anomaly ledger：非分数、非跃迁，但可查询。KILL#5 的修订。"""
+    """SUSPECT 写入 anomaly ledger：非分数、非跃迁，但可查询。KILL#5 的修订。
+
+    2026-10-18 dedup：同一 (checker, subject, verdict) 在 LEDGER_DEDUP_TTL_S 内
+    已有未解决条目时跳过追加——同一持久状态每轮写一条会淹没台账
+    （如 h3 断开数日，重复写 236 条）。首条保留作为"当前态"记录，
+    状态翻转时再写新条目（resolve/新 verdict 触发）。
+    """
     ledger = _load(LEDGER_PATH, [])
+    c, s, v = (verdict_rec.get("checker"), verdict_rec.get("subject"),
+               verdict_rec.get("verdict"))
+    now = time.time()
+    for e in ledger:
+        if (not e.get("resolved") and e.get("checker") == c
+                and e.get("subject") == s and e.get("verdict") == v):
+            try:
+                at_ts = time.mktime(time.strptime(e.get("at", "")[:19], "%Y-%m-%dT%H:%M:%S"))
+            except Exception:
+                continue
+            if now - at_ts < LEDGER_DEDUP_TTL_S:
+                # 刷新证据时间戳，保持"当前态"新鲜，不写新条目
+                e["evidence_timestamp"] = verdict_rec.get("evidence_timestamp")
+                e["detail"] = verdict_rec.get("detail")
+                _save(LEDGER_PATH, ledger[-500:])
+                return e["id"]
     entry = {
         "id": f"an-{int(time.time())}-{os.getpid()}",
         "at": utcnow(),
@@ -123,6 +146,26 @@ def ledger_append(verdict_rec):
     # 只保留最近 500 条
     _save(LEDGER_PATH, ledger[-500:])
     return entry["id"]
+
+
+def ledger_collapse(checker, subject):
+    """把同一 (checker, subject) 的重复未解决条目收敛为最新一条，其余标记 resolved。
+
+    用于 2026-10-18 台账清理：h3 等持久态已堆积数百条重复条目，保留最新
+    一条作为当前态代表（anomaly-watchdog 的计数会随之回落到真实水平）。
+    """
+    ledger = _load(LEDGER_PATH, [])
+    matches = [e for e in ledger if not e.get("resolved")
+               and e.get("checker") == checker and e.get("subject") == subject]
+    if len(matches) <= 1:
+        return len(matches)
+    matches.sort(key=lambda e: e.get("at", ""))
+    for e in matches[:-1]:
+        e["resolved"] = True
+        e["resolved_at"] = utcnow()
+        e["resolved_reason"] = "dedup-collapse: 同一状态重复条目收敛，保留最新一条"
+    _save(LEDGER_PATH, ledger)
+    return 1
 
 
 def ledger_unresolved(subject=None, checker=None):
