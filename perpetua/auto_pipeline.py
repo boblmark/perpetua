@@ -277,7 +277,7 @@ def select_topics(n=2, slot="12:30"):
         try:
             vs = vscore({"title": f"Karen vs {topic}", "hook": hook,
                          "topic_heat": "medium", "duration": 10})
-            base = vs.get("total", 50) if isinstance(vs, dict) else 50
+            base = vs.get("score", 50) if isinstance(vs, dict) else 50  # 2026-10-19 修复：virality_score 返回键为 score，非 total
         except Exception:
             base = 50
         sc_words = set(re.findall(r"[a-zA-Z]{3,}",

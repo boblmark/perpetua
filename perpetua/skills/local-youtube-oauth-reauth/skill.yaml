@@ -1,10 +1,25 @@
 name: local_youtube_oauth_reauth
-title: Local youtube oauth reauth
-description: Recovered local skill; review its instructions before reuse.
+title: YouTube OAuth re-authorization
+description: Re-run YouTube OAuth authorization for the Karen vs AI channel on a headless VM when tokens are revoked or return 401.
+category: Work and knowledge
 include_in_prompt: true
 availability:
   confidential_vm: true
   needs_speech: false
 skill_improvement:
   managed: true
-  needs_review: true
+  status: active
+  evidence_handles:
+  - skill-inventory:local_youtube_oauth_reauth rev 1f1fb37a553bcad05169fe5fdc18eb71eaac42ff7ae01872525b7abca9496d47
+  - /home/hatch/workspace/custom-skills/local-youtube-oauth-reauth/SKILL.md
+  - /home/hatch/workspace/custom-skills/local-youtube-oauth-reauth/skill.yaml
+  - AGENTS.md Rule 1 (2026-10-08 shared-OAuth revoke disaster)
+  measurement:
+    proxy_metric_id: skill_guided_reauth_success
+    success_criterion: The next YouTube 401 or invalid_grant incident is resolved by following this skill's exact steps (gen_auth_url, code capture, exchange_code, verification checklist) with no improvised flow and no secret pasted into chat; if no re-auth incident occurs in the window, the file stays intact and discovery resolves to it.
+    window_days: 60
+  needs_review: false
+  rationale: 'The recovered local_youtube_oauth_reauth note (skill_improvement.managed: true, needs_review: true, inventory rev 1f1fb37a) carries a complete, verified OAuth re-auth method: fixed client and scopes read from the existing .oauth.json, access_type=offline plus prompt=consent consent URL, phone code capture via the localhost redirect address bar, exchange_code.py writing .oauth.json (600) with a channels.list/Analytics/commentThreads/youtube_upload verification checklist, and taboos grounded in the 2026-10-08 shared-OAuth revoke disaster (AGENTS.md Rule 1). Helper scripts bin/gen_auth_url.py and bin/exchange_code.py exist beside the skill (verified in chunk-1 audit). No overlap exists among the 17 managed skills in the run brief; the closest, local_dash_mcp_server, covers MCP exposure rather than OAuth re-authorization. The recovered descriptor (''Recovered local skill; review its instructions before reuse'') and the Chinese draft body with a redacted client-id prefix fail the template, so this proposal publishes the corrected descriptor (proper title/description/category Work and knowledge, status active, needs_review removed) and a template-conformant SKILL.md with no secrets.'
+  review_after: 2026-12-18T01:04:34.926814+00:00
+  reviewed_at: 2026-10-19T01:04:34.926814+00:00
+  run_id: sirun_d48f1faba945413392edb912efaccc86

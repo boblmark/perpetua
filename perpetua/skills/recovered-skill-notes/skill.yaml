@@ -1,8 +1,20 @@
-name: "recovered_skill_notes"
-title: "Recovered skill notes"
-description: "Local skill notes preserved from the previous layout and awaiting review."
-category: "Learning and customization"
+name: recovered_skill_notes
+title: Recovered skill notes
+description: Local skill notes preserved from the previous layout and awaiting review.
+category: Learning and customization
 include_in_prompt: true
 skill_improvement:
   managed: true
-  needs_review: true
+  status: retired
+  evidence_handles:
+  - skill-inventory:recovered_skill_notes rev 67adf91e7d153c68909ad2f7d166c1f6b24a86efdcfe476d9147f95c72298cf2
+  - /home/hatch/workspace/custom-skills/recovered-skill-notes/SKILL.md
+  measurement:
+    proxy_metric_id: skill_discovery_precision
+    success_criterion: The retired recovered_skill_notes no longer appears in skill_search results or prompt listings, and no conversation or worker references it in the window.
+    window_days: 30
+  needs_review: false
+  rationale: 'recovered_skill_notes (skill_improvement.managed: true, needs_review: true, inventory rev 67adf91e) is an empty recovery shell: its SKILL.md, read this turn, holds zero reusable guidance beyond header boilerplate, and its own text states the entry should be retired once useful content has been incorporated. No content exists to incorporate, the surviving OAuth method now lives in local_youtube_oauth_reauth, and retiring it leaves 8 active managed learned skills, safely under the 10-skill consolidation threshold.'
+  review_after: 2026-11-18T01:04:34.926814+00:00
+  reviewed_at: 2026-10-19T01:04:34.926814+00:00
+  run_id: sirun_d48f1faba945413392edb912efaccc86

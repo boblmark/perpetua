@@ -6,16 +6,17 @@
 
 指纹 = {device（AI 设备类型）, karma_verb（高潮物理笑点动词）, hook_kw（钩子关键词）}
 
-规则：
-- 同一 device 在 90 天内出现过 → 硬拒绝（场景撞车）
+规则（2026-10-19 用户拍板 D20261019-001 放宽）：
+- 同一 device + 同一 karma_verb 在 60 天内出现过 → 硬拒绝（场景+公式双撞车）
+- 同一 device 但 karma_verb 不同 → 放行（同设备换公式算通过）
 - 同一 karma_verb 在 30 天内出现过 → 硬拒绝（笑点机制重复，模板感）
-- hook 关键词与 90 天内某条重叠 >60% → 硬拒绝（钩子撞车）
+- hook 关键词与 60 天内某条重叠 >60% → 硬拒绝（钩子撞车）
 
 A/B 测试豁免（2026-10-07）：同一 ab_group 内的条目互相比对时跳过。
 即主动测试的 3 个钩子变体不会互相拦截，但仍会被组外历史拦截、
 也会拦截组外的新选题。YouTube 侧已发布视频无 ab_group，不参与豁免。
 
-比对源：pipeline_queue.json（90天内条目）+ YouTube 近 90 天已发布标题（device 推断）。
+比对源：pipeline_queue.json（60天内条目）+ YouTube 近 60 天已发布标题（device 推断）。
 纯标准库。
 """
 import sys
@@ -37,13 +38,12 @@ QUEUE = os.path.join(BASE, "perpetua", "pipeline_queue.json")
 YT_SCRIPT = os.path.join(BASE, "youtube", "yt.py")
 REJECT_LOG = os.path.join(BASE, "perpetua", "formula_dedup_reject.log.json")
 
-DEVICE_WINDOW_DAYS = 90
+DEVICE_WINDOW_DAYS = 60
 VERB_WINDOW_DAYS = 30
 HOOK_OVERLAP_THRESHOLD = 0.60
-# D20261017-00X KILL#9：90 天去重窗口政策——窗口放宽（缩短天数/放宽规则）
-# 需议会 + 用户拍板，不再是"永不放宽"；每 30 天数据复核一次
-# （见 dedup_window_review.py；block 率>80% 连续 3 天提前触发复核）。
-DEDUP_WINDOW_POLICY = "90d-window:loosening_requires_council_and_user_approval"
+# D20261019-001（用户 2026-10-19 09:10 CST 拍板）：90 天→60 天，同设备换公式放行；
+# 每 30 天数据复核一次（见 dedup_window_review.py；block 率>80% 连续 3 天提前触发复核）。
+DEDUP_WINDOW_POLICY = "60d-window:user-approved-20261019-D20261019-001"
 DEDUP_DAILY_COUNTER = os.path.join(BASE, "perpetua", "formula_dedup_daily.json")
 
 KARMA_VERBS = [
@@ -326,13 +326,17 @@ def check_formula(topic, hook, prompt="", ab_group=None, skip_self_topic=None):
         if _same_group(h) or _self(h):
             continue
         hfp = h["fp"]
-        # 1. 同一设备 90 天内出现过 → 场景撞车
+        # 1. 同一设备 60 天内出现过 → 只有同公式（karma_verb 相同）才算场景撞车；
+        #    同设备换公式（verb 不同）放行（D20261019-001 用户拍板）
         if device and hfp["device"] and device == hfp["device"]:
-            detail = {"rule": "device_collision", "device": device,
-                      "matched": h["source"], "title": h["title"][:60]}
-            _log_reject({"topic": topic, "hook": hook[:80], **detail})
-            _bump_dedup_counter(True)
-            return True, "device_collision", detail
+            if verb and hfp.get("karma_verb") and verb == hfp["karma_verb"]:
+                detail = {"rule": "device_collision", "device": device,
+                          "verb": verb, "matched": h["source"],
+                          "title": h["title"][:60]}
+                _log_reject({"topic": topic, "hook": hook[:80], **detail})
+                _bump_dedup_counter(True)
+                return True, "device_collision", detail
+            # 同设备不同公式：放行，继续检查动词/钩子规则
         # 2. 同一标题关键词隐含同设备（YouTube 侧无 prompt，只有标题）
         if device and not hfp["device"] and h["title"]:
             tkw = _keywords(h["title"])

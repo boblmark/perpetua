@@ -1,46 +1,49 @@
-# YouTube OAuth 重授权
+# YouTube OAuth Re-authorization
 
-无头 VM 上为 `Mark Bobl | Karen vs AI` 频道重新走 YouTube OAuth 授权。
-触发词：YouTube 授权过期、oauth 失效、invalid_grant、重新授权、401。
+Re-run YouTube OAuth authorization for the `Mark Bobl | Karen vs AI` channel on a headless VM when the stored token is revoked or lost. The flow is semi-automated: the machine does everything, the user supplies one code.
 
-## 适用场景
+## Confirm re-authorization is needed
 
-- `.oauth.json` 的 refresh_token 被撤销（`invalid_grant`）或丢失
-- 所有 API（Data / Analytics / 上传）返回 401
-- 用户确认需要重走授权
+- Treat `invalid_grant` on the refresh token, a lost token file, or 401s across all YouTube APIs (Data, Analytics, upload) as the trigger. Get the user's confirmation before starting.
 
-## 固定参数（勿改）
+- Read the existing client id and secret from `/home/hatch/data/youtube/.oauth.json` (600); never invent a new OAuth client for this channel.
 
-- OAuth client：`138339902705-...apps.googleusercontent.com`（Desktop 类型，存于现有 `.oauth.json` 的 `client_id`/`client_secret`）
-- Scopes（三个缺一不可）：
-  - `https://www.googleapis.com/auth/youtube.upload`
-  - `https://www.googleapis.com/auth/youtube.force-ssl`
-  - `https://www.googleapis.com/auth/yt-analytics.readonly`
-- 凭据文件：`/home/hatch/data/youtube/.oauth.json`（600 权限）
-- **新授权只存本机，不再与任何机器/MCP 共享**（2026-10-08 血泪教训：共用一份授权被 Marvis revoke 连根拔起）
+- Keep the three scopes together: `youtube.upload`, `youtube.force-ssl`, and `yt-analytics.readonly`. A token missing any one of them fails part of the pipeline later.
 
-## 流程（半自动：机器做全部，人工只给 code）
+## Generate the auth URL and collect the code
 
-1. 跑 `bin/gen_auth_url.py` → 生成授权 URL（含 `access_type=offline` + `prompt=consent`，确保拿 refresh_token）
-2. 把 URL 发给用户（手机浏览器打开）
-3. 用户用 `bat08738@gmail.com` 登录并点"允许"
-4. 浏览器会跳转到 `http://localhost:8080/?code=...` 打不开——**让用户把地址栏整串 URL 复制发回聊天**（code 藏在里面）
-5. 跑 `bin/exchange_code.py "<用户贴回的URL或code>"` → 自动换 token、写 `.oauth.json`（600）、验证三个 API
-6. 验证通过后逐项恢复：上传链路、评论回复、post-publish、审计、数据拉取定时任务
+- Run `~/workspace/custom-skills/local-youtube-oauth-reauth/bin/gen_auth_url.py` to build the consent URL with `access_type=offline` and `prompt=consent`, so the exchange returns a refresh token.
 
-## 验证清单（exchange 后自动跑）
+- Send the URL to the user to open on their phone; they sign in as bat08738@gmail.com and approve.
 
-- [ ] `channels.list(mine=true)` → `Mark Bobl | Karen vs AI`
-- [ ] Analytics API：`views,averageViewDuration,averageViewPercentage,shares` 可拉取
-- [ ] `commentThreads.list` 可读
-- [ ] MCP `youtube_upload` 工具链可用（**不**用公开视频测试）
+- The redirect lands on `http://localhost:8080/?code=...` which will not load. Ask the user to copy the full address-bar URL back into chat and read the code from it.
 
-## 禁忌
+## Exchange the code and verify
 
-- 不要把 token/secret 贴进聊天
-- 不要把 `.oauth.json` 发给 Marvis 或其他 agent（它走 MCP `youtube_upload` 即可）
-- 不要跳过 `prompt=consent`，否则可能拿不到 refresh_token
+- Run `~/workspace/custom-skills/local-youtube-oauth-reauth/bin/exchange_code.py "<URL or code>"` to exchange the code, write `.oauth.json` (600), and run the verification checks.
+
+- Confirm `channels.list(mine=true)` returns `Mark Bobl | Karen vs AI`, Analytics fields (`views`, `averageViewDuration`, `averageViewPercentage`, `shares`) read, and `commentThreads.list` reads.
+
+- Confirm the MCP `youtube_upload` chain works without testing on a public video.
+
+- After verification, restore the dependents one by one: upload chain, comment replies, post-publish optimizer, audits, and data-pull schedules.
+
+## Keep the credential safe
+
+- Never paste a token or secret into chat.
+
+- Never send `.oauth.json` to another agent or machine. Keep each new authorization on this machine only; one revoked shared credential took every consumer down in the 2026-10-08 incident.
+
+- Never skip `prompt=consent`; without it the exchange may return no refresh token.
+
 ## Available connectors
 
-Use `muse.connector_search` to find the current connector docs before following
-recovered instructions.
+- Use `muse.connector_search` to find other connectors and `muse.skill_search` to find related skills.
+
+- If nothing here fits, look on the web for a maintained API or MCP server and set it up with [Custom Connectors and MCPs](/opt/muse/skills/custom-connector-setup/SKILL.md), or build a custom connector.
+
+## Alternatives for better results
+
+- When only an external agent needs upload capability, point it at the MCP `youtube_upload` tool instead of re-authorizing locally; the token file never leaves this machine.
+
+- Keep each new authorization on this machine only and never share it across machines or agents.
