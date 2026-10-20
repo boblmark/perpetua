@@ -44,8 +44,10 @@ SUSPECT_FOREVER_SECONDS = 6 * 3600
 SLA_REESCALATE_SECONDS = 2 * 3600
 SLA_P1_SECONDS = 6 * 3600
 # SUSPECT 风暴限流（R4）：同一 dedup key 的升级合并，指数退避
-STORM_BASE_SECONDS = 86400  # 24h：同一 subject+condition 未 ack 的升级 24h 内复用同一 escalation ID，
+STORM_BASE_SECONDS = 86400  # 24h：同一 subject+condition 的升级 24h 内复用同一 escalation ID，
                            # 不再每轮看门狗新建一条 P1/PAGE（2026-10-16：30min 窗口约等于看门狗周期导致慢性条件每轮建单，风暴）
+                           # 2026-10-21 修：ack 不解除 24h 去重保护——此前只合并未 ack 记录，主 agent ack 后下一轮必新建 P1，
+                           # 形成"ack→新P1→ack"无限循环（00:23/00:50 两轮 forever/grader P1 重复触发实证）
                            # N9：去重命中不重置 ack SLA 计时器，sla_due 照常对原记录 T+2h 分页/T+6h 升 P1
 
 
@@ -198,9 +200,13 @@ def escalate(checker, subject, condition, severity="P2", detail="",
     inbox = _load(ESCALATION_PATH, [])
     key = dedup_key(checker, subject, condition)
     now = time.time()
-    # 风暴限流：同一 key 24h 内已升级过 → 合并计数，不重复分页
+    # 风暴限流：同一 key 24h 内已升级过 → 合并计数，不重复分页。
+    # 2026-10-21 修：ack 不解除 24h 去重保护。旧逻辑只合并未 ack 记录，
+    # 主 agent ack 后下一轮必新建 P1，形成"ack→新P1→ack"无限循环
+    # （suspect_forever/grader 每 30min 各新建一条 P1 实证）。
+    # N9：合并已 ack 记录时绝不碰 ack_at/ack_by，不重置 SLA 计时器。
     for e in inbox:
-        if e.get("dedup_key") == key and not e.get("ack_at"):
+        if e.get("dedup_key") == key:
             age = now - e.get("filed_at_epoch", 0)
             if age < STORM_BASE_SECONDS:
                 e["storm_merged_count"] = e.get("storm_merged_count", 0) + 1
