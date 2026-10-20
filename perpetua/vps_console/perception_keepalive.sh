@@ -16,6 +16,14 @@ for i in 1 2; do
 done
 
 if [ $fail_count -eq 2 ]; then
+    # 2026-10-20 升级线触发（当日 5 次重启，间隔加速至 <1h）：重启前取证，判别"进程已死"还是"进程在但端口掉了"
+    {
+        echo "=== FORENSICS $(date '+%Y-%m-%d %H:%M:%S') ==="
+        echo "-- 进程表 --"; ps -o pid,stat,etime,rss,cmd -C python 2>/dev/null | grep perception || echo "无 perception 进程残留"
+        echo "-- 监听表 --"; ss -tlnp 2>/dev/null | grep -E "18736|LISTEN" | head -8
+        echo "-- server 日志尾 10 行 --"; tail -10 /tmp/perception.log 2>/dev/null || echo "无 /tmp/perception.log"
+        echo "=== END FORENSICS ==="
+    } >> "$LOG"
     echo "$(date '+%Y-%m-%d %H:%M:%S') perception server 连续两次探测失败，重启" >> "$LOG"
     pkill -f "perception_server.py" 2>/dev/null
     sleep 3
