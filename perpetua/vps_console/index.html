@@ -971,7 +971,7 @@ async function renderMatrix(silent){window.renderMatrix=renderMatrix;
     const staleH=d.stale_hours||{};
     const loginWarn=d.login_warnings||{};
     const warnBar=document.getElementById('loginWarnBar');
-    if(warnBar){if(loginWarn.length){warnBar.style.display='block';warnBar.innerHTML='⚠️ 登录态可能过期（'+loginWarn.length+' 个平台超12h未同步）：'+loginWarn.join('、')+'，请检查登录';}else{warnBar.style.display='none';}}
+    if(warnBar){if(loginWarn.length){warnBar.style.display='block';warnBar.innerHTML='⚠️ 数据超12h未同步（'+loginWarn.length+' 个平台）：'+loginWarn.join('、')+'，多为同步/接口问题，不等于登录过期，请看各平台状态';}else{warnBar.style.display='none';}}
     if(!d.ok){if(!silent)card.innerHTML='<div class="hint">加载失败 <button onclick="location.reload()" style="font-size:12px;margin-left:8px">↻ 重试</button></div>';return;}
     const ps=d.platforms||{};
     const order=(Array.isArray(d.order)&&d.order.length===9)?d.order:['douyin','xiaohongshu','kuaishou','shipinhao','bilibili','youtube','facebook','tiktok','x'];
