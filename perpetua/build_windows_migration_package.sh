@@ -47,7 +47,7 @@ rsync -a \
   --exclude='build/' --exclude='teaser_splice_check/' \
   --exclude='gemini_fallback_review/' --exclude='selftest/.thumbnails/' \
   --exclude='arena_agent/jury_prompts/' --exclude='arena_agent/jury_results/' \
-  --exclude='radar/reports/' \
+  --exclude='radar/reports/' --exclude='takeover/current/' \
   --exclude='dynamic_constraints.json' --exclude='platform_health.json' \
   --exclude='publish_health_runlog.txt' \
   --exclude='*.log' --exclude='*.tmp' --exclude='*.bak*' --exclude='*~' \

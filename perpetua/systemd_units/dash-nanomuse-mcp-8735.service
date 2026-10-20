@@ -1,0 +1,14 @@
+[Unit]
+Description=Dash nanoMuse MCP server (127.0.0.1:8735)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/workspace/nanomuse-mcp
+ExecStart=/bin/bash -c 'exec /home/hatch/data/mcp_server/venv/bin/python server.py >> /tmp/nanomuse-mcp.log 2>&1'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Dash MCP server (127.0.0.1:8734)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/data/mcp_server
+ExecStart=/bin/bash -c 'exec ./venv/bin/python server.py >> /home/hatch/data/mcp_server/mcp-server.out.log 2>&1'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

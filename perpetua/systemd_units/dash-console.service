@@ -1,0 +1,14 @@
+[Unit]
+Description=Dash Perpetua/OA console server (127.0.0.1:8080)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/data/perpetua/vps_console
+ExecStart=/bin/bash -c 'exec python3 console_server.py >> /tmp/console.log 2>&1'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

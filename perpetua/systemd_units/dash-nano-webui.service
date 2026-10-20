@@ -1,0 +1,14 @@
+[Unit]
+Description=Dash nano web UI static server (127.0.0.1:18737)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/data/nanomuse-migration/perception/web
+ExecStart=/bin/bash -c 'exec python3 -m http.server 18737 --bind 127.0.0.1 >> /tmp/nano-webui-18737.log 2>&1'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

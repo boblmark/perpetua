@@ -1,0 +1,14 @@
+[Unit]
+Description=Dash perception WS server (127.0.0.1:18736)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/data/nanomuse-migration/perception/server
+ExecStart=/bin/bash -c 'exec env NO_PROXY="localhost,127.0.0.1,::1" no_proxy="localhost,127.0.0.1,::1" /home/hatch/data/nanomuse-migration/nanomuse-venv/bin/python perception_server.py >> /tmp/perception.log 2>&1'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

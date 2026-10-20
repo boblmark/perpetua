@@ -26,6 +26,7 @@ EXCLUDE_DIRS = {
     "arena_agent/jury_prompts",  # 2026-10-18: 陪审团 timestamped prompt/结果，cron 周期生成累积，运行时产物（曾致每轮 jury 后误报漂移重建）
     "arena_agent/jury_results",  # 2026-10-19: 陪审团 teardown 结果 md，timestamped 累积，运行时产物（同类 bug 复发）
     "radar/reports",  # 2026-10-19: 雷达 metrics/prune 日报，cron 周期生成累积，运行时产物
+    "takeover/current",  # 2026-10-20: 接管库存快照（snapshot_push 每 ~10 分钟重写，version/timestamp 恒变），运行时状态（曾致每 15 分钟误报漂移空转重建）
 }
 
 # 文件名/后缀排除
