@@ -16,5 +16,20 @@ for f in "$SRC"/dash-*.service; do
     name=$(basename "$f")
     systemctl enable "$name" >/dev/null 2>&1 || systemctl enable "$name"
 done
+# credential-proxy 需要出网代理环境（systemd 不继承 agent shell 环境）：
+# 从当前 shell 环境重建 env drop-in（只写值、不回显）。2026-10-21 补。
+DROPIN_DIR=/etc/systemd/system/dash-credential-proxy.service.d
+mkdir -p "$DROPIN_DIR"
+{
+    echo "[Service]"
+    for v in http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY all_proxy ALL_PROXY; do
+        if [ -n "${!v}" ]; then
+            printf 'Environment="%s=%s"\n' "$v" "${!v}"
+        fi
+    done
+} > "$DROPIN_DIR/env.conf"
+chmod 600 "$DROPIN_DIR/env.conf"
+systemctl daemon-reload
+
 echo "installed+enabled:"
 systemctl list-unit-files 'dash-*' --no-legend
