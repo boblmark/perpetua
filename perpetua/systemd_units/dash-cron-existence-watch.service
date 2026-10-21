@@ -1,0 +1,9 @@
+[Unit]
+Description=Dash: keepalive schedule existence watch (platform cron + systemd timers)
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/hatch/data/perpetua
+ExecStart=/usr/bin/python3 /home/hatch/data/perpetua/cron_existence_watch.py

@@ -1,0 +1,18 @@
+[Unit]
+Description=Dash: dispatch lifeline health check (from platform cron dispatch-lifeline-watch)
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/hatch/data/perpetua
+# env replicated from agent shell (verified 2026-10-21): HOME locates ssh keys; egress proxy reaches dispatcher 8740 / probe targets
+Environment=HOME=/home/hatch
+Environment=http_proxy=http://198.19.0.1:3128
+Environment=https_proxy=http://198.19.0.1:3128
+Environment=HTTP_PROXY=http://198.19.0.1:3128
+Environment=HTTPS_PROXY=http://198.19.0.1:3128
+Environment=no_proxy=localhost,127.0.0.1
+ExecStart=/usr/bin/python3 /home/hatch/data/perpetua/dispatch_health.py
+# script exit codes are its health verdict: 0=HEALTHY 1=DEGRADED 2=DOWN (alerts go to the graded-assertion ledger); only other codes are real failures
+SuccessExitStatus=1 2

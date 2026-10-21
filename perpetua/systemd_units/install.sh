@@ -6,7 +6,8 @@
 # systemd 接管发生在下次进程死亡（Restart=always）或下次开机。
 set -e
 SRC=/home/hatch/data/perpetua/systemd_units
-for f in "$SRC"/dash-*.service; do
+for f in "$SRC"/dash-*.service "$SRC"/dash-*.timer; do
+    [ -e "$f" ] || continue
     name=$(basename "$f")
     cp "$f" /etc/systemd/system/"$name"
     chmod 644 /etc/systemd/system/"$name"
@@ -15,6 +16,13 @@ systemctl daemon-reload
 for f in "$SRC"/dash-*.service; do
     name=$(basename "$f")
     systemctl enable "$name" >/dev/null 2>&1 || systemctl enable "$name"
+done
+# timers 不占端口、触发的 oneshot 均为幂等探针/看门狗：enable 的同时 start，
+# 否则"已启用但从未启动"就是死状态（Rule 4）。2026-10-21 第一批迁出后补。
+for f in "$SRC"/dash-*.timer; do
+    [ -e "$f" ] || continue
+    name=$(basename "$f")
+    systemctl enable --now "$name" >/dev/null 2>&1 || systemctl enable --now "$name"
 done
 # credential-proxy 需要出网代理环境（systemd 不继承 agent shell 环境）：
 # 从当前 shell 环境重建 env drop-in（只写值、不回显）。2026-10-21 补。

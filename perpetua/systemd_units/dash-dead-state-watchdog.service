@@ -1,0 +1,11 @@
+[Unit]
+Description=Dash: dead state watchdog (from platform cron dead-state-watchdog)
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/hatch/data/perpetua
+ExecStart=/usr/bin/python3 /home/hatch/data/perpetua/dead_state_watchdog.py
+# script uses exit code 10 for a handled run with findings/no-op paths; do not mark as failure
+SuccessExitStatus=10
