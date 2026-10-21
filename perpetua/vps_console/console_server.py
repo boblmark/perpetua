@@ -736,6 +736,34 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+    def api_sleep_hook(self, path, payload):
+        # Sleep as Android 自定义 Webhook 接收端（2026-10-22）：睡眠事件秒级落盘
+        token_file = os.path.join(DATA, "sleep_monitor", "hook_token.txt")
+        try:
+            expected = open(token_file).read().strip()
+        except OSError:
+            expected = ""
+        got = path[len("/sleep-hook/"):].strip("/")
+        if not expected or got != expected:
+            json_resp(self, {"ok": False, "error": "bad token"}, code=403)
+            return
+        rec = {
+            "received_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
+            "event": str(payload.get("event", ""))[:64],
+            "value1": str(payload.get("value1", ""))[:256],
+            "value2": str(payload.get("value2", ""))[:256],
+            "value3": str(payload.get("value3", ""))[:256],
+        }
+        try:
+            log_path = os.path.join(DATA, "sleep_monitor", "events.jsonl")
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except OSError:
+            json_resp(self, {"ok": False, "error": "write failed"}, code=500)
+            return
+        json_resp(self, {"ok": True})
+
     def do_POST(self):
         parsed = urlparse(self.path)
         length = int(self.headers.get("Content-Length", 0))
@@ -743,6 +771,9 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             payload = {}
+        if parsed.path.startswith("/sleep-hook/"):
+            self.api_sleep_hook(parsed.path, payload)
+            return
         if parsed.path == "/api/exec":
             self.api_exec(payload.get("command", ""))
             return

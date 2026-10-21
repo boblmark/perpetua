@@ -1,0 +1,8 @@
+[Unit]
+Description=Pull Sleep webhook events from VPS (mirror events.jsonl)
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/home/hatch
+ExecStart=/bin/bash /home/hatch/data/sleep_monitor/pull_events.sh
