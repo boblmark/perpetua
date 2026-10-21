@@ -204,7 +204,7 @@ def check_arena():
           """  } catch(e) { return 'fetch_err:' + e.message.slice(0,80); }"""
           """})()""")
     # 经 VPS 浏览器探针（带登录态）
-    out0, rc0 = ssh(f"/usr/bin/agent-browser --cdp http://127.0.0.1:9222 open https://arena.ai/video", timeout=30)
+    out0, rc0 = ssh(f"/usr/bin/agent-browser --cdp http://127.0.0.1:9222 open https://arena.ai/video", timeout=75)
     if rc0 != 0:
         return _suspect("check_arena", "arena", f"探针 open 失败: {out0[:80]}",
                         "arena.ai/video 探针打不开页面，无法定论可用性", snap_ts, "session_state")
@@ -215,7 +215,7 @@ def check_arena():
                 "var blocked=/sign in|log in|subscribe|upgrade|payment|paywall/.test(t);"
                 "return JSON.stringify({hasBox:hasBox,blocked:blocked,snip:t.slice(0,120)});"
                 "})()")
-    out, rrc = ssh(f"/usr/bin/agent-browser --cdp http://127.0.0.1:9222 eval \"{probe_js}\"", timeout=30)
+    out, rrc = ssh(f"/usr/bin/agent-browser --cdp http://127.0.0.1:9222 eval \"{probe_js}\"", timeout=75)
     if rrc != 0:
         return _suspect("check_arena", "arena", f"探针 eval 失败: {out[:80]}",
                         "arena.ai/video 探针执行失败，无法定论", snap_ts, "session_state")
