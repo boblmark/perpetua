@@ -738,17 +738,29 @@ class Handler(BaseHTTPRequestHandler):
 
     def api_sleep_hook(self, path, payload):
         # Sleep as Android 自定义 Webhook 接收端（2026-10-22）：睡眠事件秒级落盘
-        token_file = os.path.join(DATA, "sleep_monitor", "hook_token.txt")
-        try:
-            expected = open(token_file).read().strip()
-        except OSError:
-            expected = ""
+        # 多用户（2026-10-22）：token 先查 sleep_monitor/users.json 的 tokens 映射认人；
+        # 未命中再回退单用户 hook_token.txt（归属默认用户 cgb2026，兼容已配置的手机）。
         got = path[len("/sleep-hook/"):].strip("/")
-        if not expected or got != expected:
+        user = ""
+        try:
+            with open(os.path.join(DATA, "sleep_monitor", "users.json")) as f:
+                user = json.load(f).get("tokens", {}).get(got, "")
+        except (OSError, ValueError):
+            user = ""
+        if not user:
+            token_file = os.path.join(DATA, "sleep_monitor", "hook_token.txt")
+            try:
+                expected = open(token_file).read().strip()
+            except OSError:
+                expected = ""
+            if expected and got == expected:
+                user = "cgb2026"
+        if not user:
             json_resp(self, {"ok": False, "error": "bad token"}, code=403)
             return
         rec = {
             "received_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
+            "user": user,
             "event": str(payload.get("event", ""))[:64],
             "value1": str(payload.get("value1", ""))[:256],
             "value2": str(payload.get("value2", ""))[:256],
