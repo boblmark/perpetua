@@ -371,6 +371,20 @@ def main():
         "builtin": check_builtin(),
     }
     overall = summarize(verdicts)
+    # 台账自愈（2026-10-21）：OK/CONFIRMED 结论落盘即 resolve 同 (checker,subject)
+    # 的未解决 SUSPECT——否则熔断按最早条目算龄，条件消失后仍持续 P1
+    # （builtin 实证：远端同步成片使探针转 OK，台账条目却从 10-17 悬到现在）。
+    # fail-open：自愈失败绝不影响主流程。
+    for _v in verdicts.values():
+        try:
+            if (_v.get("verdict") in (ga.OK, ga.CONFIRMED)
+                    and _v.get("checker") and _v.get("subject")):
+                ga.ledger_resolve(
+                    _v["checker"], _v["subject"],
+                    "台账自愈：%s 当前轮结论 %s，未知状态已消除"
+                    % (_v["subject"], _v["verdict"]))
+        except Exception:
+            pass
     # SUSPECT-forever 熔断检查（R2）
     forever = ga.suspect_forever_check()
     for subject in forever:

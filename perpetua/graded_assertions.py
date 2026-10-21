@@ -261,6 +261,28 @@ def sla_due():
     return due
 
 
+def ledger_resolve(checker, subject, reason=""):
+    """台账自愈：当前轮结论为 OK/CONFIRMED 时，把同一 (checker, subject) 的
+    未解决 SUSPECT 条目标记 resolved——未知状态已消除。
+
+    2026-10-21 新增（builtin 实证）：OK 结论从不写台账，导致 SUSPECT 条目
+    永不 resolve，suspect_forever_check 按最早条目算龄，条件消失后仍每 24h
+    新建 P1。自愈后熔断只看"当前仍未知"的 subject。
+    """
+    ledger = _load(LEDGER_PATH, [])
+    n = 0
+    for e in ledger:
+        if (not e.get("resolved") and e.get("verdict") == SUSPECT
+                and e.get("checker") == checker and e.get("subject") == subject):
+            e["resolved"] = True
+            e["resolved_at"] = utcnow()
+            e["resolved_reason"] = reason or "台账自愈：结论翻转为确定态"
+            n += 1
+    if n:
+        _save(LEDGER_PATH, ledger)
+    return n
+
+
 def suspect_forever_check():
     """
     R2 SUSPECT-forever 熔断：同一 subject 持续 SUSPECT 超过 6h → 自动 P1 + 终端动作选项。
