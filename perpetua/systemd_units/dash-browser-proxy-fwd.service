@@ -3,6 +3,13 @@ Description=Dash browser proxy forwarder (127.0.0.1:3129 -> 198.19.0.1:3128)
 After=network.target
 
 [Service]
+Environment=HOME=/home/hatch
+Environment=http_proxy=http://198.19.0.1:3128
+Environment=https_proxy=http://198.19.0.1:3128
+Environment=HTTP_PROXY=http://198.19.0.1:3128
+Environment=HTTPS_PROXY=http://198.19.0.1:3128
+Environment=no_proxy=localhost,127.0.0.1,::1,[::1],198.19.0.1,198.19.0.2
+Environment=NO_PROXY=localhost,127.0.0.1,::1,[::1],198.19.0.1,198.19.0.2
 Type=simple
 User=root
 ExecStart=/bin/bash -c 'exec python3 /home/hatch/data/perpetua/browser_proxy_fwd.py >> /home/hatch/data/perpetua/browser_proxy_fwd.log 2>&1'
