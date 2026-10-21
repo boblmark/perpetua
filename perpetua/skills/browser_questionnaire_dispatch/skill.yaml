@@ -1,0 +1,20 @@
+name: browser_questionnaire_dispatch
+title: 浏览器问卷分段派发
+description: 多题浏览器问卷拆成小批量派发、每题答案即时落盘，掉线后只补问未答的题，用于 Ask Studio 评审、陪审团横评等逐题问答的浏览器任务。
+category: Work and knowledge
+include_in_prompt: false
+skill_improvement:
+  managed: true
+  status: active
+  evidence_handles:
+  - message:assistant-msg-1c76cf24-eb7f-41fe-ab8b-1b5ca615935b
+  - custom-skills/local-ai-brain-council/references/browser-recipes.md
+  measurement:
+    proxy_metric_id: browser_questionnaire_reask_count
+    success_criterion: 14 天窗口内，每次浏览器问卷部分完成都有据可查：补派任务只含未答的题，已答题目被重问的次数为零。若窗口内无部分完成事件，则判 inconclusive，不延长也不提前退休。
+    window_days: 14
+  needs_review: false
+  rationale: WHAT：多题浏览器问卷任务在窗口内两次掉线报废。2026-10-20 一个 10 题 Ask Studio 评审任务中途掉线，只问完第 1 题（72 分已入库），剩下 9 题没问出去，只能整体重派（message:assistant-msg-1c76cf24-eb7f-41fe-ab8b-1b5ca615935b）；同日另有一批 15 道评审题因处理超时全部 pending（本轮 chunk_handoff）。WHY：现有配方只覆盖单题一次问答，已通读 local-ai-brain-council/references/browser-recipes.md 确认（单题、等完整答案、verbatim 带回），没有分批和逐题落盘机制；AGENTS.md 的“先落盘再汇报”只管任务结束时的一次性落盘，管不到题级别。把每批压到最多 3 题、每题答案先追加进队列表文件再问下一题，掉线损失被限定在一批以内，补派只需覆盖未答题，不再整批重问。skill_search 三个角度检索后唯一疑似重叠的是 local_ai_brain_council，其 SKILL.md 与 browser-recipes.md 已通读并排除重叠。
+  review_after: 2026-11-03T22:45:32.040949+00:00
+  reviewed_at: 2026-10-20T22:45:32.040949+00:00
+  run_id: sirun_4d7b4e93b11d4d40854593f8c9440f8f

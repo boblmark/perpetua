@@ -63,6 +63,12 @@ if [ "$alive" = "1" ]; then
 else
   echo "$(date '+%F %T') forwarder dead ($reason), restarting" >> "$LOG"
   pkill -f "browser_proxy_fwd[.]py" 2>/dev/null
-  sleep 1
+  # 等旧进程真正释放 3129 端口再启动，否则新实例 EADDRINUSE 直接崩溃
+  # （fwd 日志累计 478 次 EADDRINUSE 竞态；旧 sleep 1 不足）
+  for i in $(seq 1 20); do
+    pgrep -f "browser_proxy_fwd[.]py" >/dev/null 2>&1 && { sleep 0.5; continue; }
+    (echo > /dev/tcp/127.0.0.1/3129) 2>/dev/null && { sleep 0.5; continue; }
+    break
+  done
   nohup python3 /home/hatch/data/perpetua/browser_proxy_fwd.py >> "$FWD_LOG" 2>&1 &
 fi
