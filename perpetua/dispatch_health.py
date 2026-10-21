@@ -32,7 +32,7 @@ import graded_assertions as ga
 STATE_FILE = os.path.join(BASE, "dispatch_health_state.json")
 VM_HOST = "192.166.82.123"
 VM_USER = "root"
-SSH_KEY = os.path.expanduser("~/.ssh/id_ed25519")
+SSH_KEY = "/home/hatch/.ssh/id_ed25519"  # Rule 11: fixed absolute path, HOME may be /root in some runners
 PROXY = "nc -X connect -x 198.19.0.1:3128 %h %p"
 DISPATCHER_URL = f"http://{VM_HOST}:8740/mcp"
 VIDS_QUOTA_UNTIL = "2026-11-01"
