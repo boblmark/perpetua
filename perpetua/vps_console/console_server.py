@@ -742,9 +742,11 @@ class Handler(BaseHTTPRequestHandler):
         # 未命中再回退单用户 hook_token.txt（归属默认用户 cgb2026，兼容已配置的手机）。
         got = path[len("/sleep-hook/"):].strip("/")
         user = ""
+        users_doc = {}
         try:
             with open(os.path.join(DATA, "sleep_monitor", "users.json")) as f:
-                user = json.load(f).get("tokens", {}).get(got, "")
+                users_doc = json.load(f)
+            user = users_doc.get("tokens", {}).get(got, "")
         except (OSError, ValueError):
             user = ""
         if not user:
@@ -757,6 +759,22 @@ class Handler(BaseHTTPRequestHandler):
                 user = "cgb2026"
         if not user:
             json_resp(self, {"ok": False, "error": "bad token"}, code=403)
+            return
+        # 运营状态拦截（2026-10-22）：停用/删除/待审核/到期超宽限（7 天）的账号拒绝落盘，
+        # 口径与 sleep_console.account_state 保持一致。
+        urec = users_doc.get("users", {}).get(user, {})
+        blocked = urec.get("status", "active") in ("suspended", "deleted", "pending")
+        if not blocked and urec.get("expires_at"):
+            try:
+                exp = datetime.fromisoformat(str(urec["expires_at"]))
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone(timedelta(hours=8)))
+                if datetime.now(timezone(timedelta(hours=8))) > exp + timedelta(days=7):
+                    blocked = True
+            except ValueError:
+                pass
+        if blocked:
+            json_resp(self, {"ok": False, "error": "account_inactive"}, code=403)
             return
         rec = {
             "received_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),

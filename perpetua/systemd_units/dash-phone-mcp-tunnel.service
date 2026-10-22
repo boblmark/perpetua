@@ -1,0 +1,14 @@
+[Unit]
+Description=SSH forward to phone MCP endpoint via VPS frps-phone (127.0.0.1:18766)
+After=network.target
+
+[Service]
+Environment=HOME=/home/hatch
+Type=simple
+User=root
+ExecStart=/bin/bash /home/hatch/data/phone_mcp/tunnel.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
