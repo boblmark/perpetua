@@ -546,6 +546,182 @@ def _gen_poll_reset(item):
     item.pop("gen_poll_escalated", None)
 
 
+# ---------------- 方案 1（2026-10-27）：认领超时清道夫 + 容量快照 ----------------
+# 背景：muse-main claimed-but-unconsumed 致生成静默断流；旧逻辑只在 24h 轮询后升级，
+# 无超时换后端。清道夫每轮 collect 扫 job_submitted：超 GEN_CLAIM_TIMEOUT_MIN 无结果
+# → 换后端重派（musemain/legacy → nano 强制路由；nano → arena 手工兜底文件）；
+# attempts 达 GEN_MAX_ATTEMPTS → generate_failed + 升级。arena 只能主 agent 经浏览器
+# 派发（reCAPTCHA 拦 CDP），故 nano 耗尽后落手工兜底文件，不谎称自动。
+# 超时取 60 分钟（不用 30）：健康生成约 7 分钟，但主 Muse 排队起步有延迟，60 分钟
+# 既防误杀慢启动，又远小于当前以天计的卡死。
+GEN_CLAIM_TIMEOUT_MIN = 60
+GEN_MAX_ATTEMPTS = 2
+ARENA_MANUAL_DIR = "/home/hatch/data/perpetua/arena_manual"
+GEN_CAPACITY_PATH = "/home/hatch/data/perpetua/gen_capacity.json"
+
+
+def _parse_iso_ts(s):
+    try:
+        if not s or not isinstance(s, str):
+            return None
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _write_arena_manual_file(item, jid):
+    """写 arena 手工兜底任务文件（供主 agent 经浏览器派发），返回路径或空串。"""
+    try:
+        os.makedirs(ARENA_MANUAL_DIR, exist_ok=True)
+        path = os.path.join(ARENA_MANUAL_DIR, jid + ".md")
+        content = (
+            "# Arena 手工兜底任务（清道夫生成，主 agent 经浏览器派发）\n\n"
+            f"- job_id：{jid}\n"
+            f"- topic：{item.get('topic')}\n"
+            f"- review_score：{item.get('review_score')}\n"
+            f"- slot：{item.get('slot')}\n"
+            f"- 原后端：{item.get('gen_rerouted_from')}\n\n"
+            "## 操作\n\n"
+            "Visit https://arena.ai/video，在 \"Describe your video…\" 输入以下 prompt，"
+            "等两条视频生成完成，下载到 /home/hatch/data/veo_inbox/，两条都进 QC 取优者。\n\n"
+            "## Prompt\n\n"
+            f"{item.get('prompt', '')}\n"
+        )
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return path
+    except Exception as e:
+        pipeline_log("generate", "error",
+                     f"arena 手工兜底文件写失败 {item.get('topic')}: {e}", 0)
+        return ""
+
+
+def _sweep_stale_submitted(queue, route_fn=None, now=None):
+    """认领超时清道夫。返回 (changed, actions)。
+
+    route_fn(prompt) -> dict(backend/thread_id/job_id/reason)，默认走
+    muse_or_nano 强制 nano 路由。只动 job_submitted 且无 done 文件且
+    submitted_at 可解析且超时的项；无时间戳的项不动（防误杀，交其他检查器定性）。
+    """
+    now = now or datetime.now(timezone.utc)
+    changed = False
+    actions = []
+    for item in queue:
+        if item.get("status") != "job_submitted" or not item.get("job_id"):
+            continue
+        jid = item["job_id"]
+        if os.path.exists(os.path.join(MCP_DONE, jid + ".result.json")):
+            continue
+        submitted_at = _parse_iso_ts(item.get("submitted_at"))
+        if submitted_at is None:
+            continue
+        age_min = (now - submitted_at).total_seconds() / 60.0
+        if age_min < GEN_CLAIM_TIMEOUT_MIN:
+            continue
+        attempts = int(item.get("gen_attempts") or 0)
+        backend = item.get("gen_backend") or ""
+        topic = item.get("topic")
+        if attempts >= GEN_MAX_ATTEMPTS:
+            item["status"] = "generate_failed"
+            item["generate_error"] = (
+                f"认领超时清道夫：{backend} {attempts} 次换后端仍无结果，达上限")
+            _gen_poll_reset(item)
+            pipeline_log("generate", "error",
+                         f"清道夫判死 {topic}：{backend} 超时 {attempts} 次", 0)
+            try:
+                if ga is not None:
+                    ga.escalate("auto_pipeline.gen_timeout",
+                                str(topic or "")[:40], "claim_timeout_exhausted",
+                                severity="P1",
+                                detail=f"{backend} {attempts} 次换后端仍无结果",
+                                evidence_ts=ga.utcnow(), ttl_key="gen_timeout")
+            except Exception:
+                pass
+            changed = True
+            actions.append(("failed", topic))
+            continue
+        if backend in ("musemain", "legacy", ""):
+            try:
+                if route_fn is not None:
+                    routed = route_fn(item["prompt"])
+                else:
+                    import muse_or_nano as _router
+                    routed = _router.route("generate_video", item["prompt"], 1,
+                                           force_backend="nano")
+                if routed.get("backend") != "nano":
+                    raise RuntimeError(
+                        f"强制 nano 路由未返回 nano：{routed.get('reason', '')}")
+                item["gen_rerouted_from"] = backend
+                item["gen_backend"] = "nano"
+                item["nano_thread_id"] = routed.get("thread_id", "")
+                item["nano_job_id"] = routed.get("job_id", "")
+                item["gen_route_reason"] = (routed.get("reason", "") or "")[:200]
+                item["gen_attempts"] = attempts + 1
+                item["submitted_at"] = now_iso()
+                _gen_poll_reset(item)
+                pipeline_log("generate", "ok",
+                             f"清道夫换后端 {topic}：{backend} → nano"
+                             f"（第 {attempts + 1} 次）", 0)
+                changed = True
+                actions.append(("rerouted_nano", topic))
+            except Exception as e:
+                pipeline_log("generate", "error",
+                             f"清道夫换后端失败 {topic}：{e}", 0)
+            continue
+        # backend == nano：自动后端已耗尽 → arena 手工兜底
+        item["gen_attempts"] = attempts + 1
+        item["status"] = "arena_manual"
+        item["gen_rerouted_from"] = backend
+        path = _write_arena_manual_file(item, jid)
+        pipeline_log("generate", "error",
+                     f"清道夫转 arena 手工兜底 {topic}（文件 {path}）", 0)
+        try:
+            if ga is not None:
+                ga.escalate("auto_pipeline.gen_timeout",
+                            str(topic or "")[:40], "arena_manual_pending",
+                            severity="P2",
+                            detail=f"nano 超时，arena 手工兜底文件 {path}",
+                            evidence_ts=ga.utcnow(), ttl_key="gen_timeout")
+        except Exception:
+            pass
+        changed = True
+        actions.append(("arena_manual", topic))
+    return changed, actions
+
+
+def _write_gen_capacity(queue, now=None):
+    """写生成容量快照（看板数据源）：在途任务按后端计数 + 最老在途年龄。"""
+    try:
+        now = now or datetime.now(timezone.utc)
+        by_backend = {}
+        oldest = None
+        for item in queue:
+            if item.get("status") != "job_submitted":
+                continue
+            b = item.get("gen_backend") or "unknown"
+            by_backend[b] = by_backend.get(b, 0) + 1
+            ts = _parse_iso_ts(item.get("submitted_at"))
+            if ts is not None and (oldest is None or ts < oldest):
+                oldest = ts
+        snap = {
+            "ts": now.isoformat(),
+            "job_submitted_by_backend": by_backend,
+            "job_submitted_total": sum(by_backend.values()),
+            "oldest_job_submitted_age_min": (
+                round((now - oldest).total_seconds() / 60.0, 1)
+                if oldest is not None else None),
+        }
+        sys.path.insert(0, "/home/hatch/data/perpetua")
+        from atomic_json import atomic_write as _awc
+        _awc(GEN_CAPACITY_PATH, snap)
+        return snap
+    except Exception:
+        return {}
+
+
 # ---------------- 重审闭环（D20261015-009，四脑议会） ----------------
 # 评审预算：动态（2026-10-15 用户要求：不固定，按实际需求浮动）
 # 需求=待审条目数；预算=需求+25%余量；下限8（保底）、上限24（防失控）
@@ -1079,6 +1255,7 @@ def submit_jobs():
                     item["nano_thread_id"] = routed.get("thread_id", "")
                     item["nano_job_id"] = routed.get("job_id", "")
                     item["gen_backend"] = "nano"
+                    item["gen_attempts"] = 0
                     item["gen_route_reason"] = routed.get("reason", "")[:200]
                     item["status"] = "job_submitted"
                     pipeline_log("submit", "ok",
@@ -1097,6 +1274,7 @@ def submit_jobs():
             item["job_id"] = jid
             item["muse_job_id"] = muse_jid
             item["gen_backend"] = "musemain"
+            item["gen_attempts"] = 0
             item["status"] = "job_submitted"
             item["submitted_at"] = now_iso()
             n += 1
@@ -1121,6 +1299,7 @@ def submit_jobs():
         _aw1(os.path.join(MCP_PENDING, jid + ".json"), job)
         item["job_id"] = jid
         item["gen_backend"] = "legacy"
+        item["gen_attempts"] = 0
         item["status"] = "job_submitted"
         item["submitted_at"] = now_iso()
         n += 1
@@ -1309,6 +1488,18 @@ def collect_results():
     run_qc = _import_run_qc()
     queue = load_queue()
     changed = False
+    # 方案 1（2026-10-27）：认领超时清道夫先行，防新提交重蹈 claimed-but-unconsumed
+    try:
+        _swept, _acts = _sweep_stale_submitted(queue)
+        if _swept:
+            changed = True
+            pipeline_log("generate", "ok", f"清道夫动作：{_acts}", 0)
+    except Exception as e:
+        pipeline_log("generate", "error", f"清道夫异常（不阻塞 collect）：{e}", 0)
+    try:
+        _write_gen_capacity(queue)
+    except Exception:
+        pass
     # 2026-10-09 自治补漏：submit 原来只在 11:00/22:00 跟选题跑，中途 review_passed 的要等数小时。
     # 每 20 分钟 collect 时扫一遍，达标即提交生成（submit_jobs 自带 ≥85 硬门禁 + 已提交的不重复）。
     # 先修复坏状态：review_passed 但无 score（历史误写）→ 打回重审。
