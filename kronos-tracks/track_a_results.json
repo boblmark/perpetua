@@ -1,0 +1,977 @@
+{
+  "model": "NeoQuasar/Kronos-mini",
+  "model_params": "4.1M (per project README table)",
+  "tokenizer": "NeoQuasar/Kronos-Tokenizer-2k",
+  "tokenizer_vocab": 2048,
+  "max_context_used": 2048,
+  "predict_params": {
+    "T": 1.0,
+    "top_p": 0.9,
+    "sample_count": 5,
+    "device": "cpu",
+    "zero_shot": true
+  },
+  "bar_construction": "degenerate daily bars: open=high=low=close=daily views, volume=daily views; amount auto-filled by KronosPredictor (volume * mean price cols)",
+  "data_caveats": [
+    "Daily granularity only; no hourly bars exist in the shared dataset (Analytics API has no hour dimension; day+video combo rejected).",
+    "Pre-publish daily rows dropped; missing calendar days inside a video's span filled with 0.",
+    "Old videos' in-window views are near-zero because views predate the 90-day window; excluded from curve tests (only Oct-2026 publish-curve videos used).",
+    "2ySJM2uTqZU excluded: published 2025-07, its 62 in-window days are a sparse long tail, not a publish curve."
+  ],
+  "results": [
+    {
+      "video_id": "5gcdjQ0SdrU",
+      "outcome_label": "viral",
+      "note": "1358 snapshot views; day0=1337 then collapse to 1",
+      "published_at_derived": "2026-10-17",
+      "full_daily_series": [
+        1337,
+        1,
+        8,
+        8,
+        2,
+        2,
+        1
+      ],
+      "full_dates": [
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20",
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23"
+      ],
+      "early_days_used": 2,
+      "early_curve": [
+        1337,
+        1
+      ],
+      "actual_remaining": [
+        8,
+        8,
+        2,
+        2,
+        1
+      ],
+      "actual_remaining_sum": 21,
+      "kronos_forecast_raw_close": [
+        164.34738159179688,
+        91.22698974609375,
+        213.06881713867188,
+        -22.18829345703125,
+        -65.186767578125
+      ],
+      "kronos_forecast": [
+        164.34738159179688,
+        91.22698974609375,
+        213.06881713867188,
+        0.0,
+        0.0
+      ],
+      "kronos_forecast_sum": 468.6431884765625,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "naive_carryforward_sum": 5.0,
+      "naive_expdecay": [
+        0.0007479431563201195,
+        5.594189650861038e-07,
+        4.184135864518345e-10,
+        3.1294957849800853e-13,
+        2.340684955108515e-16
+      ],
+      "naive_expdecay_sum": 0.0007485029940119758,
+      "naive_expdecay_note": "log-linear slope=-7.198, intercept=7.198",
+      "errors": {
+        "kronos_mae": 90.7286376953125,
+        "carryforward_mae": 3.2,
+        "expdecay_mae": 4.199850299401198,
+        "kronos_total_mape": 21.316342308407737,
+        "carryforward_total_mape": 0.7619047619047619,
+        "expdecay_total_mape": 0.9999643570002852
+      }
+    },
+    {
+      "video_id": "5gcdjQ0SdrU",
+      "outcome_label": "viral",
+      "note": "1358 snapshot views; day0=1337 then collapse to 1",
+      "published_at_derived": "2026-10-17",
+      "full_daily_series": [
+        1337,
+        1,
+        8,
+        8,
+        2,
+        2,
+        1
+      ],
+      "full_dates": [
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20",
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23"
+      ],
+      "early_days_used": 3,
+      "early_curve": [
+        1337,
+        1,
+        8
+      ],
+      "actual_remaining": [
+        8,
+        2,
+        2,
+        1
+      ],
+      "actual_remaining_sum": 13,
+      "kronos_forecast_raw_close": [
+        -32.1783447265625,
+        107.84225463867188,
+        55.700653076171875,
+        38.00958251953125
+      ],
+      "kronos_forecast": [
+        0.0,
+        107.84225463867188,
+        55.700653076171875,
+        38.00958251953125
+      ],
+      "kronos_forecast_sum": 201.552490234375,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        8.0,
+        8.0,
+        8.0,
+        8.0
+      ],
+      "naive_carryforward_sum": 32.0,
+      "naive_expdecay": [
+        0.13183550217838771,
+        0.010197921572343931,
+        0.0007888436929148092,
+        6.1019725189791396e-05
+      ],
+      "naive_expdecay_sum": 0.14288328716883625,
+      "naive_expdecay_note": "log-linear slope=-2.559, intercept=5.652",
+      "errors": {
+        "kronos_mae": 51.13812255859375,
+        "carryforward_mae": 4.75,
+        "expdecay_mae": 3.214279178207791,
+        "kronos_total_mape": 14.504037710336538,
+        "carryforward_total_mape": 1.4615384615384615,
+        "expdecay_total_mape": 0.9890089779100896
+      }
+    },
+    {
+      "video_id": "plspTkhTHT8",
+      "outcome_label": "viral",
+      "note": "1132 snapshot views",
+      "published_at_derived": "2026-10-21",
+      "full_daily_series": [
+        953,
+        178,
+        76,
+        6
+      ],
+      "full_dates": [
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23",
+        "2026-10-24"
+      ],
+      "early_days_used": 2,
+      "early_curve": [
+        953,
+        178
+      ],
+      "actual_remaining": [
+        76,
+        6
+      ],
+      "actual_remaining_sum": 82,
+      "kronos_forecast_raw_close": [
+        330.0925598144531,
+        48.90374755859375
+      ],
+      "kronos_forecast": [
+        330.0925598144531,
+        48.90374755859375
+      ],
+      "kronos_forecast_sum": 378.9963073730469,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        178.0,
+        178.0
+      ],
+      "naive_carryforward_sum": 356.0,
+      "naive_expdecay": [
+        33.24658971668404,
+        6.209751279716428
+      ],
+      "naive_expdecay_sum": 39.45634099640047,
+      "naive_expdecay_note": "log-linear slope=-1.678, intercept=6.860",
+      "errors": {
+        "kronos_mae": 148.49815368652344,
+        "carryforward_mae": 137.0,
+        "expdecay_mae": 21.481580781516193,
+        "kronos_total_mape": 3.6219061874761813,
+        "carryforward_total_mape": 3.341463414634146,
+        "expdecay_total_mape": 0.5188251097999943
+      }
+    },
+    {
+      "video_id": "plspTkhTHT8",
+      "outcome_label": "viral",
+      "note": "1132 snapshot views",
+      "published_at_derived": "2026-10-21",
+      "full_daily_series": [
+        953,
+        178,
+        76,
+        6
+      ],
+      "full_dates": [
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23",
+        "2026-10-24"
+      ],
+      "early_days_used": 3,
+      "early_curve": [
+        953,
+        178,
+        76
+      ],
+      "actual_remaining": [
+        6
+      ],
+      "actual_remaining_sum": 6,
+      "kronos_forecast_raw_close": [
+        -55.411163330078125
+      ],
+      "kronos_forecast": [
+        0.0
+      ],
+      "kronos_forecast_sum": 0.0,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        76.0
+      ],
+      "naive_carryforward_sum": 76.0,
+      "naive_expdecay": [
+        18.699479726783007
+      ],
+      "naive_expdecay_sum": 18.699479726783007,
+      "naive_expdecay_note": "log-linear slope=-1.264, intercept=6.722",
+      "errors": {
+        "kronos_mae": 6.0,
+        "carryforward_mae": 70.0,
+        "expdecay_mae": 12.699479726783007,
+        "kronos_total_mape": 1.0,
+        "carryforward_total_mape": 11.666666666666666,
+        "expdecay_total_mape": 2.1165799544638344
+      }
+    },
+    {
+      "video_id": "xtcUVlQKmIM",
+      "outcome_label": "viral",
+      "note": "972 snapshot views",
+      "published_at_derived": "2026-10-17",
+      "full_daily_series": [
+        618,
+        262,
+        66,
+        21,
+        2,
+        2
+      ],
+      "full_dates": [
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20",
+        "2026-10-21",
+        "2026-10-22"
+      ],
+      "early_days_used": 2,
+      "early_curve": [
+        618,
+        262
+      ],
+      "actual_remaining": [
+        66,
+        21,
+        2,
+        2
+      ],
+      "actual_remaining_sum": 91,
+      "kronos_forecast_raw_close": [
+        305.52667236328125,
+        286.0425109863281,
+        318.50933837890625,
+        255.82106018066406
+      ],
+      "kronos_forecast": [
+        305.52667236328125,
+        286.0425109863281,
+        318.50933837890625,
+        255.82106018066406
+      ],
+      "kronos_forecast_sum": 1165.8995819091797,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        262.0,
+        262.0,
+        262.0,
+        262.0
+      ],
+      "naive_carryforward_sum": 1048.0,
+      "naive_expdecay": [
+        111.07443365695751,
+        47.08980844356448,
+        19.963640472837998,
+        8.463549844471766
+      ],
+      "naive_expdecay_sum": 186.59143241783175,
+      "naive_expdecay_note": "log-linear slope=-0.858, intercept=6.426",
+      "errors": {
+        "kronos_mae": 268.7248954772949,
+        "carryforward_mae": 239.25,
+        "expdecay_mae": 23.89785810445794,
+        "kronos_total_mape": 11.812083317683292,
+        "carryforward_total_mape": 10.516483516483516,
+        "expdecay_total_mape": 1.0504553012948545
+      }
+    },
+    {
+      "video_id": "xtcUVlQKmIM",
+      "outcome_label": "viral",
+      "note": "972 snapshot views",
+      "published_at_derived": "2026-10-17",
+      "full_daily_series": [
+        618,
+        262,
+        66,
+        21,
+        2,
+        2
+      ],
+      "full_dates": [
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20",
+        "2026-10-21",
+        "2026-10-22"
+      ],
+      "early_days_used": 3,
+      "early_curve": [
+        618,
+        262,
+        66
+      ],
+      "actual_remaining": [
+        21,
+        2,
+        2
+      ],
+      "actual_remaining_sum": 25,
+      "kronos_forecast_raw_close": [
+        14.275909423828125,
+        25.2442626953125,
+        48.08453369140625
+      ],
+      "kronos_forecast": [
+        14.275909423828125,
+        25.2442626953125,
+        48.08453369140625
+      ],
+      "kronos_forecast_sum": 87.60470581054688,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        66.0,
+        66.0,
+        66.0
+      ],
+      "naive_carryforward_sum": 198.0,
+      "naive_expdecay": [
+        23.5233964380335,
+        7.68736952989909,
+        2.512207386586102
+      ],
+      "naive_expdecay_sum": 33.72297335451869,
+      "naive_expdecay_note": "log-linear slope=-1.118, intercept=6.513",
+      "errors": {
+        "kronos_mae": 25.350962320963543,
+        "carryforward_mae": 57.666666666666664,
+        "expdecay_mae": 2.9076577848395644,
+        "kronos_total_mape": 2.504188232421875,
+        "carryforward_total_mape": 6.92,
+        "expdecay_total_mape": 0.3489189341807477
+      }
+    },
+    {
+      "video_id": "9rSkwMt6_6g",
+      "outcome_label": "flat",
+      "note": "159 snapshot views",
+      "published_at_derived": "2026-10-12",
+      "full_daily_series": [
+        90,
+        32,
+        6,
+        4,
+        6,
+        4,
+        0,
+        2,
+        7
+      ],
+      "full_dates": [
+        "2026-10-12",
+        "2026-10-13",
+        "2026-10-14",
+        "2026-10-15",
+        "2026-10-16",
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20"
+      ],
+      "early_days_used": 2,
+      "early_curve": [
+        90,
+        32
+      ],
+      "actual_remaining": [
+        6,
+        4,
+        6,
+        4,
+        0,
+        2,
+        7
+      ],
+      "actual_remaining_sum": 29,
+      "kronos_forecast_raw_close": [
+        40.51543426513672,
+        32.3796272277832,
+        60.96232604980469,
+        41.90510559082031,
+        37.96049499511719,
+        24.263965606689453,
+        26.514816284179688
+      ],
+      "kronos_forecast": [
+        40.51543426513672,
+        32.3796272277832,
+        60.96232604980469,
+        41.90510559082031,
+        37.96049499511719,
+        24.263965606689453,
+        26.514816284179688
+      ],
+      "kronos_forecast_sum": 264.50177001953125,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        32.0,
+        32.0,
+        32.0,
+        32.0,
+        32.0,
+        32.0,
+        32.0
+      ],
+      "naive_carryforward_sum": 224.0,
+      "naive_expdecay": [
+        11.377777777777778,
+        4.045432098765434,
+        1.4383758573388217,
+        0.5114225270538035,
+        0.18183912073024133,
+        0.06465390959297473,
+        0.022988056744168806
+      ],
+      "naive_expdecay_sum": 17.642489348003224,
+      "naive_expdecay_note": "log-linear slope=-1.034, intercept=4.500",
+      "errors": {
+        "kronos_mae": 33.64311000279018,
+        "carryforward_mae": 27.857142857142858,
+        "expdecay_mae": 3.223944092363383,
+        "kronos_total_mape": 8.120750690328665,
+        "carryforward_total_mape": 6.724137931034483,
+        "expdecay_total_mape": 0.3916382983447164
+      }
+    },
+    {
+      "video_id": "9rSkwMt6_6g",
+      "outcome_label": "flat",
+      "note": "159 snapshot views",
+      "published_at_derived": "2026-10-12",
+      "full_daily_series": [
+        90,
+        32,
+        6,
+        4,
+        6,
+        4,
+        0,
+        2,
+        7
+      ],
+      "full_dates": [
+        "2026-10-12",
+        "2026-10-13",
+        "2026-10-14",
+        "2026-10-15",
+        "2026-10-16",
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20"
+      ],
+      "early_days_used": 3,
+      "early_curve": [
+        90,
+        32,
+        6
+      ],
+      "actual_remaining": [
+        4,
+        6,
+        4,
+        0,
+        2,
+        7
+      ],
+      "actual_remaining_sum": 23,
+      "kronos_forecast_raw_close": [
+        -15.392410278320312,
+        -14.485664367675781,
+        -8.701576232910156,
+        -10.552864074707031,
+        -23.992923736572266,
+        -11.27447509765625
+      ],
+      "kronos_forecast": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "kronos_forecast_sum": 0.0,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        6.0,
+        6.0,
+        6.0,
+        6.0,
+        6.0,
+        6.0
+      ],
+      "naive_carryforward_sum": 36.0,
+      "naive_expdecay": [
+        1.7235477520254996,
+        0.44501811599919927,
+        0.11490318346836659,
+        0.029667874399946552,
+        0.007660212231224422,
+        0.001977858293329769
+      ],
+      "naive_expdecay_sum": 2.322774996417566,
+      "naive_expdecay_note": "log-linear slope=-1.354, intercept=4.606",
+      "errors": {
+        "kronos_mae": 3.8333333333333335,
+        "carryforward_mae": 2.5,
+        "expdecay_mae": 3.456093458730388,
+        "kronos_total_mape": 1.0,
+        "carryforward_total_mape": 0.5652173913043478,
+        "expdecay_total_mape": 0.8990097827644538
+      }
+    },
+    {
+      "video_id": "pnN5V1NKJ2E",
+      "outcome_label": "flat",
+      "note": "138 snapshot views; delayed peak day1=101 after day0=2",
+      "published_at_derived": "2026-10-10",
+      "full_daily_series": [
+        2,
+        101,
+        27,
+        0,
+        0,
+        1,
+        2,
+        1,
+        1,
+        0,
+        3
+      ],
+      "full_dates": [
+        "2026-10-10",
+        "2026-10-11",
+        "2026-10-12",
+        "2026-10-13",
+        "2026-10-14",
+        "2026-10-15",
+        "2026-10-16",
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20"
+      ],
+      "early_days_used": 2,
+      "early_curve": [
+        2,
+        101
+      ],
+      "actual_remaining": [
+        27,
+        0,
+        0,
+        1,
+        2,
+        1,
+        1,
+        0,
+        3
+      ],
+      "actual_remaining_sum": 35,
+      "kronos_forecast_raw_close": [
+        80.94998168945312,
+        80.91421508789062,
+        78.47052001953125,
+        53.048343658447266,
+        63.17353057861328,
+        60.29936599731445,
+        63.2053108215332,
+        46.524871826171875,
+        33.16447830200195
+      ],
+      "kronos_forecast": [
+        80.94998168945312,
+        80.91421508789062,
+        78.47052001953125,
+        53.048343658447266,
+        63.17353057861328,
+        60.29936599731445,
+        63.2053108215332,
+        46.524871826171875,
+        33.16447830200195
+      ],
+      "kronos_forecast_sum": 559.750617980957,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0
+      ],
+      "naive_carryforward_sum": 909.0,
+      "naive_expdecay": [
+        14.212670403551897,
+        14.212670403551897,
+        14.212670403551897,
+        14.212670403551897,
+        14.212670403551897,
+        14.212670403551897,
+        14.212670403551897,
+        14.212670403551897,
+        14.212670403551897
+      ],
+      "naive_expdecay_sum": 127.91403363196707,
+      "naive_expdecay_note": "log-linear slope was positive (rising early curve) -> clipped to 0 and intercept refit to mean(log y)=2.654",
+      "errors": {
+        "kronos_mae": 58.30562422010634,
+        "carryforward_mae": 97.11111111111111,
+        "expdecay_mae": 13.165410313873698,
+        "kronos_total_mape": 14.992874799455915,
+        "carryforward_total_mape": 24.97142857142857,
+        "expdecay_total_mape": 2.654686675199059
+      }
+    },
+    {
+      "video_id": "pnN5V1NKJ2E",
+      "outcome_label": "flat",
+      "note": "138 snapshot views; delayed peak day1=101 after day0=2",
+      "published_at_derived": "2026-10-10",
+      "full_daily_series": [
+        2,
+        101,
+        27,
+        0,
+        0,
+        1,
+        2,
+        1,
+        1,
+        0,
+        3
+      ],
+      "full_dates": [
+        "2026-10-10",
+        "2026-10-11",
+        "2026-10-12",
+        "2026-10-13",
+        "2026-10-14",
+        "2026-10-15",
+        "2026-10-16",
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20"
+      ],
+      "early_days_used": 3,
+      "early_curve": [
+        2,
+        101,
+        27
+      ],
+      "actual_remaining": [
+        0,
+        0,
+        1,
+        2,
+        1,
+        1,
+        0,
+        3
+      ],
+      "actual_remaining_sum": 8,
+      "kronos_forecast_raw_close": [
+        23.111919403076172,
+        37.17445373535156,
+        27.377811431884766,
+        34.948631286621094,
+        12.405134201049805,
+        16.370960235595703,
+        13.728536605834961,
+        -19.10073471069336
+      ],
+      "kronos_forecast": [
+        23.111919403076172,
+        37.17445373535156,
+        27.377811431884766,
+        34.948631286621094,
+        12.405134201049805,
+        16.370960235595703,
+        13.728536605834961,
+        0.0
+      ],
+      "kronos_forecast_sum": 165.11744689941406,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        27.0,
+        27.0,
+        27.0,
+        27.0,
+        27.0,
+        27.0,
+        27.0,
+        27.0
+      ],
+      "naive_carryforward_sum": 216.0,
+      "naive_expdecay": [
+        17.60239292532785,
+        17.60239292532785,
+        17.60239292532785,
+        17.60239292532785,
+        17.60239292532785,
+        17.60239292532785,
+        17.60239292532785,
+        17.60239292532785
+      ],
+      "naive_expdecay_sum": 140.8191434026228,
+      "naive_expdecay_note": "log-linear slope was positive (rising early curve) -> clipped to 0 and intercept refit to mean(log y)=2.868",
+      "errors": {
+        "kronos_mae": 20.389680862426758,
+        "carryforward_mae": 26.0,
+        "expdecay_mae": 16.60239292532785,
+        "kronos_total_mape": 19.639680862426758,
+        "carryforward_total_mape": 26.0,
+        "expdecay_total_mape": 16.60239292532785
+      }
+    },
+    {
+      "video_id": "dHdnBH9q-mg",
+      "outcome_label": "flat",
+      "note": "128 snapshot views; pre-publish 0-row dropped",
+      "published_at_derived": "2026-10-13",
+      "full_daily_series": [
+        58,
+        38,
+        14,
+        2,
+        2,
+        1,
+        4,
+        4
+      ],
+      "full_dates": [
+        "2026-10-13",
+        "2026-10-14",
+        "2026-10-15",
+        "2026-10-16",
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20"
+      ],
+      "early_days_used": 2,
+      "early_curve": [
+        58,
+        38
+      ],
+      "actual_remaining": [
+        14,
+        2,
+        2,
+        1,
+        4,
+        4
+      ],
+      "actual_remaining_sum": 27,
+      "kronos_forecast_raw_close": [
+        41.83904266357422,
+        41.333892822265625,
+        43.93855285644531,
+        38.93463134765625,
+        33.91210174560547,
+        34.41508483886719
+      ],
+      "kronos_forecast": [
+        41.83904266357422,
+        41.333892822265625,
+        43.93855285644531,
+        38.93463134765625,
+        33.91210174560547,
+        34.41508483886719
+      ],
+      "kronos_forecast_sum": 234.37330627441406,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        38.0,
+        38.0,
+        38.0,
+        38.0,
+        38.0,
+        38.0
+      ],
+      "naive_carryforward_sum": 228.0,
+      "naive_expdecay": [
+        24.89655172413791,
+        16.311533888228286,
+        10.686867030218535,
+        7.001740468074213,
+        4.587347203221037,
+        3.0055033400413693
+      ],
+      "naive_expdecay_sum": 66.48954365392134,
+      "naive_expdecay_note": "log-linear slope=-0.423, intercept=4.060",
+      "errors": {
+        "kronos_mae": 34.562217712402344,
+        "carryforward_mae": 33.5,
+        "expdecay_mae": 6.913089495639768,
+        "kronos_total_mape": 7.680492824978298,
+        "carryforward_total_mape": 7.444444444444445,
+        "expdecay_total_mape": 1.4625756908859757
+      }
+    },
+    {
+      "video_id": "dHdnBH9q-mg",
+      "outcome_label": "flat",
+      "note": "128 snapshot views; pre-publish 0-row dropped",
+      "published_at_derived": "2026-10-13",
+      "full_daily_series": [
+        58,
+        38,
+        14,
+        2,
+        2,
+        1,
+        4,
+        4
+      ],
+      "full_dates": [
+        "2026-10-13",
+        "2026-10-14",
+        "2026-10-15",
+        "2026-10-16",
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20"
+      ],
+      "early_days_used": 3,
+      "early_curve": [
+        58,
+        38,
+        14
+      ],
+      "actual_remaining": [
+        2,
+        2,
+        1,
+        4,
+        4
+      ],
+      "actual_remaining_sum": 13,
+      "kronos_forecast_raw_close": [
+        8.286029815673828,
+        17.924158096313477,
+        13.464649200439453,
+        6.402599334716797,
+        7.433870315551758
+      ],
+      "kronos_forecast": [
+        8.286029815673828,
+        17.924158096313477,
+        13.464649200439453,
+        6.402599334716797,
+        7.433870315551758
+      ],
+      "kronos_forecast_sum": 53.51130676269531,
+      "kronos_status": "ok",
+      "naive_carryforward": [
+        14.0,
+        14.0,
+        14.0,
+        14.0,
+        14.0
+      ],
+      "naive_carryforward_sum": 70.0,
+      "naive_expdecay": [
+        7.570883861072104,
+        3.7196031354159764,
+        1.8274547250863706,
+        0.8978352395831671,
+        0.4411097612277447
+      ],
+      "naive_expdecay_sum": 14.456886722385363,
+      "naive_expdecay_note": "log-linear slope=-0.711, intercept=4.156",
+      "errors": {
+        "kronos_mae": 8.102261352539063,
+        "carryforward_mae": 11.4,
+        "expdecay_mae": 2.955799344152708,
+        "kronos_total_mape": 3.116254366361178,
+        "carryforward_total_mape": 4.384615384615385,
+        "expdecay_total_mape": 0.11206820941425868
+      }
+    }
+  ]
+}
