@@ -1,6 +1,10 @@
 [Unit]
 Description=Dash MCP server (127.0.0.1:8734)
 After=network.target
+# 方案 2（2026-10-27，红队 KILL-3 修订）：熔断放宽为 10 分钟 5 次——规格原
+# 3 次/3600 会在 15 分钟恢复窗口内把 unit 停在失败态；5 次/10 分钟仍防紧循环崩溃
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Environment=HOME=/home/hatch

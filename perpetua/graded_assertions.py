@@ -124,7 +124,12 @@ def ledger_append(verdict_rec):
         if (not e.get("resolved") and e.get("checker") == c
                 and e.get("subject") == s and e.get("verdict") == v):
             try:
-                at_ts = time.mktime(time.strptime(e.get("at", "")[:19], "%Y-%m-%dT%H:%M:%S"))
+                # 方案 3（2026-10-27）：ledger 的 at 是 UTC 串，mktime 按本地时区
+                # 解析会算老 8 小时，导致 dedup TTL 永不命中、同一批 SUSPECT 每轮
+                # 重写入账灌满 500 上限。改按 UTC 解析。
+                at_ts = datetime.strptime(
+                    e.get("at", "")[:19], "%Y-%m-%dT%H:%M:%S").replace(
+                        tzinfo=timezone.utc).timestamp()
             except Exception:
                 continue
             if now - at_ts < LEDGER_DEDUP_TTL_S:

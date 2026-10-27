@@ -19,7 +19,7 @@ import re
 import subprocess
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
@@ -425,6 +425,29 @@ def _in_control_group(item):
     return (h % CONTROL_GROUP_RATIO_DEN) < CONTROL_GROUP_RATIO_NUM
 
 
+def _pipeline_delay_waiver(qid, trig_dt, ans_dt):
+    """方案 3（2026-10-27）：管线延迟豁免判定。
+
+    仅当三条同时成立才豁免：① prompt_reviewed 里该 qid 的真提交时间早于答案
+    （答案确属本次提交）；② 当前 trig 晚于答案（管线在答案到达后刷新了触发
+    时间——10-22 事件的指纹，延迟是管线造成的，不是版本错配）。满足时答案
+    可采信且跳过 TTL（TTL 防的是跨提交套用，qid 绑定已防住）；不满足一律不豁免。
+    """
+    try:
+        reviewed = json.load(open(
+            "/home/hatch/data/perpetua/prompt_reviewed.json", encoding="utf-8"))
+        for _v in reviewed.values():
+            if isinstance(_v, dict) and _v.get("qid") == qid:
+                true_sub = _parse_iso_ts(_v.get("submitted_at"))
+                if (true_sub is not None and true_sub < ans_dt
+                        and trig_dt > ans_dt):
+                    return True
+                return False
+    except Exception:
+        pass
+    return False
+
+
 def _fresh_review_answer(qid, submitted_at):
     """分级断言 M5/M7/M8/N7：只接受「本次提交qid + answered_at晚于提交时间 + TTL内」的答案。
     返回 (answer_text, answered_at, verdict)。stale/qid失配 → SUSPECT。"""
@@ -451,6 +474,15 @@ def _fresh_review_answer(qid, submitted_at):
         if ans_dt.tzinfo is None:
             ans_dt = ans_dt.replace(tzinfo=timezone.utc)
         if ans_dt < sub_dt:
+            # 方案 3 豁免：trig 在答案后被刷新（管线延迟指纹）→ 答案确属本次
+            # 提交，采信并跳过 TTL；否则仍按旧提交答案判 SUSPECT
+            if _pipeline_delay_waiver(qid, sub_dt, ans_dt):
+                pipeline_log("select", "ok",
+                             f"评审答案管线延迟豁免（qid={qid}，答案确属本次提交）", 0)
+                ans = item.get("answer") or item.get("answer_summary")
+                if isinstance(ans, dict):
+                    ans = ans.get("section") or ans.get("full") or ""
+                return str(ans).strip(), ans_at, ga.CONFIRMED
             return None, ans_at, ga.SUSPECT  # 旧提交的答案：版本选择 bug
     except Exception:
         return None, ans_at, ga.SUSPECT
@@ -661,6 +693,9 @@ def _sweep_stale_submitted(queue, route_fn=None, now=None):
                 item["gen_route_reason"] = (routed.get("reason", "") or "")[:200]
                 item["gen_attempts"] = attempts + 1
                 item["submitted_at"] = now_iso()
+                # 方案 1 收尾（2026-10-27）：租约字段，与清道夫 60 分钟超时同一口径
+                item["lease_expires_at"] = (
+                    now + timedelta(minutes=GEN_CLAIM_TIMEOUT_MIN)).isoformat()
                 _gen_poll_reset(item)
                 pipeline_log("generate", "ok",
                              f"清道夫换后端 {topic}：{backend} → nano"
@@ -675,6 +710,9 @@ def _sweep_stale_submitted(queue, route_fn=None, now=None):
         item["gen_attempts"] = attempts + 1
         item["status"] = "arena_manual"
         item["gen_rerouted_from"] = backend
+        # 方案 1 收尾：兜底产物默认须人工目视放行（上传关卡拦截），防异构后端直发
+        item["requires_fallback_approval"] = True
+        item.pop("fallback_approved", None)
         path = _write_arena_manual_file(item, jid)
         pipeline_log("generate", "error",
                      f"清道夫转 arena 手工兜底 {topic}（文件 {path}）", 0)
@@ -706,10 +744,17 @@ def _write_gen_capacity(queue, now=None):
             ts = _parse_iso_ts(item.get("submitted_at"))
             if ts is not None and (oldest is None or ts < oldest):
                 oldest = ts
+        # 方案 1 收尾：arena_manual 消费者——快照列出待手工兜底项，collect 每轮
+        # 另行打日志（见 collect_results），该状态不再是无人认领的孤儿状态
+        arena_pending = [{
+            "topic": it.get("topic"), "job_id": it.get("job_id"),
+            "file": os.path.join(ARENA_MANUAL_DIR, str(it.get("job_id")) + ".md"),
+        } for it in queue if it.get("status") == "arena_manual"]
         snap = {
             "ts": now.isoformat(),
             "job_submitted_by_backend": by_backend,
             "job_submitted_total": sum(by_backend.values()),
+            "arena_manual_pending": arena_pending,
             "oldest_job_submitted_age_min": (
                 round((now - oldest).total_seconds() / 60.0, 1)
                 if oldest is not None else None),
@@ -1500,6 +1545,12 @@ def collect_results():
         _write_gen_capacity(queue)
     except Exception:
         pass
+    # 方案 1 收尾：arena_manual 每轮打日志（消费者），待手工兜底不静默
+    for _am in queue:
+        if _am.get("status") == "arena_manual":
+            pipeline_log("generate", "error",
+                         f"arena 手工兜底待派发：{_am.get('topic')}（文件 "
+                         f"{ARENA_MANUAL_DIR}/{_am.get('job_id')}.md）", 0)
     # 2026-10-09 自治补漏：submit 原来只在 11:00/22:00 跟选题跑，中途 review_passed 的要等数小时。
     # 每 20 分钟 collect 时扫一遍，达标即提交生成（submit_jobs 自带 ≥85 硬门禁 + 已提交的不重复）。
     # 先修复坏状态：review_passed 但无 score（历史误写）→ 打回重审。
@@ -1765,10 +1816,31 @@ _TRANSIENT_UPLOAD_MARKERS = (
 )
 
 
+def _upload_gate_ok(item):
+    """方案 1 收尾·staging 上传关卡：兜底后端产物须人工目视放行后才可上传。
+
+    拦截：status=arena_manual，或 requires_fallback_approval=True 且未
+    fallback_approved。nano 等自动后端正常 QC 产物不受影响。
+    """
+    if item.get("status") == "arena_manual":
+        return False
+    if item.get("requires_fallback_approval") and not item.get("fallback_approved"):
+        return False
+    return True
+
+
 def _auto_upload_private(item):
     """2026-10-09 新政：QC 通过后自动上传为 private，到点翻 public，无人工终审。
     返回 (ok, retryable)。interval 门禁拒绝 → retryable=True，下一轮 collect 重试。
     """
+    if not _upload_gate_ok(item):
+        # 关卡拦截不是失败：保持原状态等人工放行，首轮打日志、后续静默防刷屏
+        if not item.get("upload_gate_held"):
+            item["upload_gate_held"] = True
+            pipeline_log("publish", "error",
+                         f"上传关卡拦截（待人工目视放行）: {item.get('topic')}", 0)
+        return False, False
+    item.pop("upload_gate_held", None)
     res = _do_upload(item["video_file"], item["title"],
                      item.get("description", ""),
                      template={"topic": item.get("topic", ""),
@@ -1925,6 +1997,15 @@ def urgent_upload_ready():
     for item in queue:
         if not (item.get("urgent") and item.get("status") == "qc_passed"):
             continue
+        if not _upload_gate_ok(item):
+            # 关卡拦截：不标记 upload_failed，保持 qc_passed 等人工放行
+            if not item.get("upload_gate_held"):
+                item["upload_gate_held"] = True
+                pipeline_log("publish", "error",
+                             f"URGENT 上传关卡拦截（待人工目视放行）: "
+                             f"{item.get('topic')}", 0)
+            continue
+        item.pop("upload_gate_held", None)
         res = _do_upload(item["video_file"], item["title"],
                          item.get("description", ""),
                          template={"topic": item.get("topic", ""),
