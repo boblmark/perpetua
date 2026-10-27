@@ -1,0 +1,12 @@
+[Unit]
+Description=Dash: sleep night patrol analyzer (deterministic part, from platform cron sleep-night-patrol)
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/hatch/data/sleep_patrol
+Environment=HOME=/home/hatch
+ExecStart=/usr/bin/python3 /home/hatch/data/sleep_patrol/night_patrol_analyze.py
+# exit 10 = handled run with report/anomaly written; not a failure
+SuccessExitStatus=10
