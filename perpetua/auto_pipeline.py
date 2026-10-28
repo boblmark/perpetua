@@ -1831,10 +1831,21 @@ def collect_results():
                 entry = _enqueue_private_flip(item["video_id"], item["title"],
                                               review_score=item.get("review_score"),
                                               video_file=item.get("video_file"))
-                item["status"] = "uploaded_private"
-                pipeline_log("publish", "ok",
-                             f"补入 privateq 成功: {item['topic']} → "
-                             f"{item['video_id']}，排期 {entry.get('slot', '?')}", 1)
+                if entry.get("status") == "throttle_deferred":
+                    # P5：节流拦截 → 保持 uploaded_no_queue 下轮重试，
+                    # 不误置 uploaded_private（旧代码无条件置位会谎报入队成功）。
+                    item["throttle_deferred_at"] = now_iso()
+                    item["throttle_defer_count"] = int(item.get("throttle_defer_count", 0) or 0) + 1
+                    pipeline_log("publish", "error",
+                                 f"B' 节流拦截补入队，保留待下轮重试 {item['topic']}: "
+                                 f"{entry.get('throttle_reason', '')}", 0)
+                else:
+                    item["status"] = "uploaded_private"
+                    item.pop("throttle_deferred_at", None)
+                    item.pop("throttle_defer_count", None)
+                    pipeline_log("publish", "ok",
+                                 f"补入 privateq 成功: {item['topic']} → "
+                                 f"{item['video_id']}，排期 {entry.get('slot', '?')}", 1)
             except Exception as _eqe:
                 pipeline_log("publish", "error",
                              f"补入 privateq 仍失败，保留 video_id 下轮再试 "
@@ -2135,6 +2146,28 @@ def _enqueue_private_flip(video_id, title, slot=None, review_score=None,
     for e in pq:
         if e.get("video_id") == video_id and e.get("status") == "waiting":
             return e
+    # P5（2026-10-28）：入队前查 B' 节流门。此前主链路从不查节流，
+    # bprime_throttle 的“7 天 ≤2 条、间隔 ≥72h”对主 Shorts 不生效。
+    # 不通过 → 不入队，返回 throttle_deferred 标记；调用方
+    # （_auto_upload_private 与 uploaded_no_queue 补入队）保持
+    # uploaded_no_queue，下轮 collect 重试（重试时 next_slot() 重新取档，
+    # 即“顺延一档”，不写假排期）。节流门本身异常同样 fail-closed
+    # 按不通过处理（U5 循环会重试，不丢视频）；已在等待的条目走上
+    # 面的幂等复用，不重复查节流。
+    try:
+        import sys as _sys
+        if "/home/hatch/data/perpetua" not in _sys.path:
+            _sys.path.insert(0, "/home/hatch/data/perpetua")
+        from bprime_throttle import throttle_allows
+        _allowed, _treason = throttle_allows()
+    except Exception as _te:
+        _allowed, _treason = False, f"节流门检查异常，fail-closed: {_te}"
+    if not _allowed:
+        pipeline_log("publish", "error",
+                     f"B' 节流门拦截入队 {video_id}：{_treason}，保留待下轮重试", 0)
+        return {"video_id": video_id, "title": title,
+                "status": "throttle_deferred", "deferred": True,
+                "throttle_reason": _treason}
     # D20261015-010 R4：禁背靠背批量发出（10-13 曾 23:08/23:20 连发两条）。
     # 新 target 若距任一 waiting 条目的 scheduled_at 不足 90 分钟，顺延一档。
     # 红队修订：不做 ±2min 硬卡，只保最小间隔。
@@ -2273,8 +2306,19 @@ def _auto_upload_private(item):
                          f"上传已成功但入 privateq 失败，保留 video_id 待补入队 "
                          f"{item['topic']}: {_eqe}", 0)
             return True, False
+        if entry.get("status") == "throttle_deferred":
+            # P5：节流拦截 → 保持 uploaded_no_queue（U5 消费者下轮重试入队），
+            # 不置 uploaded_private、不记 INTENTIONAL_PRIVATE、不发成功通知。
+            item["throttle_deferred_at"] = now_iso()
+            item["throttle_defer_count"] = int(item.get("throttle_defer_count", 0) or 0) + 1
+            pipeline_log("publish", "error",
+                         f"B' 节流拦截，保留待下轮重试 {item['topic']}: "
+                         f"{entry.get('throttle_reason', '')}", 0)
+            return True, False
         slot = entry.get("slot", "?")
         item["status"] = "uploaded_private"
+        item.pop("throttle_deferred_at", None)
+        item.pop("throttle_defer_count", None)
         # 状态机记录：进入 INTENTIONAL_PRIVATE（经跃迁门）
         try:
             import pipeline_state as ps
