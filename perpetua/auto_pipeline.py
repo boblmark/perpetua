@@ -1762,13 +1762,27 @@ def _do_upload(video, title, description, template=None, privacy="private"):
         f"tags='Karen,InstantKarma,Shorts,Comedy,Viral', language='en', ai_disclosure=True{tmpl}, privacy={privacy!r});"
         "print(json.dumps({'result': r}, ensure_ascii=False))"
     )
-    r = subprocess.run([VENV_PY, "-c", code], capture_output=True,
-                       text=True, timeout=300)
+    # Stage 2 U1 防护（2026-10-28 用户批准）：subprocess 超时不再炸整轮
+    # collect，改走 transient 文本（_auto_upload_private 的 transient 重试
+    # + 同标题查重接手）；幂等墙 [blocked] 若带 video_id=，按已上传恢复，
+    # 其它 [blocked]（合规/原创度门禁，无 video_id）仍原样返回失败。
+    try:
+        r = subprocess.run([VENV_PY, "-c", code], capture_output=True,
+                           text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        return "[error] timeout: upload subprocess timed out after 300s"
+    except Exception as e:
+        return f"[error] upload subprocess failed: {str(e)[:200]}"
     out = r.stdout.strip().split("\n")[-1] if r.stdout.strip() else "{}"
     try:
-        return json.loads(out).get("result", "")
+        result = json.loads(out).get("result", "")
     except Exception:
         return f"[error] {r.stderr[:200]}"
+    if isinstance(result, str) and result.startswith("[blocked]"):
+        m = re.search(r"video_id=([\w-]{11})", result)
+        if m:
+            return m.group(1)
+    return result
 
 
 def _enqueue_private_flip(video_id, title, slot=None, review_score=None,

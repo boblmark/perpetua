@@ -16,6 +16,8 @@
 - 已有通过 QC 且 video_file 未变者跳过（幂等）。
 
 用法：python3 ingest_arena_manual.py [--dry-run] [--id <event_bus_id>]
+Stage 2：python3 ingest_arena_manual.py approve_and_promote <event_bus_id>
+（须用户按条目名批准；前置校验失败不改状态；本命令不调上传）
 QC 引擎不可用时 fail-closed：直接退出，不动队列。
 """
 import argparse
@@ -77,7 +79,109 @@ def _qc_repair(video_path, similarity):
     return repair_loop_seam(video_path, similarity)
 
 
+def promote(item_id):
+    """Stage 2 放行与提单（须用户按条目名批准，Dash 不自批）。
+
+    前置校验任一不满足即拒绝、不改状态：status==arena_manual；
+    Stage 1 通过的 qc_report（passed 且 qc_passed_at 在）；
+    video_file 存在；无 youtube_video_id / video_id。
+    效果：fallback_approved=True + 批准记录 + status=ready_to_upload；
+    上传发生在下一轮 collect 的 ready_to_upload 循环（现有链路），
+    本命令本身不调上传、不进 private 队列。
+    """
+    try:
+        q = queue_db.pipeline_load()
+    except Exception as e:
+        print(f"读队列失败（不动队列）: {e}")
+        return 2
+    items = q if isinstance(q, list) else q.get("items", [])
+    # 用户说的 id 是 event_bus 行 id（如 3574），payload 里没有 id 字段，
+    # 只能经 event_bus 表取 _row_key 再定位；payload 自带 id 时也兼容。
+    row_key = None
+    try:
+        import sqlite3
+        con = sqlite3.connect(
+            "file:/home/hatch/data/ops_center.db?mode=ro", uri=True)
+        row = con.execute(
+            "SELECT payload FROM event_bus WHERE id=? AND queue_name='pipeline'",
+            (item_id,)).fetchone()
+        con.close()
+        if row:
+            row_key = json.loads(row[0]).get("_row_key")
+    except Exception as e:
+        print(f"查 event_bus 行 id 失败（仍试 payload id 匹配）：{e}")
+    target = None
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if row_key and it.get("_row_key") == row_key:
+            target = it
+            break
+    if target is None:
+        # 兜底：payload 自带 id 的旧格式 / 隔离测试用假队列
+        for it in items:
+            if isinstance(it, dict) and it.get("id") == item_id:
+                target = it
+                break
+    if target is None:
+        print(f"拒绝：队列中没有 id={item_id}")
+        return 2
+    if target.get("status") != "arena_manual":
+        print(f"拒绝：id={item_id} status={target.get('status')}，不是 arena_manual")
+        return 2
+    qc = target.get("qc_report") or {}
+    if not (qc.get("passed") and target.get("qc_passed_at")):
+        print(f"拒绝：id={item_id} 没有 Stage 1 通过的 qc_report/qc_passed_at")
+        return 2
+    vf = target.get("video_file")
+    path = resolve(vf) if vf else None
+    if not path:
+        print(f"拒绝：id={item_id} video_file 不存在：{vf}")
+        return 2
+    if target.get("youtube_video_id") or target.get("video_id"):
+        print(f"拒绝：id={item_id} 已有 video_id，禁止重复上传")
+        return 2
+    target["fallback_approved"] = True
+    target["fallback_approved_at"] = now_iso()
+    target["fallback_approval"] = {
+        "approved_at": now_iso(), "approved_by": "user",
+        "command": "approve_and_promote", "item_id": item_id,
+        "qc_passed_at": target.get("qc_passed_at"),
+        "video_file": path,
+    }
+    target.pop("upload_gate_held", None)
+    target["status"] = "ready_to_upload"
+    queue_db.pipeline_save(q)
+    print(f"已放行：id={item_id} {target.get('topic')} → ready_to_upload，"
+          f"下一轮 collect 自动 private 上传")
+    try:
+        inbox_path = "/home/hatch/data/collab/inbox.json"
+        with open(inbox_path, encoding="utf-8") as f:
+            inbox = json.load(f)
+        inbox.setdefault("notices", []).append({
+            "type": "stage2_promoted",
+            "title": f"已放行：{target.get('topic')}",
+            "message": (f"Stage 2 已放行 id={item_id}（{target.get('topic')}），"
+                        f"下一轮 collect 自动 private 上传"),
+            "created": now_iso(), "created_at": now_iso(), "for": "user",
+            "item_id": item_id, "video_file": path,
+        })
+        with open(inbox_path, "w", encoding="utf-8") as f:
+            json.dump(inbox, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"写 inbox 通知失败（提单本身已生效）：{e}")
+    return 0
+
+
 def main():
+    # Stage 2 子命令：python3 ingest_arena_manual.py approve_and_promote <id>
+    if len(sys.argv) >= 3 and sys.argv[1] == "approve_and_promote":
+        try:
+            item_id = int(sys.argv[2])
+        except ValueError:
+            print(f"拒绝：id 必须是整数：{sys.argv[2]}")
+            return 2
+        return promote(item_id)
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--id", type=int, default=None,
