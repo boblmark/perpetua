@@ -1,0 +1,17 @@
+[Unit]
+Description=Semantica Knowledge Explorer (127.0.0.1:18091)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/data/research/semantica-pilot
+Environment=SEMANTICA_ALLOW_ANONYMOUS=true
+ExecStart=/home/hatch/data/research/semantica-pilot/venv/bin/python -m semantica.explorer --graph graph_kb.json --port 18091 --host 127.0.0.1 --no-browser
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/hatch/data/research/semantica-pilot/explorer_run.log
+StandardError=append:/home/hatch/data/research/semantica-pilot/explorer_run.log
+
+[Install]
+WantedBy=multi-user.target
