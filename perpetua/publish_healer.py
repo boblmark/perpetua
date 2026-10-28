@@ -173,8 +173,33 @@ def _shorts_gap_hours():
 
 # ---------------- 自动修 ----------------
 
+def _pipeline_snapshot():
+    """队列状态快照：{行键: 状态}。读失败返回 None（fail-open，
+    调用方无法证明无推进时不判 no-op）。"""
+    try:
+        import queue_db
+        snap = {}
+        for x in queue_db.pipeline_load():
+            key = str(x.get("id") or x.get("job_id") or x.get("topic"))
+            snap[key] = x.get("status")
+        return snap
+    except Exception:
+        return None
+
+
 def _run_collect():
-    """触发已存在的管线入口（幂等，cron 每 20 分钟也在跑）。返回 (ok, log)。"""
+    """触发已存在的管线入口（幂等，cron 每 20 分钟也在跑）。
+
+    C7（2026-10-28，审计 C 路第 7 条）：旧实现只看子进程退出码，
+    rc==0 即记 trigger_collect:ok——collect 收集 0 个任务也算成功，
+    每 30 分钟重复同一无效修复并记为成功。现以队列状态推进为准：
+    返回 (status, logs)，status ∈ {"ok", "no-op", "failed"}：
+    - failed：子进程非零退出或异常；
+    - ok：前后快照有任何状态变化或行增减（有条目被推进）；
+    - no-op：进程成功但快照纹丝不动（空心成功，调用方据此升级）。
+    快照读失败时 fail-open 回旧语义（rc==0 即 ok），不误判。
+    """
+    before = _pipeline_snapshot()
     logs = []
     for args in (["review", "--wait", "0", "--instant-timeout", "0"],
                  ["collect"]):
@@ -184,10 +209,17 @@ def _run_collect():
                 cwd=BASE, capture_output=True, text=True, timeout=600)
             logs.append(f"{' '.join(args)}: rc={r.returncode} "
                         f"tail={(r.stdout or '')[-300:]}")
+            if r.returncode != 0:
+                return "failed", logs
         except Exception as e:
             logs.append(f"{' '.join(args)}: EXC {e}")
-            return False, logs
-    return True, logs
+            return "failed", logs
+    if before is None:
+        return "ok", logs
+    after = _pipeline_snapshot()
+    if after is None or after != before:
+        return "ok", logs
+    return "no-op", logs
 
 
 def _retry_stuck_generating(items):
@@ -261,9 +293,26 @@ def remediate(diag):
     bn = diag["bottleneck"]
     actions = []
     if bn in ("scheduler_stalled", "draining", "shorts_starved"):
-        ok, logs = _run_collect()
+        status, logs = _run_collect()
+        # C7（2026-10-28）：连续 no-op 追踪。ok 清零；no-op 累计，
+        # 连续两轮 no-op 即判定 collect 已空转：bottleneck 改写为
+        # no_ready_items（该档有 NEED_USER 拍板文案），并置旁路标志，
+        # 使 escalate() 跳过 6h 冷却立即升级，不再等冷却放行。
+        _st = _load_state()
+        if status == "ok":
+            _st["collect_noop_streak"] = 0
+        elif status == "no-op":
+            _st["collect_noop_streak"] = int(_st.get("collect_noop_streak", 0) or 0) + 1
+        else:
+            _st["collect_noop_streak"] = 0
+        _save_state(_st)
+        if status == "no-op" and _st["collect_noop_streak"] >= 2:
+            diag["bottleneck"] = "no_ready_items"
+            diag["_bypass_escalate_cooldown"] = True
+            logs = logs + [f"C7: collect 连续 {_st['collect_noop_streak']} 轮 "
+                           f"no-op，bottleneck 改写为 no_ready_items 并旁路升级冷却"]
         actions.append({"action": "trigger_collect",
-                        "result": "ok" if ok else "failed",
+                        "result": status,
                         "log": logs})
     elif bn == "no_ready_items":
         actions.append({"action": "none",
@@ -328,7 +377,11 @@ def escalate(alerts, diag, actions):
     st = _load_state()
     last = st.get("escalated", {})
     # 冷却：同 bottleneck 6h 内不重发
-    if last.get("bottleneck") == bn and last.get("ts"):
+    # C7（2026-10-28）：连续两轮 collect no-op 时 remediate 置旁路标志，
+    # 审计要求“绕过 6h 升级冷却立即升级”，此处跳过冷却检查（仍写新 ts）。
+    if diag.get("_bypass_escalate_cooldown"):
+        pass
+    elif last.get("bottleneck") == bn and last.get("ts"):
         dt = (_now() - datetime.fromisoformat(last["ts"])).total_seconds()
         if dt < ESCALATE_COOLDOWN_HOURS * 3600:
             return False

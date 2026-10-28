@@ -70,15 +70,39 @@ def check():
     return 0
 
 
+# C6（2026-10-28）：通道检修状态的唯一口径，供 anomaly_watchdog
+# 的 24h 重发检查复用（不另起 cron、不改动任何定时任务）。
+REPAIR_STATE = "/home/hatch/data/perpetua/ask_studio_channel_repair_state.json"
+
+
+def repair_status():
+    """返回 {count, needs_repair, last_urgent_at}。读失败按未触发处理。"""
+    st = {}
+    try:
+        with open(REPAIR_STATE, encoding="utf-8") as f:
+            st = json.load(f)
+    except Exception:
+        st = {}
+    return {
+        "count": count_7d(),
+        "needs_repair": count_7d() > CAP_7D,
+        "last_urgent_at": st.get("last_urgent_at", ""),
+        "first_urgent_at": st.get("first_urgent_at", ""),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["record", "check", "count"])
+    ap.add_argument("cmd", choices=["record", "check", "count",
+                                   "repair-status"])
     ap.add_argument("--reason", default="")
     a = ap.parse_args()
     if a.cmd == "record":
         record(a.reason)
     elif a.cmd == "count":
         print(count_7d())
+    elif a.cmd == "repair-status":
+        print(json.dumps(repair_status(), ensure_ascii=False))
     else:
         return check()
 

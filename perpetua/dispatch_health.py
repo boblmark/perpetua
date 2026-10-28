@@ -372,8 +372,10 @@ def summarize(verdicts):
     if any(v["verdict"] == ga.CONFIRMED for v in verdicts.values()):
         # CONFIRMED 但非 fail 语义（如 vids 配额耗尽已知）→ DEGRADED
         return "DEGRADED"
-    if any(v["verdict"] == ga.SUSPECT for v in verdicts.values()):
-        return "DEGRADED"
+    # C8（2026-10-28，审计 C 路第 8 条）：纯 SUSPECT/UNKNOWN 不再翻成
+    # DEGRADED——此前代码违背本函数 docstring（M2/N4：SUSPECT 只升级、
+    # 不跃迁），检查器自坏直接污染生命线总状态、制造假 DEGRADED 噪声。
+    # SUSPECT 仍走 suspect_forever 熔断升级通道（main 内），只不碰总状态。
     return "HEALTHY"
 
 

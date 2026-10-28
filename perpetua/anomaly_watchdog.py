@@ -12,7 +12,7 @@ anomaly 看门狗（2026-10-15 四脑议会 R1/R2/R4）
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
@@ -31,7 +31,7 @@ GRADER_SUSPECT_RATIO = 0.8
 GRADER_MIN_SAMPLES = 5
 
 
-def _inbox_append(msg):
+def _inbox_append(msg, msg_type="anomaly_watchdog"):
     try:
         inbox = json.load(open(INBOX_PATH, encoding="utf-8"))
     except Exception:
@@ -45,7 +45,7 @@ def _inbox_append(msg):
         if items is None:
             items = inbox.setdefault("messages", [])
     items.append({
-        "type": "anomaly_watchdog",
+        "type": msg_type,
         "message": msg,
         "for": "dash_main",
         "read": False,
@@ -292,6 +292,70 @@ def check_council_watches():
     return hits
 
 
+def check_channel_repair():
+    """C6（2026-10-28）：Ask Studio 通道检修的“主人”。
+
+    旧缺口：CAP 触发后 queue-processor 只写一次 urgent，检修本身无
+    代码/cron/负责人跟进，问题队列无限期停滞。本批不新建 cron，改由
+    本看门狗（已有 30 分钟轮）维持：触发期间每 24h 重发一次结构化
+    urgent（type=ask_studio_channel_repair，与 queue-processor 任务体
+    的触发器同形），附检修清单；计数回落到 CAP 内即清状态停发。
+    检修执行者是读到 urgent 的主 agent（代码无法自动修浏览器槽位
+    路由），故 urgent 本身必须可执行、可追踪。返回命中摘要列表
+    （已写 inbox，不再经 main 的 alert() 双写）。"""
+    try:
+        import ask_studio_dispatch_guard as _gd
+        n = _gd.count_7d()
+        cap = _gd.CAP_7D
+        state_path = _gd.REPAIR_STATE
+    except Exception:
+        return []
+    try:
+        st = json.load(open(state_path, encoding="utf-8"))
+        if not isinstance(st, dict):
+            st = {}
+    except Exception:
+        st = {}
+    if n <= cap:
+        # 已恢复：清状态，下次触发重新计时首发。
+        if st:
+            try:
+                os.remove(state_path)
+            except Exception:
+                pass
+        return []
+    now_s = ga.utcnow()
+    last = st.get("last_urgent_at", "")
+    try:
+        _last_dt = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
+        if _last_dt.tzinfo is None:
+            _last_dt = _last_dt.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - _last_dt) < timedelta(hours=24):
+            return []  # 24h 内已发过，去重等下一轮
+    except Exception:
+        pass
+    first = st.get("first_urgent_at", "") or now_s
+    msg = (
+        "Ask Studio 通道机制检修（7天内亲派 %d 次，已超 %d 次上限）："
+        "worker 槽位系统性失败且亲派配额已用完，普通亲派已停。检修清单："
+        "① 对比 worker 槽位与主 agent 槽位的 Studio 会话差异（登录态/账号选择页）；"
+        "② 轮换或重建 worker 浏览器槽位；③ 修好后用一题 worker 派发实测验证再恢复。"
+        "修好前本 urgent 每 24h 重发一次（首次 %s）。"
+        % (n, cap, first[:19]))
+    try:
+        _inbox_append(msg, msg_type="ask_studio_channel_repair")
+    except Exception:
+        return []
+    try:
+        json.dump({"last_urgent_at": now_s, "first_urgent_at": first,
+                   "last_count": n},
+                  open(state_path, "w", encoding="utf-8"),
+                  ensure_ascii=False)
+    except Exception:
+        pass
+    return [msg]
+
+
 def main():
     report = {
         "at": ga.utcnow(),
@@ -300,6 +364,7 @@ def main():
         "sla_paged": check_sla(),
         "forever_p1": check_forever(),
         "council_watches": check_council_watches(),
+        "channel_repair": check_channel_repair(),
     }
     as_json = "--json" in sys.argv
     if as_json:

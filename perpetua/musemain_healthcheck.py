@@ -100,13 +100,38 @@ def get_pending_jobs() -> list[dict]:
         except json.JSONDecodeError:
             data = {}
 
+        # A3（2026-10-28）：claimed 文件早已被 *.json 通配列出（23:09
+        # 实测已报 stale），审计“从未被解读”已过时；真缺口是计龄口径：
+        # 认领文件以 claimed_at 计龄（mtime 会被任何重写刷新，不可靠），
+        # 无 claimed_at 回落 mtime。负年龄（时钟 skew）不钳制为 0，
+        # 交 check_health 列为 suspect 可疑项，不静默当健康。
+        _claimed = (".claimed-" in filepath.split("/")[-1]
+                    or bool(data.get("claimed_at"))
+                    or bool(data.get("_claimed_by")))
+        _clock = "mtime"
+        _epoch = mtime
+        _claimed_at = data.get("claimed_at") or ""
+        if _claimed_at:
+            try:
+                _dt = datetime.fromisoformat(
+                    str(_claimed_at).replace("Z", "+00:00"))
+                if _dt.tzinfo is None:
+                    _dt = _dt.replace(tzinfo=timezone.utc)
+                _epoch = int(_dt.timestamp())
+                _clock = "claimed_at"
+            except (ValueError, OverflowError):
+                pass
+
         jobs.append({
             "file": filepath.split("/")[-1],
             "job_id": data.get("job_id", filepath.split("/")[-1].replace(".json", "")),
             "consumer": data.get("consumer", ""),
             "job_type": data.get("job_type", ""),
             "created_at": mtime,
-            "age_minutes": (time.time() - mtime) / 60,
+            "claimed": _claimed,
+            "claimed_at": _claimed_at,
+            "age_clock": _clock,
+            "age_minutes": (time.time() - _epoch) / 60,
         })
 
     return jobs
@@ -134,23 +159,49 @@ def check_health(threshold_min: int = 15) -> dict:
     musemain_jobs = [j for j in jobs if j.get("consumer") == "muse-main"]
     result["pending_count"] = len(musemain_jobs)
 
-    # Find stale jobs
-    stale = [j for j in musemain_jobs if j["age_minutes"] > threshold_min]
+    # Find stale jobs（负年龄永不算 stale，另列 suspect）
+    stale = [j for j in musemain_jobs
+             if 0 <= j["age_minutes"] and j["age_minutes"] > threshold_min]
+    suspect = [j for j in musemain_jobs if j["age_minutes"] < 0]
     result["stale_count"] = len(stale)
     result["stale_jobs"] = [
         {
             "job_id": j["job_id"],
             "job_type": j["job_type"],
             "age_minutes": round(j["age_minutes"], 1),
+            "claimed": bool(j.get("claimed")),
+            "age_clock": j.get("age_clock", "mtime"),
         }
         for j in stale
+    ]
+    # A3：负年龄 = 时钟 skew 可疑项，只列出不触发降级（fail-open，
+    # 不把检查器自坏当成 muse-main 故障，Rule 14）。
+    result["suspect_jobs"] = [
+        {
+            "job_id": j["job_id"],
+            "job_type": j["job_type"],
+            "age_minutes": round(j["age_minutes"], 1),
+            "reason": "negative_age_clock_skew",
+        }
+        for j in suspect
     ]
 
     if stale:
         result["healthy"] = False
+        # A3：旧文案把所有 stale 都写成 "without claim"，对已认领未交付
+        # 的任务是误述（23:11 切换告警即因此措辞失真）。分开计数表述。
+        _n_claimed = sum(1 for j in stale if j.get("claimed"))
+        _n_unclaimed = len(stale) - _n_claimed
+        _parts = []
+        if _n_unclaimed:
+            _parts.append(f"{_n_unclaimed} unclaimed > {threshold_min}min")
+        if _n_claimed:
+            _parts.append(f"{_n_claimed} claimed but undelivered "
+                          f"> {threshold_min}min")
         result["reason"] = (
-            f"{len(stale)} job(s) pending > {threshold_min}min without claim. "
-            f"muse-main may be offline or out of quota."
+            f"{len(stale)} job(s) stale ({'; '.join(_parts)}). "
+            f"muse-main may be offline, out of quota, or claimed "
+            f"without delivering."
         )
 
     return result
@@ -175,6 +226,9 @@ def main():
             print(f"❌ Unhealthy: {result.get('reason', result.get('error', 'unknown'))}")
             for j in result.get("stale_jobs", []):
                 print(f"   - {j['job_id']} ({j['job_type']}, {j['age_minutes']}min)")
+        for j in result.get("suspect_jobs", []):
+            print(f"   ? Suspect: {j['job_id']} ({j['job_type']}, "
+                  f"{j['age_minutes']}min, {j['reason']})")
 
     sys.exit(0 if result["healthy"] else 1)
 
