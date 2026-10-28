@@ -581,10 +581,10 @@ def _gen_poll_reset(item):
 
 # ---------------- 方案 1（2026-10-27）：认领超时清道夫 + 容量快照 ----------------
 # 背景：muse-main claimed-but-unconsumed 致生成静默断流；旧逻辑只在 24h 轮询后升级，
-# 无超时换后端。清道夫每轮 collect 扫 job_submitted：超 GEN_CLAIM_TIMEOUT_MIN 无结果
-# → 换后端重派（musemain/legacy → nano 强制路由；nano → arena 手工兜底文件）；
+# 无超时处理。清道夫每轮 collect 扫 job_submitted：超 GEN_CLAIM_TIMEOUT_MIN 无结果
+# → 直接转 arena 手工兜底（2026-10-28 起 nano 路由已下掉，不再换后端重派）；
 # attempts 达 GEN_MAX_ATTEMPTS → generate_failed + 升级。arena 只能主 agent 经浏览器
-# 派发（reCAPTCHA 拦 CDP），故 nano 耗尽后落手工兜底文件，不谎称自动。
+# 派发（reCAPTCHA 拦 CDP），故超时后落手工兜底文件，不谎称自动。
 # 超时取 60 分钟（不用 30）：健康生成约 7 分钟，但主 Muse 排队起步有延迟，60 分钟
 # 既防误杀慢启动，又远小于当前以天计的卡死。
 GEN_CLAIM_TIMEOUT_MIN = 60
@@ -635,8 +635,8 @@ def _write_arena_manual_file(item, jid):
 def _sweep_stale_submitted(queue, route_fn=None, now=None):
     """认领超时清道夫。返回 (changed, actions)。
 
-    route_fn(prompt) -> dict(backend/thread_id/job_id/reason)，默认走
-    muse_or_nano 强制 nano 路由。只动 job_submitted 且无 done 文件且
+    2026-10-28 起 nano 路由已下掉：超时项不再换后端，直接转 arena 手工兜底。
+    route_fn 参数保留兼容，不再用于换后端。只动 job_submitted 且无 done 文件且
     超时的项；无时间戳的项仅在轮询满 72 轮时才视为过期（P0-2 补洞）。
     """
     now = now or datetime.now(timezone.utc)
@@ -682,38 +682,9 @@ def _sweep_stale_submitted(queue, route_fn=None, now=None):
             changed = True
             actions.append(("failed", topic))
             continue
-        if backend in ("musemain", "legacy", ""):
-            try:
-                if route_fn is not None:
-                    routed = route_fn(item["prompt"])
-                else:
-                    import muse_or_nano as _router
-                    routed = _router.route("generate_video", item["prompt"], 1,
-                                           force_backend="nano")
-                if routed.get("backend") != "nano":
-                    raise RuntimeError(
-                        f"强制 nano 路由未返回 nano：{routed.get('reason', '')}")
-                item["gen_rerouted_from"] = backend
-                item["gen_backend"] = "nano"
-                item["nano_thread_id"] = routed.get("thread_id", "")
-                item["nano_job_id"] = routed.get("job_id", "")
-                item["gen_route_reason"] = (routed.get("reason", "") or "")[:200]
-                item["gen_attempts"] = attempts + 1
-                item["submitted_at"] = now_iso()
-                # 方案 1 收尾（2026-10-27）：租约字段，与清道夫 60 分钟超时同一口径
-                item["lease_expires_at"] = (
-                    now + timedelta(minutes=GEN_CLAIM_TIMEOUT_MIN)).isoformat()
-                _gen_poll_reset(item)
-                pipeline_log("generate", "ok",
-                             f"清道夫换后端 {topic}：{backend} → nano"
-                             f"（第 {attempts + 1} 次）", 0)
-                changed = True
-                actions.append(("rerouted_nano", topic))
-            except Exception as e:
-                pipeline_log("generate", "error",
-                             f"清道夫换后端失败 {topic}：{e}", 0)
-            continue
-        # backend == nano：自动后端已耗尽 → arena 手工兜底
+        # nano 路由已下掉（2026-10-28）：超时项不再换后端，直接转 arena 手工兜底；
+        # 历史 nano 项（gen_backend == "nano"）同样走此分支排空。
+        # 自动后端已耗尽 → arena 手工兜底
         item["gen_attempts"] = attempts + 1
         item["status"] = "arena_manual"
         item["gen_rerouted_from"] = backend
@@ -728,7 +699,7 @@ def _sweep_stale_submitted(queue, route_fn=None, now=None):
                 ga.escalate("auto_pipeline.gen_timeout",
                             str(topic or "")[:40], "arena_manual_pending",
                             severity="P2",
-                            detail=f"nano 超时，arena 手工兜底文件 {path}",
+                            detail=f"{backend} 超时（nano 路由已下掉），arena 手工兜底文件 {path}",
                             evidence_ts=ga.utcnow(), ttl_key="gen_timeout")
         except Exception:
             pass
@@ -1294,26 +1265,17 @@ def submit_jobs():
         jid = "pipe-%s-%s" % (datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"),
                                uuid.uuid4().hex[:6])
         if GEN_BACKEND == "musemain":
-            # 2026-10-12 统一路由：muse_or_nano 自动处理主 Muse 优先/异常降级/无 Muse 模式。
+            # 2026-10-12 统一路由：muse_or_nano（2026-10-28 起 nano 路由已下掉，
+            # 主 Muse 不可用时返回“拒绝”进 generate_failed，不再自动换后端；
+            # 降级改走人工 QQ box MCP 路）。
             # 不走 mcp_jobs/pending（旧 processor 已无可用供应商）；在途状态记在队列项上，
             # collect_results() 开头的 collect_musemain_results() 负责轮询取回。
-            # nano 降级时：thread_id 记入 item，collect_nano_results() 轮询取回。
+            # 历史 nano 项的排空仍由 collect_nano_results() 处理（只轮询已标记项，不再新派）。
             try:
                 import muse_or_nano as _router
                 routed = _router.route("generate_video", item["prompt"], 1)
                 backend = routed.get("backend", "")
-                if backend == "nano":
-                    item["job_id"] = jid
-                    item["nano_thread_id"] = routed.get("thread_id", "")
-                    item["nano_job_id"] = routed.get("job_id", "")
-                    item["gen_backend"] = "nano"
-                    item["gen_attempts"] = 0
-                    item["gen_route_reason"] = routed.get("reason", "")[:200]
-                    item["status"] = "job_submitted"
-                    pipeline_log("submit", "ok",
-                                 f"nano 降级提交 {item.get('topic')}: {item['gen_route_reason']}", 0)
-                    continue
-                elif backend == "muse-main":
+                if backend == "muse-main":
                     muse_jid = routed.get("job_id", "")
                 else:
                     raise RuntimeError(f"路由拒绝: {routed.get('reason', '')}")
@@ -1416,13 +1378,10 @@ def collect_musemain_results(queue):
 
 
 def collect_nano_results(queue):
-    """nano 降级后端：在途 thread 做单次非阻塞轮询。
+    """历史 nano 项排空轮询：只轮询已标记 gen_backend=nano 的在途项。
 
-    完成的 → 写标准 done 文件 mcp_jobs/done/<jid>.result.json，
-    后续 collect_results() 原有流程（QC→上传）无缝接管。
-    失败的 → 写 {"status":"error",...}，走原有"重试2次→generate_failed"逻辑。
-    pending → 不动，等下一轮 collect（每 20 分钟）。
-    """
+    2026-10-28 起不再新派 nano；本函数仅为存量项排空保留，队列中现无
+    job_submitted + nano 项时即为空操作。"""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "dispatcher_nano_bridge", "/home/hatch/data/perpetua/dispatcher_nano_bridge.py")

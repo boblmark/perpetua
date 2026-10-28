@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""统一视频生成调用层：主 Muse 优先，异常自动切 nanoMuse。
+"""统一视频生成调用层：主 Muse 唯一后端（nano 路由已下掉）。
 
 Perpetua 和外部程序只调这一个入口，不用自己选后端。
 
-路由逻辑：
-1. 如果 backend_config.json 里 muse_main_enabled=false → 直接走 nano（新机器零 Muse 模式）
-2. 否则先查 video_quota（muse-main 500/天硬门禁），超限 → 走 nano
-3. 跑 musemain_healthcheck：stale 任务超阈值 → 说明主 Muse 离线/异常 → 走 nano
-4. 健康 → 提交 dispatcher（consumer=muse-main），走主 Muse
+路由逻辑（2026-10-28 用户定：管线生成链里 nano 已不再需要，降级走 QQ box MCP）：
+1. muse_main_enabled=false、额度超限、或主 Muse 离线/异常 → 返回“拒绝”，
+   不再自动换后端；降级改走人工 QQ box MCP 路（laptop_mcp_generate.py），不由本模块派发。
+2. 健康 → 提交 dispatcher（consumer=muse-main），走主 Muse
 
 用法：
   python3 muse_or_nano.py --type generate_video --instruction "..." --count 1
   python3 muse_or_nano.py --type custom --instruction "..."
   python3 muse_or_nano.py --status   # 看当前路由状态
 
-返回 JSON：{"backend": "muse-main"|"nano", "job_id"|"thread_id": "...", "reason": "..."}
+返回 JSON：{"backend": "muse-main"|"拒绝", "job_id": "...", "reason": "..."}
 """
 from __future__ import annotations
 
@@ -30,8 +29,6 @@ BASE = Path("/home/hatch/data/perpetua")
 CONFIG_PATH = BASE / "backend_config.json"
 QUOTA_PY = BASE / "video_quota.py"
 HEALTHCHECK_PY = BASE / "musemain_healthcheck.py"
-BRIDGE_PY = BASE / "dispatcher_nano_bridge.py"
-NANO_CALL = Path.home() / "workspace/skills/nanomuse-caller/bin/nano-call"
 
 
 def load_config() -> dict:
@@ -97,44 +94,20 @@ def submit_to_musemain(job_type: str, instruction: str, count: int) -> dict:
     return {"job_id": muse_jid, "raw": {"job_id": muse_jid}}
 
 
-def _load_bridge():
-    """加载 dispatcher_nano_bridge 模块（处理 dataclass 的 importlib 坑）。"""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "dispatcher_nano_bridge", str(BRIDGE_PY))
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["dispatcher_nano_bridge"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def submit_to_nano(job_type: str, instruction: str, count: int) -> dict:
-    """直接走 nanoMuse。复用 bridge 的翻译+提交逻辑。"""
-    mod = _load_bridge()
-
-    job = mod.DispatcherJob(
-        job_id=f"uor-{uuid.uuid4().hex[:8]}",
-        job_type=job_type, consumer="nano-direct",
-        payload={"instruction": instruction, "video_count": count},
-        queued_at=datetime.now(timezone.utc).isoformat(),
-    )
-    nano = mod.NanoMuseClient()
-    thread_id = nano.create_thread(f"uor-{job.job_id}")
-    nano.send(thread_id, mod.job_to_instruction(job))
-    return {"thread_id": thread_id, "job_id": job.job_id}
-
-
 def route(job_type: str, instruction: str, count: int = 1,
           force_backend: str = "") -> dict:
-    """核心路由。返回 {"backend": ..., "reason": ..., ...}。"""
+    """核心路由。返回 {"backend": ..., "reason": ..., ...}。
+
+    2026-10-28 起 nano 路由已下掉：任何原本走 nano 的情形一律返回“拒绝”，
+    不再创建 nano thread；降级改走人工 QQ box MCP 路，不由本模块派发。
+    """
     cfg = load_config()
 
-    # 1. 强制指定
+    # 1. 强制指定（nano 已下掉：结构化拒绝，不提交）
     if force_backend in ("muse-main", "nano"):
         if force_backend == "nano":
-            r = submit_to_nano(job_type, instruction, count)
-            consume_quota("nano-direct", 1, r["job_id"])
-            return {"backend": "nano", "reason": "强制指定", **r}
+            return {"backend": "拒绝",
+                    "reason": "nano 路由已于 2026-10-28 下掉，无可用后端"}
         # 强制 muse-main：跳过健康检查但仍过额度
         ok, reason = check_quota("muse-main", count)
         if not ok:
@@ -143,25 +116,23 @@ def route(job_type: str, instruction: str, count: int = 1,
         consume_quota("muse-main", count, r["job_id"])
         return {"backend": "muse-main", "reason": "强制指定", **r}
 
-    # 2. 无 Muse 模式：新机器零依赖
+    # 2. 无 Muse 模式：nano 已下掉，无可用后端
     if not cfg.get("muse_main_enabled", True):
-        r = submit_to_nano(job_type, instruction, count)
-        return {"backend": "nano", "reason": "muse_main_enabled=false（无 Muse 模式）", **r}
+        return {"backend": "拒绝",
+                "reason": "muse_main_enabled=false 且 nano 路由已下掉，无可用后端"}
 
-    # 3. 额度硬门禁
+    # 3. 额度硬门禁：不再降级 nano
     ok, reason = check_quota("muse-main", count)
     if not ok:
-        r = submit_to_nano(job_type, instruction, count)
-        return {"backend": "nano",
-                "reason": f"muse-main 额度超限自动降级: {reason}", **r}
+        return {"backend": "拒绝",
+                "reason": f"muse-main 额度超限且 nano 路由已下掉: {reason}"}
 
-    # 4. 健康检查：主 Muse 离线/异常 → 降级
+    # 4. 健康检查：主 Muse 离线/异常 → 拒绝，不再降级 nano
     healthy, health_reason = check_musemain_health(
         cfg.get("stale_threshold_min", 15))
     if not healthy:
-        r = submit_to_nano(job_type, instruction, count)
-        return {"backend": "nano",
-                "reason": f"主 Muse 异常自动降级: {health_reason}", **r}
+        return {"backend": "拒绝",
+                "reason": f"主 Muse 异常且 nano 路由已下掉: {health_reason}"}
 
     # 5. 走主 Muse
     r = submit_to_musemain(job_type, instruction, count)
@@ -177,22 +148,23 @@ def status() -> dict:
         capture_output=True, text=True, timeout=30).stdout or "{}")
     healthy, reason = check_musemain_health(cfg.get("stale_threshold_min", 15))
     out["musemain_health"] = {"healthy": healthy, "reason": reason}
-    # 当前有效路由
+    # 当前有效路由（nano 已下掉，无 muse-main 即无可用后端）
     if not cfg.get("muse_main_enabled", True):
-        out["effective_backend"] = "nano（无 Muse 模式）"
+        out["effective_backend"] = "无可用后端（nano 路由已下掉）"
     elif not healthy:
-        out["effective_backend"] = "nano（降级中）"
+        out["effective_backend"] = "无可用后端（主 Muse 异常，nano 路由已下掉）"
     else:
         out["effective_backend"] = "muse-main"
     return out
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="统一调用层：主 Muse 优先，异常自动切 nano")
+    ap = argparse.ArgumentParser(description="统一调用层：主 Muse 唯一后端（nano 路由已下掉）")
     ap.add_argument("--type", default="generate_video",
                     choices=["generate_video", "custom"])
     ap.add_argument("--instruction", default="")
     ap.add_argument("--count", type=int, default=1)
+    # "nano" 保留在选项里仅为结构化拒绝（route() 返回“拒绝”，不提交），非可用后端。
     ap.add_argument("--force", default="", choices=["", "muse-main", "nano"])
     ap.add_argument("--status", action="store_true")
     args = ap.parse_args()

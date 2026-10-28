@@ -2,6 +2,7 @@
 """死状态看门狗：扫描管线中卡死、超时、状态不一致的条目。
 每 30 分钟运行，告警 + 自动修复（review_timeout 自动重送评审）。
 2026-10-08 补完 P1-3/4：非终态超时检查 + ask_studio pending 超时。
+2026-10-28 新增 check_arena_manual（空转审计 G2）：arena_manual 只告警不改状态。
 """
 import json
 import os
@@ -590,6 +591,60 @@ def check_reject_storm():
         pass
     return issues
 
+ARENA_MANUAL_DIR = f"{DATA}/perpetua/arena_manual"
+
+
+def _arena_manual_age_hours(it):
+    """arena_manual 滞留年龄：优先兜底文件 mtime（进入该状态时写），
+    无文件时退 created_at；updated_at 每轮 collect 保存都会刷新，不可用作判龄。"""
+    jid = it.get("job_id") or ""
+    if jid:
+        p = os.path.join(ARENA_MANUAL_DIR, jid + ".md")
+        try:
+            return (now().timestamp() - os.path.getmtime(p)) / 3600
+        except OSError:
+            pass
+    base = parse_time(it.get("created_at", ""))
+    if base:
+        return (now() - base).total_seconds() / 3600
+    return 0.0
+
+
+def check_arena_manual():
+    """2026-10-28 新增（空转审计 G2）：arena_manual 超时只告警，不改状态。
+
+    - 已有 youtube_video_id 的项跳过（已上传/已排期，如烤箱 3575），免永久误报。
+    - 滞留 >= 24h → 告警；>= 168h → 升级措辞告警（仍不自动归档、不打回，
+      有 video_file 的可接手项归档即丢片，须人工定去留）。
+    - 有 video_file 标注“可接手”，无 video_file 标注“无成片待人工”。
+    返回 issues 列表（调用方进 inbox，与其他检查同口径）。
+    """
+    issues = []
+    try:
+        q = queue_db.pipeline_load()
+    except Exception as ex:
+        print(f"  WARN: 读 SQLite 队列失败（arena_manual 检查跳过）: {ex}")
+        return issues
+    items = q if isinstance(q, list) else q.get("items", [])
+    for it in items:
+        if not isinstance(it, dict) or it.get("status") != "arena_manual":
+            continue
+        if it.get("youtube_video_id"):
+            continue
+        topic = it.get("topic", "?")
+        age_h = _arena_manual_age_hours(it)
+        has_file = bool(it.get("video_file"))
+        state = "有成片可接手" if has_file else "无成片待人工"
+        if age_h >= 168:
+            issues.append(
+                f"arena_manual 7天未接手：{topic} 已 {age_h:.1f}h（{state}），"
+                f"需人工定去留（不自动归档、不打回）")
+        elif age_h >= 24:
+            issues.append(
+                f"arena_manual 超时：{topic} 已 {age_h:.1f}h 未接手（{state}）")
+    return issues
+
+
 def main():
     print(f"=== 死状态扫描 {now().isoformat()[:19]} ===")
     stuck = check_stuck_uploads()
@@ -662,10 +717,17 @@ def main():
         print(f"  ORPHAN: {bn} | {reason}")
         alert(msg)
 
+    # 2026-10-28 新增（空转审计 G2）：arena_manual 超时只告警
+    am_issues = check_arena_manual()
+    for msg in am_issues:
+        print(f"  ARENA-MANUAL: {msg}")
+        alert(f"死状态：{msg}")
+
     print("=== 扫描完成 ===")
     return (len(stuck) + len(p_issues) + len(a_issues) + len(d_issues)
             + len(e_issues) + len(r_issues) + len(o_issues)
-            + len(s_issues) + len(s_archived) + len(b_issues) + len(r2_issues))
+            + len(s_issues) + len(s_archived) + len(b_issues) + len(r2_issues)
+            + len(am_issues))
 
 if __name__ == "__main__":
     with run_lock("dead_state_watchdog"):
