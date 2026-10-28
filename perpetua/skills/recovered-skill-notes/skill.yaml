@@ -1,4 +1,5 @@
 name: recovered_skill_notes
+version: 1.0.0
 title: Recovered skill notes
 description: Local skill notes preserved from the previous layout and awaiting review.
 category: Learning and customization

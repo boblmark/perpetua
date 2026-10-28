@@ -1,4 +1,5 @@
 name: local_youtube_oauth_reauth
+version: 1.0.0
 title: YouTube OAuth re-authorization
 description: Re-run YouTube OAuth authorization for the Karen vs AI channel on a headless VM when tokens are revoked or return 401.
 category: Work and knowledge

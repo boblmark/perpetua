@@ -1,0 +1,5 @@
+name: viral-content-pipeline
+version: 1.0.0
+title: 跨平台爆款内容采集与分析方法论流水线
+description: 跨 8 平台（抖音/快手/B站/小红书/视频号/TikTok/Facebook/X）采集竞品爆款视频的公开数据，按「爆款组 vs 对照组」抽样，产出可复核的 xlsx 数据表 + 互动率基准 + 内容规律分析 + 方法论文档。
+include_in_prompt: true

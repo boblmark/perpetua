@@ -1,4 +1,5 @@
 name: local_phone_mcp_control
+version: 1.0.0
 title: Operate the user's phone apps through the phone MCP channel
 description: 通过手机 MCP 通道远程操作用户手机上的 App（读屏、点击、滑动、输入、视觉任务）。通道为手机端 nanoMuse MCP Server 经 frp 自家 VPS 中转加本机 SSH 隧道接入，带 Bearer 鉴权，共 18 个工具。触发词：操作手机、打开手机上的 App、读手机屏幕、点一下手机、手机 MCP、远程点手机、帮我在手机上。
 include_in_prompt: true

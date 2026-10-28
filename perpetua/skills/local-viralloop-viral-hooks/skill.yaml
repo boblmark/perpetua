@@ -1,4 +1,5 @@
 name: local_viralloop_viral_hooks
+version: 1.0.0
 title: Local viralloop viral hooks
 description: 输入话题/AI 设备，输出 10 个 ranked 前 3 秒钩子，标注动词 tier 和好奇心缺口。触发词：爆款钩子、钩子、开场钩子、viral hooks
 include_in_prompt: true

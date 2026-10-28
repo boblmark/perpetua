@@ -1,4 +1,5 @@
 name: local_viralloop_copywriter
+version: 1.0.0
 title: Local viralloop copywriter
 description: 输入话题/钩子，输出 3 个英文标题（走标题公式+纯度自检）、1 段描述（含 3-4 个标签）、1 条置顶评论。触发词：文案撰写、写标题、标题文案、copywriter
 include_in_prompt: true

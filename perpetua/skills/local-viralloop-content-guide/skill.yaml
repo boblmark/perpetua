@@ -1,4 +1,5 @@
 name: local_viralloop_content_guide
+version: 1.0.0
 title: Local viralloop content guide
 description: 输入一个趋势/话题，输出内容方向指导：适配度评估、推荐角度、避坑点。触发词：内容指导、选题方向、content guide、这个话题能不能做
 include_in_prompt: true

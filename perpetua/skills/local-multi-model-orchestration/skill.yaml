@@ -1,4 +1,5 @@
 name: local_multi_model_orchestration
+version: 1.0.0
 title: Local multi model orchestration
 description: 多模型浏览器编排机制：通过 browser.spawn_task 调度外部 AI 模型（LMArena/AI Studio/Ask Studio等）做评审、横评、规格输出。触发词：多模型编排、外部模型调用、browser 调大脑、模型会诊机制。覆盖技术原理、调用模板、结果综合、局限。
 include_in_prompt: true

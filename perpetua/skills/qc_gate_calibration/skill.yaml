@@ -1,4 +1,5 @@
 name: qc_gate_calibration
+version: 1.0.0
 title: QC Gate Calibration
 description: Calibrate QC thresholds and exemptions against your own first-party data, with exemptions written as machine-checkable specs and a format freshness cutoff.
 category: Creation

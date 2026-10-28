@@ -1,4 +1,5 @@
 name: local_viralloop_scheduler
+version: 1.0.0
 title: Local viralloop scheduler
 description: 输入一周选题列表（含分数），输出 7 天三档排期表：10:00 赌高分、12:30、00:00，周五/周一加权。触发词：发帖排期、排期、发布时间表、scheduler
 include_in_prompt: true

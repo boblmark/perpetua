@@ -1,4 +1,5 @@
 name: browser_questionnaire_dispatch
+version: 1.0.0
 title: 浏览器问卷分段派发
 description: 多题浏览器问卷拆成小批量派发、每题答案即时落盘，掉线后只补问未答的题，用于 Ask Studio 评审、陪审团横评等逐题问答的浏览器任务。
 category: Work and knowledge

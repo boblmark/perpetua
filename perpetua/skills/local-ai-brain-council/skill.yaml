@@ -1,4 +1,5 @@
 name: local_ai_brain_council
+version: 1.0.0
 title: AI Brain Council（四脑议会）
 description: 四脑议会调度协议：带实时数据调度 Ask Studio/LMArena/AI Studio/DeepSeek 红队做诊断、横评、规格、泼冷水，把未知变量变成可写进管线的常量，并用 browser 浏览器编排机制亲自调度。触发词：三脑、四脑、大脑议会、brain council、调度大脑、多模型会诊、多模型编排、外部模型调用、browser 调大脑、红队。覆盖各脑定位、调度链、browser 调度机制、提问模板、升级梯子、议会闭环与诚实局限。
 include_in_prompt: true

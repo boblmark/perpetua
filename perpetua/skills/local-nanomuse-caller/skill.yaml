@@ -1,4 +1,5 @@
 name: local_nanomuse_caller
+version: 1.0.0
 title: Local nanomuse caller
 description: 'Call nanoMuse (local AI agent) from external programs: send chat messages, use tools, generate images/videos. Use when a script or program needs AI assistance from the local nanoMuse instance.'
 include_in_prompt: true

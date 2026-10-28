@@ -1,4 +1,5 @@
 name: local_viralloop_brand_briefing
+version: 1.0.0
 title: Local viralloop brand briefing
 description: 输出 ViralLoop 频道品牌简报：品牌 voice、受众画像、爆款公式、禁忌清单、KPI 口径。触发词：品牌简报、brand brief、品牌手册
 include_in_prompt: true

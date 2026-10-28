@@ -1,4 +1,5 @@
 name: local_viralloop_post_score
+version: 1.0.0
 title: Local viralloop post score
 description: 按 criteria.json v2 规则给标题打分：判是否过 58 分线，给改进建议。触发词：贴文评分、标题打分、打几分、post score
 include_in_prompt: true
