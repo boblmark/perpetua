@@ -3,9 +3,11 @@
 
 Perpetua 和外部程序只调这一个入口，不用自己选后端。
 
-路由逻辑（2026-10-28 用户定：管线生成链里 nano 已不再需要，降级走 QQ box MCP）：
-1. muse_main_enabled=false、额度超限、或主 Muse 离线/异常 → 返回“拒绝”，
-   不再自动换后端；降级改走人工 QQ box MCP 路（laptop_mcp_generate.py），不由本模块派发。
+路由逻辑（2026-10-28 用户定：管线生成链里 nano 已不再需要，降级走 QQ box MCP；
+2026-10-28 22:16 D20261028-006：muse-main 不健康即自动切 QQ box）：
+1. muse_main_enabled=false、额度超限 → 返回“拒绝”，不再自动换后端；
+   主 Muse 离线/异常（健康检查不通过）→ 返回 backend=qqbox，由提交方
+   记 qqbox_pending，daemon 的 qqbox_fallback.py 随后自动生成（不再拒绝空转）。
 2. 健康 → 提交 dispatcher（consumer=muse-main），走主 Muse
 
 用法：
@@ -98,8 +100,11 @@ def route(job_type: str, instruction: str, count: int = 1,
           force_backend: str = "") -> dict:
     """核心路由。返回 {"backend": ..., "reason": ..., ...}。
 
-    2026-10-28 起 nano 路由已下掉：任何原本走 nano 的情形一律返回“拒绝”，
-    不再创建 nano thread；降级改走人工 QQ box MCP 路，不由本模块派发。
+    2026-10-28 起 nano 路由已下掉：任何原本走 nano 的情形一律不走 nano；
+    D20261028-006 起，主 Muse 不健康时返回 backend=qqbox（自动降级，
+    由 qqbox_fallback.py 生成），不再以“拒绝”让任务空转。
+    注意：qqbox 返回不带 job_id——提交方须记 qqbox_pending，不可当作
+    已提交的 muse-main 任务去轮询。
     """
     cfg = load_config()
 
@@ -127,12 +132,13 @@ def route(job_type: str, instruction: str, count: int = 1,
         return {"backend": "拒绝",
                 "reason": f"muse-main 额度超限且 nano 路由已下掉: {reason}"}
 
-    # 4. 健康检查：主 Muse 离线/异常 → 拒绝，不再降级 nano
+    # 4. 健康检查：主 Muse 离线/异常 → 自动切 QQ box（D20261028-006），
+    #    不再拒绝空转；生成由 qqbox_fallback.py 承接，见 route 文档。
     healthy, health_reason = check_musemain_health(
         cfg.get("stale_threshold_min", 15))
     if not healthy:
-        return {"backend": "拒绝",
-                "reason": f"主 Muse 异常且 nano 路由已下掉: {health_reason}"}
+        return {"backend": "qqbox",
+                "reason": f"主 Muse 异常，自动切 QQ box: {health_reason}"}
 
     # 5. 走主 Muse
     r = submit_to_musemain(job_type, instruction, count)
@@ -148,11 +154,11 @@ def status() -> dict:
         capture_output=True, text=True, timeout=30).stdout or "{}")
     healthy, reason = check_musemain_health(cfg.get("stale_threshold_min", 15))
     out["musemain_health"] = {"healthy": healthy, "reason": reason}
-    # 当前有效路由（nano 已下掉，无 muse-main 即无可用后端）
+    # 当前有效路由（nano 已下掉；muse-main 异常时自动切 QQ box）
     if not cfg.get("muse_main_enabled", True):
         out["effective_backend"] = "无可用后端（nano 路由已下掉）"
     elif not healthy:
-        out["effective_backend"] = "无可用后端（主 Muse 异常，nano 路由已下掉）"
+        out["effective_backend"] = "qqbox（主 Muse 异常，自动降级）"
     else:
         out["effective_backend"] = "muse-main"
     return out

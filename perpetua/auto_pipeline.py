@@ -1265,11 +1265,11 @@ def submit_jobs():
         jid = "pipe-%s-%s" % (datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"),
                                uuid.uuid4().hex[:6])
         if GEN_BACKEND == "musemain":
-            # 2026-10-12 统一路由：muse_or_nano（2026-10-28 起 nano 路由已下掉，
-            # 主 Muse 不可用时返回“拒绝”进 generate_failed，不再自动换后端；
-            # 降级改走人工 QQ box MCP 路）。
-            # 不走 mcp_jobs/pending（旧 processor 已无可用供应商）；在途状态记在队列项上，
-            # collect_results() 开头的 collect_musemain_results() 负责轮询取回。
+            # 2026-10-12 统一路由：muse_or_nano（2026-10-28 起 nano 路由已下掉；
+            # D20261028-006 起主 Muse 不健康时路由返回 qqbox，不再拒绝空转）。
+            # muse-main 路：在途状态记在队列项上，collect_musemain_results() 轮询取回。
+            # qqbox 路：本函数只记 qqbox_pending（不带 muse_job_id，不可轮询），
+            # daemon 的 qqbox_fallback.py 生成后翻回 job_submitted 走原有 QC 流程。
             # 历史 nano 项的排空仍由 collect_nano_results() 处理（只轮询已标记项，不再新派）。
             try:
                 import muse_or_nano as _router
@@ -1277,6 +1277,18 @@ def submit_jobs():
                 backend = routed.get("backend", "")
                 if backend == "muse-main":
                     muse_jid = routed.get("job_id", "")
+                elif backend == "qqbox":
+                    item["job_id"] = jid
+                    item["muse_job_id"] = ""
+                    item["gen_backend"] = "qqbox"
+                    item["gen_attempts"] = 0
+                    item["status"] = "qqbox_pending"
+                    item["submitted_at"] = now_iso()
+                    item["qqbox_route_reason"] = routed.get("reason", "")[:200]
+                    pipeline_log("submit", "working",
+                                 f"主 Muse 异常，自动切 QQ box 待生成: {item.get('topic')}", 0)
+                    n += 1
+                    continue
                 else:
                     raise RuntimeError(f"路由拒绝: {routed.get('reason', '')}")
             except Exception as e:
@@ -1504,7 +1516,8 @@ def _retry_upload_failed(queue):
 
     审计前 upload_failed 无任何消费者且话题永久占坑。本函数每轮 collect
     扫一次，只动主链路 private 上传失败项：
-    - 跳过 urgent 直发项（走 urgent_upload_ready 的 public 路径，不得改 private 重试）；
+    - urgent 直发项不走 private 重试（见 U2 分支：走 public 重试，
+      与 urgent_upload_ready 同隐私，不得改 private 重试）；
     - 无 video_file 的项无法重试，直接转永久失败；
     - 无 upload_failed_at 的遗留项先补时间戳、本轮不动（防误判为立即重试）；
     - 失败满 60 分钟且重试 <3 次：回 ready_to_upload（下一段 ready_to_upload
@@ -1521,6 +1534,70 @@ def _retry_upload_failed(queue):
         if item.get("status") != "upload_failed":
             continue
         if item.get("urgent"):
+            # U2（2026-10-28，按审计结论落地，二选一取 public 重试分支）：
+            # 旧代码 `continue` 裸跳，urgent 的 upload_failed 无任何消费者
+            #（urgent_upload_ready 只由人工 CLI 调用，collect 不调；
+            # 看门狗 TRANSIENT 也不含 upload_failed）。新分支：60 分钟
+            # 退避、重试 <3 次时直接走 public 重传（与原 urgent 路径同
+            # 隐私），成功置 uploaded，失败计 urgent_upload_failed_retries
+            # 并保留 upload_failed；满 3 次转永久失败 + inbox 升级。
+            # 本轮不回 ready_to_upload（那会改走 private，改隐私）。
+            topic = item.get("topic")
+            if not item.get("video_file"):
+                item["status"] = "upload_permanently_failed"
+                item["upload_failed_reason"] = "no_video_file"
+                pipeline_log("publish", "error",
+                             f"U2 永久失败（urgent 无成片）: {topic}", 0)
+                changed = True
+                actions.append(("urgent_permanent_no_file", topic))
+                continue
+            failed_at = _parse_iso_ts(item.get("upload_failed_at"))
+            if failed_at is None:
+                item["upload_failed_at"] = now_iso()
+                changed = True
+                actions.append(("urgent_stamp_missing_ts", topic))
+                continue
+            age_min = (now - failed_at).total_seconds() / 60.0
+            if age_min < UPLOAD_FAILED_RETRY_MIN:
+                continue
+            retries = int(item.get("urgent_upload_failed_retries", 0) or 0)
+            if retries >= UPLOAD_FAILED_MAX_RETRIES:
+                item["status"] = "upload_permanently_failed"
+                item["upload_failed_reason"] = "retries_exhausted"
+                pipeline_log("publish", "error",
+                             f"U2 永久失败（urgent public 重试 {retries} 次耗尽）: {topic}", 0)
+                try:
+                    notify_inbox("auto_upload_permanently_failed",
+                                 f"【自动发布永久失败】{item.get('title', '')[:80]}："
+                                 f"urgent public 重试 3 次耗尽，话题已释放重选",
+                                 {"topic": topic, "title": item.get("title", "")})
+                except Exception:
+                    pass
+                changed = True
+                actions.append(("urgent_permanent", topic))
+                continue
+            item["urgent_upload_failed_retries"] = retries + 1
+            item["upload_failed_at"] = now_iso()
+            res = _do_upload(item["video_file"], item["title"],
+                             item.get("description", ""),
+                             template={"topic": item.get("topic", ""),
+                                       "hook": item.get("hook", ""),
+                                       "prompt": item.get("prompt", "")},
+                             privacy="public")
+            if _is_upload_success(res):
+                item["status"] = "uploaded"
+                item["upload_result"] = res[:500]
+                item["uploaded_at"] = now_iso()
+                item.pop("urgent_upload_failed_retries", None)
+                pipeline_log("publish", "ok",
+                             f"U2 urgent public 重试成功: {topic}", 1)
+                actions.append(("urgent_retry_success", topic))
+            else:
+                pipeline_log("publish", "error",
+                             f"U2 urgent public 第 {retries + 1} 次重试仍失败 "
+                             f"{topic}: {res[:120]}", 0)
+                actions.append(("urgent_retry_failed", topic))
+            changed = True
             continue
         topic = item.get("topic")
         if not item.get("video_file"):
@@ -1567,6 +1644,122 @@ def _retry_upload_failed(queue):
     return changed, actions
 
 
+def _retry_awaiting_upload_failed():
+    """U3（2026-10-28，按审计结论落地，二选一取 awaiting 扫描项）：
+    upload_approved 失败时只写 awaiting 条目为 upload_failed，
+    pipeline 侧写的是 status==awaiting_human 的条目（全库无写入点，
+    实际永不命中），故 P0-3（只扫 pipeline）永远看不到它，
+    最终只会被看门狗 TTL 在 24h 后改 expired，不是重试。
+    新消费者：每轮 collect 扫 awaiting 文件，upload_failed 项
+    60 分钟退避、<3 次时先把状态复位为 awaiting 并落盘，再调
+    upload_approved(topic) 重传 public（原路径同隐私，成功判定
+    已由 U4 修为 _is_upload_success）；满 3 次转
+    upload_permanently_failed + inbox 升级；无成片直接永久失败；
+    无时间戳先补戳本轮不动。每次重传前重读文件，避免
+    upload_approved 自身落盘覆盖本轮计数。返回 actions 列表。
+    不抛异常到 collect（调用方已包 try）。"""
+    actions = []
+    now = datetime.now(timezone.utc)
+    try:
+        awaiting = _load(APPROVAL_PATH, [])
+    except Exception as e:
+        pipeline_log("publish", "error", f"U3 awaiting 读取失败：{e}", 0)
+        return actions
+    # 先处理非重传项（永久/补戳/未到退避），一次落盘
+    changed = False
+    for a in awaiting:
+        if not isinstance(a, dict) or a.get("status") != "upload_failed":
+            continue
+        topic = a.get("topic")
+        if not a.get("video_file"):
+            a["status"] = "upload_permanently_failed"
+            a["upload_failed_reason"] = "no_video_file"
+            pipeline_log("publish", "error", f"U3 永久失败（awaiting 无成片）: {topic}", 0)
+            changed = True
+            actions.append(("awaiting_permanent_no_file", topic))
+            continue
+        failed_at = _parse_iso_ts(a.get("upload_failed_at"))
+        if failed_at is None:
+            a["upload_failed_at"] = now_iso()
+            changed = True
+            actions.append(("awaiting_stamp_missing_ts", topic))
+            continue
+        age_min = (now - failed_at).total_seconds() / 60.0
+        if age_min < UPLOAD_FAILED_RETRY_MIN:
+            continue
+        retries = int(a.get("awaiting_upload_failed_retries", 0) or 0)
+        if retries >= UPLOAD_FAILED_MAX_RETRIES:
+            a["status"] = "upload_permanently_failed"
+            a["upload_failed_reason"] = "retries_exhausted"
+            pipeline_log("publish", "error",
+                         f"U3 永久失败（awaiting 重试 {retries} 次耗尽）: {topic}", 0)
+            try:
+                notify_inbox("auto_upload_permanently_failed",
+                             f"【自动发布永久失败】{a.get('title', '')[:80]}："
+                             f"审批路径重试 3 次耗尽",
+                             {"topic": topic, "title": a.get("title", "")})
+            except Exception:
+                pass
+            changed = True
+            actions.append(("awaiting_permanent", topic))
+    if changed:
+        try:
+            _save(APPROVAL_PATH, awaiting)
+        except Exception as e:
+            pipeline_log("publish", "error", f"U3 awaiting 落盘失败：{e}", 0)
+            return actions
+    # 再逐条重传：每次重读、计次、复位 awaiting、落盘、调 upload_approved
+    try:
+        awaiting = _load(APPROVAL_PATH, [])
+    except Exception:
+        return actions
+    for a in list(awaiting):
+        if not isinstance(a, dict) or a.get("status") != "upload_failed":
+            continue
+        if not a.get("video_file"):
+            continue
+        failed_at = _parse_iso_ts(a.get("upload_failed_at"))
+        if failed_at is None:
+            continue
+        age_min = (now - failed_at).total_seconds() / 60.0
+        if age_min < UPLOAD_FAILED_RETRY_MIN:
+            continue
+        retries = int(a.get("awaiting_upload_failed_retries", 0) or 0)
+        if retries >= UPLOAD_FAILED_MAX_RETRIES:
+            continue
+        topic = a.get("topic")
+        # 重读后定位该条，计次并复位为 awaiting，落盘后再重传
+        fresh = _load(APPROVAL_PATH, [])
+        target = None
+        for f in fresh:
+            if isinstance(f, dict) and f.get("topic") == topic and f.get("status") == "upload_failed":
+                target = f
+                break
+        if target is None:
+            continue
+        target["awaiting_upload_failed_retries"] = retries + 1
+        target["upload_failed_at"] = now_iso()
+        target["status"] = "awaiting"
+        try:
+            _save(APPROVAL_PATH, fresh)
+        except Exception as e:
+            pipeline_log("publish", "error", f"U3 awaiting 复位落盘失败：{e}", 0)
+            continue
+        try:
+            result = upload_approved(topic)
+            if result.get("ok"):
+                actions.append(("awaiting_retry_success", topic))
+                pipeline_log("publish", "ok", f"U3 awaiting 第 {retries + 1} 次重传成功: {topic}", 1)
+            else:
+                actions.append(("awaiting_retry_failed", topic))
+                pipeline_log("publish", "error",
+                             f"U3 awaiting 第 {retries + 1} 次重传仍失败: {topic}", 0)
+        except Exception as e:
+            actions.append(("awaiting_retry_error", topic))
+            pipeline_log("publish", "error", f"U3 awaiting 重传异常: {topic}: {e}", 0)
+    return actions
+
+
 def collect_results():
     run_qc = _import_run_qc()
     queue = load_queue()
@@ -1586,6 +1779,12 @@ def collect_results():
             pipeline_log("publish", "ok", f"P0-3 上传失败消费者动作：{_up_acts}", 0)
     except Exception as e:
         pipeline_log("publish", "error", f"P0-3 消费者异常（不阻塞 collect）：{e}", 0)
+    try:
+        _aw_acts = _retry_awaiting_upload_failed()
+        if _aw_acts:
+            pipeline_log("publish", "ok", f"U3 审批上传失败消费者动作：{_aw_acts}", 0)
+    except Exception as e:
+        pipeline_log("publish", "error", f"U3 消费者异常（不阻塞 collect）：{e}", 0)
     try:
         _write_gen_capacity(queue)
     except Exception:
@@ -1622,6 +1821,25 @@ def collect_results():
     if collect_nano_results(queue):
         queue = load_queue()
         changed = True
+    # U5 消费者（2026-10-28，按审计结论落地）：uploaded_no_queue
+    # 是上传已成功、入 privateq 失败的中间态，每轮 collect 补入队，
+    # 成功转 uploaded_private，失败保留 video_id 继续等下轮，
+    # 绝不回 ready_to_upload 重传（无 video_id 重传是 U5 原 bug）。
+    for item in queue:
+        if item.get("status") == "uploaded_no_queue" and item.get("video_id"):
+            try:
+                entry = _enqueue_private_flip(item["video_id"], item["title"],
+                                              review_score=item.get("review_score"),
+                                              video_file=item.get("video_file"))
+                item["status"] = "uploaded_private"
+                pipeline_log("publish", "ok",
+                             f"补入 privateq 成功: {item['topic']} → "
+                             f"{item['video_id']}，排期 {entry.get('slot', '?')}", 1)
+            except Exception as _eqe:
+                pipeline_log("publish", "error",
+                             f"补入 privateq 仍失败，保留 video_id 下轮再试 "
+                             f"{item['topic']}: {_eqe}", 0)
+            changed = True
     # 2026-10-09 新政：上一轮被间隔门禁拦下的 ready_to_upload，本轮重试
     for item in queue:
         if item.get("status") == "ready_to_upload" and item.get("video_file"):
@@ -1709,6 +1927,49 @@ def collect_results():
         # 避免旧计数在恢复后仍把下一轮误判为连续不可用。
         if item.get("qc_engine_unavailable_count"):
             item["qc_engine_unavailable_count"] = 0
+        # Q1/Q2（2026-10-28，按审计结论落地）：QC 前 ffprobe 事前分流。
+        # run_qc 默认 MAX_DUR=11s，>11s 会静默裁到 11s（Rule 8 风险），
+        # 且事后 duration_match 不是唯一防线（duration 字段本身可被
+        # 误写为 11）。实测 >11.5s 的 Shorts 链路条目禁调 run_qc，
+        # 伪造 qc 失败结果走下方统一 QC 失败处理（needs_regen=True，
+        # qc_retry<2 回 review_passed 重生成，耗尽才 qc_failed，
+        # 再由 Q8 看门狗 24h 归档），不裁剪、不上传、无孤儿状态。
+        # ffprobe 失败时不拦，由 run_qc 自身 fail-closed。
+        _pre_dur = None
+        try:
+            import subprocess as _sp_ff, json as _js_ff
+            _pr = _sp_ff.run(["ffprobe", "-v", "error", "-show_entries",
+                              "format=duration", "-of", "json", final],
+                             capture_output=True, text=True, timeout=30)
+            _pre_dur = float(_js_ff.loads(_pr.stdout)["format"]["duration"])
+        except Exception:
+            _pre_dur = None
+        if _pre_dur is not None and _pre_dur > 11.5:
+            qc = {"passed": False, "needs_regen": True,
+                  "rejects": [f"[longform] 实测时长 {_pre_dur:.1f}s > 11.5s，"
+                              "禁走 Shorts QC，未裁剪，待重生成"],
+                  "warnings": [], "regen_used": 0, "repair_used": 0,
+                  "output_file": final, "experience_score": 0}
+            # 跳过 run_qc，直接走下方 qc_report 赋值 + QC 失败处理
+            item["qc_report"] = {"passed": qc.get("passed"),
+                                 "warnings": len(qc.get("warnings", [])),
+                                 "rejects": qc.get("rejects", []),
+                                 "regen_used": qc.get("regen_used", 0),
+                                 "repair_used": qc.get("repair_used", 0)}
+            if qc.get("needs_regen"):
+                retry = item.get("qc_retry", 0)
+                if retry < 2:
+                    item["qc_retry"] = retry + 1
+                    item["status"] = "review_passed"
+                    pipeline_log("qc", "ok",
+                                 f"QC 事前分流：长视频第 {retry+1} 次重生成 "
+                                 f"{item['topic']}: {qc.get('rejects', [])[:1]}", 0)
+                else:
+                    item["status"] = "qc_failed"
+                    pipeline_log("qc", "error",
+                                 f"QC 事前分流：长视频重生成耗尽 {item['topic']}", 0)
+            changed = True
+            continue
         try:
             qc = run_qc(final, title=item["title"],
                         prompt_meta={"expected_duration": item.get("duration", 8)},
@@ -1828,6 +2089,26 @@ def _do_upload(video, title, description, template=None, privacy="private"):
     return result
 
 
+def _is_upload_success(res):
+    """U4（2026-10-28，按审计结论落地）：与主链路一致的成功判定。
+    旧 urgent/审批路径用 '"youtube.com" in res or "youtu.be" in res'，
+    服务端校验失败文本 '[error] 上传后验证失败：... https://youtu.be/<id>'
+    也含链接，会被误判为 uploaded（且不入 privateq、不翻公开，
+    uploaded 在看门狗眼中还是终态）。新判定：非空、不以 '[' 开头、
+    且含 11 位 video_id（链接形式或裸 id）。服务端已在返回 [error]
+    前做 privacyStatus 复核，故 [error] 文本本身即复核失败信号，
+    不再另调 API 复核（省配额、少一处失败点）。"""
+    if not res or not isinstance(res, str):
+        return False
+    if res.startswith("["):
+        return False
+    if re.search(r"(?:v=|youtu\.be/|shorts/)([\w-]{11})", res):
+        return True
+    if re.match(r"^[\w-]{11}$", res.strip()):
+        return True
+    return False
+
+
 def _enqueue_private_flip(video_id, title, slot=None, review_score=None,
                           video_file=None):
     """加入 private_queue.json，等待到点自动翻 public。
@@ -1937,12 +2218,18 @@ def _auto_upload_private(item):
     """
     if not _upload_gate_ok(item):
         # 关卡拦截不是失败：保持原状态等人工放行，首轮打日志、后续静默防刷屏
+        # Q9（2026-10-28，按审计结论落地）：首轮同时写 upload_gate_held_at，
+        # 供看门狗算 24h 超时升级；已写则不覆盖（年龄从首次被拦起算）。
         if not item.get("upload_gate_held"):
             item["upload_gate_held"] = True
+            item["upload_gate_held_at"] = now_iso()
             pipeline_log("publish", "error",
                          f"上传关卡拦截（待人工目视放行）: {item.get('topic')}", 0)
+        elif not item.get("upload_gate_held_at"):
+            item["upload_gate_held_at"] = now_iso()
         return False, False
     item.pop("upload_gate_held", None)
+    item.pop("upload_gate_held_at", None)
     res = _do_upload(item["video_file"], item["title"],
                      item.get("description", ""),
                      template={"topic": item.get("topic", ""),
@@ -1961,18 +2248,33 @@ def _auto_upload_private(item):
             video_id = res.strip()
             ok = True
     if ok:
-        # 2026-10-09 起：档位动态取自 publish_slots.json（Ask Studio 协商）
-        entry = _enqueue_private_flip(video_id, item["title"],
-                                      review_score=item.get("review_score"),
-                                      video_file=item.get("video_file"))
-        slot = entry.get("slot", "?")
-        item["status"] = "uploaded_private"
+        # U5（2026-10-28，按审计结论落地）：先落 video_id 再入队。
+        # 旧代码先 _enqueue_private_flip 再写 video_id/status，入队
+        # 若抛错则 collect 崩、队列未保存，DB 里仍是 ready_to_upload
+        # 且无 video_id，下轮重传撞幂等墙。新顺序：先写 video_id/
+        # upload_result/uploaded_at 并置 uploaded_no_queue，入队
+        # 包 try，成功才转 uploaded_private；失败保留 video_id，
+        # 由 collect 的 uploaded_no_queue 消费者补入队，禁止无
+        # video_id 重传。collect 末尾 save_queue 会落盘本轮改动。
         item["video_id"] = video_id
         item["upload_result"] = res[:500]
         item["uploaded_at"] = now_iso()
+        item["status"] = "uploaded_no_queue"
         item.pop("upload_retries", None)  # 2026-10-16 P2-6：成功后清重试计数
         item.pop("upload_failed_retries", None)  # 2026-10-28 P0-3：成功后清上传失败重试计数
         item.pop("upload_failed_at", None)
+        try:
+            # 2026-10-09 起：档位动态取自 publish_slots.json（Ask Studio 协商）
+            entry = _enqueue_private_flip(video_id, item["title"],
+                                          review_score=item.get("review_score"),
+                                          video_file=item.get("video_file"))
+        except Exception as _eqe:
+            pipeline_log("publish", "error",
+                         f"上传已成功但入 privateq 失败，保留 video_id 待补入队 "
+                         f"{item['topic']}: {_eqe}", 0)
+            return True, False
+        slot = entry.get("slot", "?")
+        item["status"] = "uploaded_private"
         # 状态机记录：进入 INTENTIONAL_PRIVATE（经跃迁门）
         try:
             import pipeline_state as ps
@@ -2057,7 +2359,7 @@ def upload_approved(topic):
                                "hook": target.get("hook", ""),
                                "prompt": target.get("prompt", "")},
                      privacy="public")
-    ok = "youtube.com" in res or "youtu.be" in res
+    ok = _is_upload_success(res)  # U4：与主链路一致，[error]+链接不再误判成功
     target["status"] = "uploaded" if ok else "upload_failed"
     target["upload_result"] = res[:500]
     if ok:
@@ -2100,24 +2402,39 @@ def urgent_upload_ready():
     queue = load_queue()
     changed = False
     for item in queue:
+        # Q9（2026-10-28，按审计结论落地）：可视化放宽，不放行。
+        # QC 通过后 collect 会立即把 status 覆写为 ready_to_upload，
+        # 故 urgent 项在 qc_passed 态几乎不存在，旧匹配视而不见
+        # 已转 ready_to_upload 的 urgent 被拦项。此分支只打日志
+        # 可视化，绝不调 _do_upload（不绕 private 排期直接 public）。
+        if (item.get("urgent") and item.get("status") == "ready_to_upload"
+                and item.get("upload_gate_held")):
+            pipeline_log("publish", "error",
+                         f"URGENT 可视化：ready_to_upload 被关卡持有 "
+                         f"（待人工目视放行，未上传）: {item.get('topic')}", 0)
+            continue
         if not (item.get("urgent") and item.get("status") == "qc_passed"):
             continue
         if not _upload_gate_ok(item):
             # 关卡拦截：不标记 upload_failed，保持 qc_passed 等人工放行
             if not item.get("upload_gate_held"):
                 item["upload_gate_held"] = True
+                item["upload_gate_held_at"] = now_iso()
                 pipeline_log("publish", "error",
                              f"URGENT 上传关卡拦截（待人工目视放行）: "
                              f"{item.get('topic')}", 0)
+            elif not item.get("upload_gate_held_at"):
+                item["upload_gate_held_at"] = now_iso()
             continue
         item.pop("upload_gate_held", None)
+        item.pop("upload_gate_held_at", None)
         res = _do_upload(item["video_file"], item["title"],
                          item.get("description", ""),
                          template={"topic": item.get("topic", ""),
                                    "hook": item.get("hook", ""),
                                    "prompt": item.get("prompt", "")},
                          privacy="public")
-        ok = "youtube.com" in res or "youtu.be" in res
+        ok = _is_upload_success(res)  # U4：与主链路一致，[error]+链接不再误判成功
         item["status"] = "uploaded" if ok else "upload_failed"
         item["upload_result"] = res[:500]
         pipeline_log("publish", "ok" if ok else "error",

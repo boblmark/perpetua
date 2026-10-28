@@ -62,6 +62,24 @@ def _sig(items):
 
 # ---------------- 诊断 ----------------
 
+def _is_exempt_privateq(vid):
+    """U12 豁免判断：与 private_flip.is_exempt_vid 同口径（注册表
+    优先 + 硬编码兜底），导入失败时直读注册表文件兜底。"""
+    try:
+        from private_flip import is_exempt_vid
+        return bool(is_exempt_vid(vid))
+    except Exception:
+        pass
+    try:
+        reg = json.load(open(os.path.join(BASE, "exemption_registry.json"),
+                             encoding="utf-8"))
+        if f"yt:{vid}" in reg:
+            return True
+    except Exception:
+        pass
+    return vid in {"d0CHRz8ubjk"}
+
+
 def diagnose():
     """定位卡点。返回 {"bottleneck": ..., "details": {...}}。"""
     import queue_db
@@ -112,8 +130,24 @@ def diagnose():
                           if (x.get("video_duration_sec") or 0) <= LONGFORM_DURATION_SEC]
         details["waiting_shorts"] = len(waiting_shorts)
         details["waiting_longform"] = len(waiting_flips) - len(waiting_shorts)
-        if waiting_shorts:
-            bottleneck = "flowing"  # 有 Shorts 排期在等，不是真空转
+        # U12（2026-10-28）：此前 waiting_shorts 有 1 条即判 flowing，
+        # 不看 gemini_verdict（fail/空）与豁免，把“永远翻不了的
+        # waiting”误判为有排期在途，掩盖断档。现再过滤：只有
+        # gemini_verdict 在 (pass, warn, skip_longform) 且非豁免
+        # 的才算 flowing；Shorts waiting 全被评审/豁免挡住时判
+        # scheduler_stalled（heal 流程随即触发 collect + inbox
+        # 升级，即 _run_collect 之外的升级），不再判 flowing。
+        waiting_shorts_flowing = [
+            x for x in waiting_shorts
+            if x.get("gemini_verdict") in ("pass", "warn", "skip_longform")
+            and not _is_exempt_privateq(x.get("video_id", ""))]
+        details["waiting_shorts_flowing"] = len(waiting_shorts_flowing)
+        details["waiting_shorts_blocked"] = (
+            len(waiting_shorts) - len(waiting_shorts_flowing))
+        if waiting_shorts_flowing:
+            bottleneck = "flowing"  # 有可翻的 Shorts 排期在等，不是真空转
+        elif waiting_shorts:
+            bottleneck = "scheduler_stalled"
         else:
             gap_h = _shorts_gap_hours()
             details["hours_since_last_publish"] = gap_h

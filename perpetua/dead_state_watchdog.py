@@ -296,6 +296,20 @@ def check_pipeline_stuck():
                             f"应按 D20261010-007 路由到 teaser_validation"
                         )
             continue
+        # Q9（2026-10-28，按审计结论落地）：ready_to_upload 被关卡
+        # 持有超 24h → inbox 升级（只告警，不自动改状态、不放行；
+        # alert() 自带 12h 去重，30 分钟轮询不会刷屏）。
+        if st == "ready_to_upload" and it.get("upload_gate_held"):
+            _hts = it.get("upload_gate_held_at") or it.get("updated_at") or ""
+            _hup = parse_time(_hts)
+            if _hup:
+                _hage = (now() - _hup).total_seconds() / 3600
+                if _hage >= 24:
+                    issues.append(
+                        f"pipeline_queue 升级：{it.get('topic', '?')} "
+                        f"ready_to_upload 被上传关卡持有已 {_hage:.1f}h，"
+                        "待人工目视放行")
+            continue
         if st not in TRANSIENT:
             continue
         # 找最后更新时间
@@ -683,6 +697,40 @@ def check_arena_manual():
     return issues
 
 
+def check_privateq_stuck():
+    """U11（2026-10-28，按审计结论落地）：看门狗此前只扫 pipeline
+    队列与 awaiting 文件，privateq 无 30 分钟覆盖。新增：
+    - waiting 且 scheduled_at 已过 2h 仍未翻 → inbox 告警
+    - flip_blocked → inbox 告警（救援口见 private_flip.emergency_flip，
+      已放宽到 waiting+flip_blocked，U10）
+    只告警不改状态；alert() 自带 12h 去重。scheduled_at 解析
+    失败的不在此判（属 U9 坏 scheduled_at，另案处理）。"""
+    issues = []
+    try:
+        pq = queue_db.privateq_load()
+        items = pq if isinstance(pq, list) else pq.get("items", [])
+    except Exception as e:
+        return [f"privateq 读取异常：{e}"]
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        st = it.get("status", "")
+        vid = it.get("video_id", "?")
+        title = it.get("title", "")[:30]
+        if st == "flip_blocked":
+            issues.append(
+                f"privateq flip_blocked：{title}（{vid}，"
+                f"原因 {it.get('flip_block_reason', '?')}），"
+                "可用 emergency_flip 救援")
+        elif st == "waiting":
+            sched = parse_time(it.get("scheduled_at", ""))
+            if sched and (now() - sched).total_seconds() / 3600 > 2:
+                issues.append(
+                    f"privateq waiting 过期：{title}（{vid}）"
+                    f"排期已过 {(now() - sched).total_seconds() / 3600:.1f}h 仍未翻")
+    return issues
+
+
 def main():
     print(f"=== 死状态扫描 {now().isoformat()[:19]} ===")
     stuck = check_stuck_uploads()
@@ -761,11 +809,17 @@ def main():
         print(f"  ARENA-MANUAL: {msg}")
         alert(f"死状态：{msg}")
 
+    # U11：privateq 卡死扫描（只告警不改状态）
+    pq_issues = check_privateq_stuck()
+    for msg in pq_issues:
+        print(f"  PRIVATEQ: {msg}")
+        alert(f"死状态：{msg}")
+
     print("=== 扫描完成 ===")
     return (len(stuck) + len(p_issues) + len(a_issues) + len(d_issues)
             + len(e_issues) + len(r_issues) + len(o_issues)
             + len(s_issues) + len(s_archived) + len(b_issues) + len(r2_issues)
-            + len(am_issues))
+            + len(am_issues) + len(pq_issues))
 
 if __name__ == "__main__":
     with run_lock("dead_state_watchdog"):

@@ -253,6 +253,22 @@ def _run_qc(video_path, title, multi_clip=False):
         from pre_upload_qc import run_qc
     except Exception as e:
         return False, "qc import 失败: %s" % str(e)[:100]
+    # Q1/Q2（2026-10-28，按审计结论落地）：单段 teaser 事前分流。
+    # 单段本应约 10s，实测 >11.5s 时禁调 run_qc（默认会静默裁到
+    # 11s），直接 fail-closed，调用方按 teaser_failed 处理，
+    # 不裁剪、不上传。多段仍走 65s 上限 + 跳 loop（原行为）。
+    if not multi_clip:
+        try:
+            import subprocess as _sp_ff, json as _js_ff
+            _pr = _sp_ff.run(["ffprobe", "-v", "error", "-show_entries",
+                              "format=duration", "-of", "json", video_path],
+                             capture_output=True, text=True, timeout=30)
+            _dur = float(_js_ff.loads(_pr.stdout)["format"]["duration"])
+            if _dur > 11.5:
+                return False, ("[longform] 实测时长 %.1fs > 11.5s，"
+                               "禁走 Shorts QC，未裁剪" % _dur)
+        except Exception:
+            pass
     try:
         # 多段 teaser（40s）：时长上限 65s + 跳过 loop 检查（v5.3.1）；单段 8s 走默认
         kw = {"max_duration": 65, "check_loop": False} if multi_clip else {}
@@ -486,6 +502,7 @@ def collect_teaser_results():
         # 实验格式前 3 条 40s：QC 通过后转浏览器快检，不自动公开发布（v5.3.1）
         if ok and is_multi and item.get("experimental") and not item.get("browser_checked"):
             item["status"] = "teaser_awaiting_check"
+            item["teaser_awaiting_at"] = _iso()
             item["teaser_video_file"] = video_file
             plog("collect", "ok", "实验 teaser QC 通过，转浏览器快检 %s"
                  % item.get("topic", "")[:30])
@@ -651,6 +668,32 @@ def _collect_awaiting_check_publish(queue):
     全部硬门禁公开发布（v5.3.1 人工快检门：检查由 Dash 人工完成，发布时机由
     cron + 硬门禁（如 120 分钟间隔门）决定，被拒则留待下轮）。"""
     changed = False
+    # Q11（2026-10-28，按审计结论落地）：teaser_awaiting_check 无
+    # browser_checked 时旧代码无任何年龄分支，永久等待。72h TTL：
+    # 超时转 teaser_failed + _escalate_publish_blocked（与
+    # teaser_publish_blocked 同款终态+升级），不静默持有。
+    # 年龄锚：teaser_awaiting_at（新写）→ updated_at → created_at。
+    for _it in queue:
+        if _it.get("status") != "teaser_awaiting_check" or _it.get("browser_checked"):
+            continue
+        _ts = (_it.get("teaser_awaiting_at") or _it.get("updated_at")
+               or _it.get("created_at") or "")
+        try:
+            _dt = datetime.fromisoformat(str(_ts).replace("Z", "+00:00"))
+            if _dt.tzinfo is None:
+                _dt = _dt.replace(tzinfo=timezone.utc)
+            _age_h = (_now() - _dt).total_seconds() / 3600
+        except Exception:
+            _age_h = 0
+        if _age_h > 72:
+            _reason = ("人工浏览器快检 72h 未完成（%.1fh），转失败+升级" % _age_h)
+            _it["status"] = "teaser_failed"
+            _it["teaser_error"] = _reason
+            _it["teaser_failed_at"] = _iso()
+            plog("collect", "error", "teaser 快检超时 %s：%s"
+                 % (_it.get("topic", "")[:30], _reason))
+            _escalate_publish_blocked(_it, _reason, "awaiting_check_timeout")
+            changed = True
     for item in queue:
         if item.get("status") != "teaser_awaiting_check" or not item.get("browser_checked"):
             continue

@@ -108,6 +108,25 @@ def collect():
                 json.dumps(job, ensure_ascii=False, indent=1), encoding="utf-8")
             continue
 
+        # Q1/Q2（2026-10-28，按审计结论落地）：QC 前 ffprobe 事前分流。
+        # 实测 >11.5s 时禁调 run_qc（默认静默裁到 11s），按 QC 失败
+        # 处理（qc_failed，有消费者：看门狗/人工复核），不裁剪。
+        _pre_dur = None
+        try:
+            import subprocess as _sp_ff, json as _js_ff
+            _pr = _sp_ff.run(["ffprobe", "-v", "error", "-show_entries",
+                              "format=duration", "-of", "json", str(tmp_fixed)],
+                             capture_output=True, text=True, timeout=30)
+            _pre_dur = float(_js_ff.loads(_pr.stdout)["format"]["duration"])
+        except Exception:
+            _pre_dur = None
+        if _pre_dur is not None and _pre_dur > 11.5:
+            print(f"  QC 事前分流：长视频 {_pre_dur:.1f}s > 11.5s，禁走 Shorts QC，未裁剪")
+            job["status"] = "qc_failed"
+            job["qc_rejects"] = [f"[longform] 实测时长 {_pre_dur:.1f}s > 11.5s，禁走 Shorts QC，未裁剪"]
+            (JOBS_PENDING / f"{job_id}.json").write_text(
+                json.dumps(job, ensure_ascii=False, indent=1), encoding="utf-8")
+            continue
         # QC（fail-closed，对成品）
         qc = run_qc(str(tmp_fixed))
         if not qc.get("passed"):
@@ -135,6 +154,12 @@ def collect():
             "topic": job["topic"],
             "qc_score": qc.get("experience_score"),
             "created_at": datetime.now(timezone.utc).isoformat(),
+            # Q10（2026-10-28，按审计结论落地，二选一取此项）：
+            # 旧版无 status，upload_approved 要求 status=="awaiting"
+            # 故永匹配不上，24h 后被 TTL 直接过期。补 awaiting，
+            # 与 upload_approved 口径一致；不在 auto_pipeline 侧
+            # 再加兼容分支（不可双写）。
+            "status": "awaiting",
         })
         APPROVAL.write_text(json.dumps(approval, ensure_ascii=False, indent=1),
                             encoding="utf-8")

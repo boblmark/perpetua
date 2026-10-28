@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""muse-main → nanoMuse 自动降级守护。
+"""muse-main → QQ box 自动降级守护（D20261028-006）。
 
 每 5 分钟跑一次：
-1. 读 backend_config.json：如果 muse_main_enabled=false，跳过（无 Muse 模式下统一路由已直走 nano，无需桥接）
-2. 跑 musemain_healthcheck：健康 → 什么都不做
-3. 不健康 → 跑 dispatcher_nano_bridge --scan，把超时的 muse-main 任务转给 nano
+1. 读 backend_config.json：如果 muse_main_enabled=false，跳过
+2. 跑 musemain_healthcheck：健康 → 若此前已切 QQ box 则回切 muse-main
+   （状态文件 + backend_config.prefer_backend 一并写回），并记一次恢复告警
+3. 不健康（且健康检查本身可信、无 error）→ 告警 + 写切换状态
+   （backend_fallback_state.json，active_backend=qqbox）+ 跑
+   qqbox_fallback.py --mode both，把超时任务自动切到 QQ box 生成。
+   健康检查查询失败（UNKNOWN）时不切换——stale 数不可信，见 Rule 14。
+   已认领任务不在切换范围内（2026-10-28 17:05 留置令）。
 
-SHADOW_MODE=true 时只 dry-run（列出会处理的任务，不实际提交），用于验证。
+2026-10-28 之前本文件跑的是已下掉的 nano 桥，本轮已删除该调用。
+SHADOW_MODE=true 时只 dry-run；默认（无环境变量）为真实切换，
+因用户 2026-10-28 22:16 已拍板“不健康即告警并自动切 QQ box”。
 """
 import json
 import os
@@ -18,7 +25,49 @@ from pathlib import Path
 BASE = Path("/home/hatch/data/perpetua")
 CONFIG_PATH = BASE / "backend_config.json"
 LOG_PATH = BASE / "fallback_daemon.log"
-SHADOW_MODE = os.environ.get("FALLBACK_SHADOW", "true").lower() == "true"
+STATE_PATH = BASE / "backend_fallback_state.json"
+SHADOW_MODE = os.environ.get("FALLBACK_SHADOW", "false").lower() == "true"
+
+
+def _read_state() -> dict:
+    try:
+        return json.loads(STATE_PATH.read_text())
+    except Exception:
+        return {}
+
+
+def _write_state(state: dict):
+    STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=1))
+
+
+def _set_prefer_backend(backend: str):
+    """backend_config.prefer_backend 仅作当前后端声明（route 不靠它决策，
+    真切换由状态文件 + route 健康检查驱动），写失败只记日志不阻塞。"""
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text())
+    except Exception:
+        cfg = {}
+    cfg["prefer_backend"] = backend
+    try:
+        CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=1))
+    except Exception as e:
+        log(f"写 backend_config.prefer_backend 失败: {e}")
+
+
+def _alert(level: str, dedup_key: str, title: str, body: str):
+    try:
+        sys.path.insert(0, str(BASE))
+        import inbox as inbox_mod
+        inbox_mod.append_notice({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "level": level,
+            "dedup_key": dedup_key,
+            "title": title,
+            "body": body,
+        })
+        log(f"已写 inbox {level} 告警：{title}")
+    except Exception as e:
+        log(f"写 inbox 告警失败: {e}")
 
 
 def log(msg: str):
@@ -90,6 +139,20 @@ def main() -> int:
 
     if health.get("healthy", False):
         log(f"主 Muse 健康 ({health.get('pending_count', 0)} pending)，无需降级")
+        # 回切：此前已切 QQ box 且现在健康 → 写回 muse-main（仅状态跃迁时告警一次）
+        state = _read_state()
+        if state.get("active_backend") == "qqbox":
+            _write_state({
+                "active_backend": "muse-main",
+                "recovered_at": datetime.now(timezone.utc).isoformat(),
+                "previous_switched_at": state.get("switched_at"),
+            })
+            _set_prefer_backend("muse-main")
+            _alert("info", "fallback_daemon:recovered_to_musemain",
+                   "muse-main 已恢复，自动回切",
+                   "健康检查已恢复健康，降级状态已从 QQ box 回切到 muse-main，"
+                   "新任务重新走 muse-main；QQ box 在途任务按原流程继续。")
+            log("已从 QQ box 回切到 muse-main")
         return 0
 
     # 2026-10-12 修复（降级链覆盖缺口）：健康检查查询本身失败（error）
@@ -103,16 +166,39 @@ def main() -> int:
     _why = health.get("reason") or health.get("error", "")
     log(f"主 Muse 异常: {_why}，{len(stale)} 个 stale 任务")
 
-    # 2. 桥接（shadow 模式只 dry-run）
-    cmd = [sys.executable, str(BASE / "dispatcher_nano_bridge.py"),
-           "--scan", "--timeout-min", str(threshold)]
+    # 2. 告警 + 切换状态（仅状态跃迁或 stale 集合变化时告警，不每 5 分钟刷屏）
+    state = _read_state()
+    stale_ids = [j.get("job_id", "") for j in stale if j.get("job_id")]
+    new_switch = state.get("active_backend") != "qqbox"
+    changed = new_switch or stale_ids != state.get("stale_job_ids", [])
+    _write_state({
+        "active_backend": "qqbox",
+        "switched_at": state.get("switched_at") or datetime.now(timezone.utc).isoformat(),
+        "last_check": datetime.now(timezone.utc).isoformat(),
+        "reason": _why,
+        "stale_job_ids": stale_ids,
+    })
+    _set_prefer_backend("qqbox")
+    if changed:
+        _alert("warning", "fallback_daemon:switched_to_qqbox",
+               "muse-main 不健康，已自动切换到 QQ box",
+               f"原因：{_why}。stale 任务 {len(stale_ids)} 个："
+               f"{', '.join(stale_ids[:10])}。新任务与超时任务改走 QQ box 生成，"
+               "muse-main 恢复后自动回切；已认领任务不受影响。")
+        log("已告警并切换到 QQ box")
+    else:
+        log("已处于 QQ box 切换态且 stale 集合未变，跳过重复告警")
+
+    # 3. QQ box 桥接（shadow 模式只 dry-run）
+    cmd = [sys.executable, str(BASE / "qqbox_fallback.py"),
+           "--mode", "both", "--timeout-min", str(threshold)]
     if SHADOW_MODE:
         cmd.append("--dry-run")
         log("SHADOW 模式：dry-run，只列出不处理")
-    r2 = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    log(f"桥接完成 (shadow={SHADOW_MODE}): {r2.stdout[-500:]}")
+    r2 = subprocess.run(cmd, capture_output=True, text=True, timeout=1500)
+    log(f"QQ box 桥接完成 (shadow={SHADOW_MODE}): {r2.stdout[-500:]}")
     if r2.returncode != 0:
-        log(f"桥接 stderr: {r2.stderr[-300:]}")
+        log(f"QQ box 桥接 stderr: {r2.stderr[-300:]}")
     return 0
 
 
