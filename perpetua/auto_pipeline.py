@@ -1661,8 +1661,22 @@ def collect_results():
             changed = True
             continue
         if run_qc is None:
-            # QC 引擎不可用（缺 cv2 且自愈失败）：本轮不碰生成完成项，
-            # 保留 job_submitted 等下一轮；fail-closed，绝不跳过 QC 直接上传。
+            # Q12（2026-10-28 用户批准，按审计结论落地）：QC 引擎不可用
+            # 不再静默 continue。累计 qc_engine_unavailable_count，连续
+            # 3 轮仍 None → 当轮 qc_error 化，走 Q6 的重试链（看门狗 6h
+            # 回 job_submitted，上限 3 次；耗尽后 Q8 24h 归档）。fail-closed
+            # 不变：绝不跳过 QC 直接上传。
+            _cnt = int(item.get("qc_engine_unavailable_count", 0) or 0) + 1
+            item["qc_engine_unavailable_count"] = _cnt
+            pipeline_log("qc", "error",
+                         f"QC 引擎不可用第 {_cnt} 轮 {item['topic']}", 0)
+            if _cnt >= 3:
+                item["status"] = "qc_error"
+                item["qc_error"] = "qc_engine_unavailable_3_rounds"
+                item["qc_engine_unavailable_count"] = 0
+                pipeline_log("qc", "error",
+                             f"QC 引擎连续 3 轮不可用，转 qc_error {item['topic']}", 0)
+            changed = True
             continue
         video = res.get("file", "")
         pp = res.get("postprocess") or {}
@@ -1691,14 +1705,32 @@ def collect_results():
                          f"(相似度 {similarity:.3f})", 0)
             return repair_loop_seam(video_path, similarity)
 
+        # Q12 计数复位：引擎恢复且本轮真正跑 QC 时，清掉不可用累计，
+        # 避免旧计数在恢复后仍把下一轮误判为连续不可用。
+        if item.get("qc_engine_unavailable_count"):
+            item["qc_engine_unavailable_count"] = 0
         try:
             qc = run_qc(final, title=item["title"],
                         prompt_meta={"expected_duration": item.get("duration", 8)},
                         regen_fn=_qc_regen, repair_fn=_qc_repair)
         except Exception as e:
-            item["status"] = "qc_error"
+            # Q6（2026-10-28 用户批准，按审计结论落地）：QC 异常不再
+            # 直接写 qc_error 死状态。计数重试：qc_error_count<2 回
+            # job_submitted（done 结果文件仍在，下轮可重跑 QC），满 2 次
+            # 才 qc_failed；qc_error 的看门狗回流见 dead_state_watchdog
+            #（与 G14 同一根治，此处不双写看门狗逻辑）。
+            _ecnt = int(item.get("qc_error_count", 0) or 0) + 1
+            item["qc_error_count"] = _ecnt
             item["qc_error"] = str(e)[:200]
-            pipeline_log("qc", "error", f"QC 异常 {item['topic']}: {e}", 0)
+            if _ecnt < 2:
+                item["status"] = "job_submitted"
+                pipeline_log("qc", "error",
+                             f"QC 异常第 {_ecnt} 次，回 job_submitted 重跑 "
+                             f"{item['topic']}: {e}", 0)
+            else:
+                item["status"] = "qc_failed"
+                pipeline_log("qc", "error",
+                             f"QC 异常满 2 次，转 qc_failed {item['topic']}: {e}", 0)
             changed = True
             continue
         item["qc_report"] = {"passed": qc.get("passed"),
@@ -1734,10 +1766,21 @@ def collect_results():
                     pipeline_log("qc", "error",
                                  f"QC 失败(已重生成2次，放弃) {item['topic']}", 0)
             else:
-                # 非 needs_regen 的失败（如文件损坏）直接标记
-                item["status"] = "qc_failed"
-                pipeline_log("qc", "error", f"QC 拒绝 {item['topic']}: "
-                             f"{qc.get('rejects', [])[:2]}", 0)
+                # Q7（2026-10-28 用户批准，按审计结论落地）：非 needs_regen
+                # 的失败不再零重试即 qc_failed。统一计数器，与 needs_regen
+                # 分支同一逻辑：qc_retry<2 回 review_passed 重生成，耗尽
+                # 才 qc_failed（耗尽后 Q8 看门狗 24h 归档）。
+                _retry = int(item.get("qc_retry", 0) or 0)
+                if _retry < 2:
+                    item["qc_retry"] = _retry + 1
+                    item["status"] = "review_passed"
+                    pipeline_log("qc", "ok",
+                                 f"QC 失败（非 needs_regen），第 {_retry + 1} 次重生成 "
+                                 f"{item['topic']}: {qc.get('rejects', [])[:1]}", 0)
+                else:
+                    item["status"] = "qc_failed"
+                    pipeline_log("qc", "error", f"QC 拒绝（重生成耗尽）{item['topic']}: "
+                                 f"{qc.get('rejects', [])[:2]}", 0)
             changed = True
             continue
         qc_video = qc.get("output_file") or final

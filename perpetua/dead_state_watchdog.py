@@ -336,6 +336,44 @@ def check_pipeline_stuck():
             it["auto_resubmitted"] = _resub + 1
             changed = True
             auto_fixed.append(f"{topic}（review_timeout {age_h:.1f}h → 已自动重送评审）")
+        elif st == "qc_error":
+            # Q6（2026-10-28 用户批准，按审计结论落地，与 G14 同一根治）：
+            # qc_error>6h 自动回 job_submitted，上限 3 次（专用计数
+            # qc_error_back_count，不与 review_timeout 的 auto_resubmitted
+            # 混用）。Q8：回流耗尽后且 age>24h → archived，不无限回流。
+            _back = int(it.get("qc_error_back_count", 0) or 0)
+            if age_h >= 6 and _back < 3:
+                it["status"] = "job_submitted"
+                it["qc_error_back_count"] = _back + 1
+                it["updated_at"] = now().isoformat()
+                changed = True
+                auto_fixed.append(
+                    f"{topic}（qc_error {age_h:.1f}h → 已自动回 job_submitted "
+                    f"重跑 QC，第 {_back + 1} 次）")
+            elif age_h >= 24:
+                it["status"] = "archived"
+                it["archive_reason"] = "qc_error 24h未恢复自动归档（Q8）"
+                it["updated_at"] = now().isoformat()
+                issues.append(
+                    f"pipeline_queue 归档：{topic} qc_error 已 {age_h:.1f}h，"
+                    f"回流上限已耗尽或超时，转人工")
+                changed = True
+            else:
+                issues.append(f"pipeline_queue 卡死：{topic} status={st} 已 {age_h:.1f}h")
+        elif st == "qc_failed":
+            # Q8（2026-10-28 用户批准，二选一落定方案①看门狗归档）：
+            # qc_failed 且 age>24h → archived（archived 在 select_topics
+            # 的 _TERMINAL 内，话题坑位随之释放）；24h 内仍只告警，
+            # 不直接进 _TERMINAL，避免与 P0-3 的永久失败口径混写。
+            if age_h >= 24:
+                it["status"] = "archived"
+                it["archive_reason"] = "qc_failed 24h未恢复自动归档（Q8）"
+                it["updated_at"] = now().isoformat()
+                issues.append(
+                    f"pipeline_queue 归档：{topic} qc_failed 已 {age_h:.1f}h，转人工")
+                changed = True
+            else:
+                issues.append(f"pipeline_queue 卡死：{topic} status={st} 已 {age_h:.1f}h")
         else:
             issues.append(f"pipeline_queue 卡死：{topic} status={st} 已 {age_h:.1f}h")
     if changed:
