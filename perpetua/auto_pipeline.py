@@ -806,7 +806,9 @@ def review_budget_remaining(cap=None):
 
 
 def review_budget_consume(n=1, cap=None):
-    """N7：预算耗尽不提交。返回 True=成功扣减。"""
+    """2026-10-28 解封：Ask Studio 免费，预算只计数、永不硬卡评审。
+    旧 N7“预算耗尽不提交”已废：无论 used 是否超 cap，一律扣计数并返回 True，
+    评审不得因预算空转。cap/dynamic 仅作观测口径保留。"""
     cap = cap if cap is not None else dynamic_review_budget_cap()
     p = _review_budget_path()
     try:
@@ -814,8 +816,6 @@ def review_budget_consume(n=1, cap=None):
     except Exception:
         b = {"used": 0}
     used = int(b.get("used", 0))
-    if used + n > cap:
-        return False
     b["used"] = used + n
     b["cap"] = cap
     b["dynamic"] = True

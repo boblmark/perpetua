@@ -62,6 +62,52 @@ V54_EARLY_TWIST = (
     "not the first."
 )
 
+# v1.1 (2026-10-28, 模板进化议会四脑共识，用户 10:46 CST 拍板：
+# 先做 v1.1 小幅进化，14-16 秒三段式只作对照实验，不全切管线模板)
+# 共识来源：红队 KILL（不得仅凭 9 连 <85 判死刑）+ 总工程师/传感器/陪审团 A 交集。
+# 本块优先级高于其他块在目标/因果/标题/对白上的冲突处；时长仍守 9-11 秒，
+# 14-16 秒 v2.0 不进本块、不进默认管线，见下方 V11_CONTROL_EXPERIMENT 说明。
+V11_CAUSAL_EVOLUTION = (
+    "V1.1 CAUSAL EVOLUTION (2026-10-28 council consensus, precedence over "
+    "conflicting wording elsewhere on goal / payoff causality / title / dialogue): "
+    "Runtime stays 9-11 seconds. Karen MUST have ONE concrete goal stated "
+    "within the first 25% of runtime (for example: get a specific item, skip a "
+    "specific queue, obtain a specific refund) — never just 'she is angry'. "
+    "The AI device MUST have ONE rule or capability established early, and the "
+    "payoff MUST follow causally from a request, rule, or action already "
+    "established in the Short. NEVER use a random punishment, generic 'AI revenge', "
+    "or an unrelated glitch as the payoff. Payoff MUST be tangible AND, where "
+    "possible, double: a physical consequence plus on-site embarrassment or social "
+    "exposure; OR malicious compliance: the AI obeys Karen's absurd demand "
+    "literally and completely, so the demand itself causes her consequence. "
+    "Conflict MUST be visually legible within the first 1.5 seconds, with no "
+    "setup longer than 5 words on screen and no title card used as the hook. "
+    "The loop MUST be causal: the final frame rhymes with the opening AND is a "
+    "consequence of the payoff, not a mere visual reset. Dialogue: Karen speaks "
+    "at most 6 words in total, total spoken English at most 22 words, and the AI "
+    "never delivers a long rebuttal sentence. Title: at most 55 characters, strong "
+    "verb-object structure, never a spoiler payoff name, never a 'Then the AI Read...' "
+    "spoiler pattern; emoji may decorate the title at the end only and must never "
+    "carry plot information. Novelty ledger (output field, required): list the "
+    "previous six Shorts' setting, Karen goal, AI mechanism, and payoff type; change "
+    "at least two of those four elements versus the previous six; NEVER repeat the "
+    "same conflict + AI mechanism + payoff combination within the previous six; if "
+    "the previous six summaries are not supplied, mark novelty UNVERIFIED. "
+    "NEVER: manager jokes, surreal punishments, a single static dialogue-only "
+    "retaliation without strong visual feedback, a second unrelated twist after the "
+    "punchline, an explanatory line after the punchline, or tiny UI text / an "
+    "unexplained rule as the sole explanation for the reversal."
+)
+
+V11_CONTROL_EXPERIMENT = (
+    "CONTROL EXPERIMENT ONLY (NOT the default template): the 14-16 second "
+    "three-beat micro-story (0-4s entitlement, 5-8s processing, 9-13s escalation, "
+    "14-16s loop anchor, delayed payoff) is a separate controlled trial of at most "
+    "3 drafts, scored separately against v1.1 on matched topics. It MUST NOT replace "
+    "the 9-11 second default pipeline, and it MUST NOT be adopted generally without "
+    "a second user decision after its Ask Studio scores are compared."
+)
+
 V54_OPENING = (
     "MANDATORY OPENING — DYNAMIC PUNCH-IN HOOK (v5.4, 2026-10-15 模板手术 D20261015-009): "
     "0.00s–~1.00s: TIGHT CLOSE-UP (face, hands, or key object) — the hook frame; "
@@ -323,6 +369,8 @@ def build_suspense_title(lead, misdeed, reversal, tail, max_len=95):
       - 总长 <=60 字符（含空格+emoji）
       - 单词数 <=12
       - emoji 0-2 个且必须位于末尾（禁开头 emoji）
+    v1.1（2026-10-28 模板进化议会，用户拍板）：总长收紧到 <=55 字符，
+    其余规格不变；低于 25 字符仍按 v53 门禁下限处理。
     格式：Karen {misdeed}—Then {reversal} {tail}
     lead 参数保留兼容（旧调用位），不再前置（规格 NEVER：标题禁以 emoji 开头）。
     截断策略：先压 reversal（词边界），再压 misdeed，最后整体兜底；
@@ -330,7 +378,7 @@ def build_suspense_title(lead, misdeed, reversal, tail, max_len=95):
     2026-10-17 修复：旧实现只截 reversal，misdeed 过长时标题 130+ 字符，
     被 v53 门禁 title_length 全部拦截 → select 连续 0 选题。
     """
-    SPEC_MAX = 60  # D20261016-005 Shorts MUST
+    SPEC_MAX = 55  # v1.1 (2026-10-28 council): title at most 55 chars
     SPEC_MIN = 25  # v53 门禁下限
     tail = (tail or "").strip()
     misdeed = (misdeed or "").strip()
@@ -542,6 +590,7 @@ def build_viral_prompt(topic, hook, karma_payoff=None, emoji_pair=("🤖", "😂
         f"{V53_TITLE_SPOILER_GATE}\n\n"
         f"{V53_PAYBACK_ROTATION}\n\n"
         f"{V53_TITLE_GRAMMAR_GATE}\n\n"
+        f"{V11_CAUSAL_EVOLUTION}\n\n"
         f"{FORMAT_LOCK}\n\n"
         f"Cast: {KAREN_DESC} "
         f"AI device: a {topic} — an EVERYDAY automated friction point, not "
