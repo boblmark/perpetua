@@ -288,6 +288,12 @@ def run_pipeline(dry_run: bool) -> list[dict]:
             handled += 1
             continue
         jid = item.get("job_id") or f"qqbox-{row_id}"
+        # 2026-10-29（pipeline 路 QQ box 接线补洞）：submit 侧 qqbox 分支
+        # 一律写 job_id，但无 job_id 的存量 qqbox_pending 若不回填，
+        # done 文件名（qqbox-<row_id>）与 collect 按 job_id 的查找键失配，
+        # 翻回的 job_submitted 永不被捡。只补缺失值，绝不覆盖已有 job_id。
+        if not item.get("job_id"):
+            item["job_id"] = jid
         out_path = VEO_INBOX / f"qqbox_{row_id}.mp4"
         try:
             VEO_INBOX.mkdir(parents=True, exist_ok=True)

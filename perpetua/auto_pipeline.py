@@ -1277,6 +1277,18 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
             # 分级断言：只接受本次提交qid + 新鲜TTL内的答案（M5/M7/M8/N7）
             fresh_answer, fresh_at, fverdict = _fresh_review_answer(qid, submitted_at)
             if fverdict == (ga.SUSPECT if ga else "SUSPECT"):
+                # 2026-10-29 细化（review_timeout 兜底）：看门狗把 review_timeout
+                # 重送回 selected 后，条目仍带旧 review_qid，collect 只捡答案；
+                # 若答案已过 60min TTL，每轮都判 SUSPECT 且永不清 qid、永不重送
+                # （3594 实证：22:24 答案→00:31 重送→00:32 起每轮 SUSPECT）。
+                # 与无答案分支同款：触发超 3h 的 pickup_only selected 项先试
+                # stale-qid 清理（备份→清空，2 次上限），下轮重新送审；未达
+                # 清理条件（触发 <3h 或已达上限）时仍走原 SUSPECT 升级。
+                # rewrite/boundary 项不在此清理（其 qid 属重审轮次，另案处理）。
+                if (_pickup_only and _st == "selected"
+                        and _maybe_auto_clear_stale_qid(item, topic)):
+                    changed = True
+                    continue
                 # stale/qid失配 → SUSPECT：不写分、不跃迁、保持 selected（M2/N4）
                 _suspect_review(topic, qid, "stale_or_qid_mismatch",
                                 f"评审答案非本次提交或已过期（qid={qid}），不写分不跃迁")

@@ -12,6 +12,11 @@
   （00:00-08:00 Asia/Shanghai）；12h = 8h + 50% 裕量。BREAKER_OPEN 等
   不确定暂停若 12h 未恢复，说明需要人工介入，不应无限冻结 TTL。
   超限 → 按过期处理（status="expired"）+ inbox 告警。
+- LEASE_PAUSE_TOTAL_MAX_HOURS = 24（C25，2026-10-29，审计第 25 条）：
+  单次上限可被“暂停 11h→恢复→再暂停 11h”循环绕过，使有效年龄永远
+  到不了 24h TTL。累计暂停（含本次暂停已流逝）超 24h 即按过期处理，
+  与单次超限同等处理。累计超限只对仍持有 live approval 的 awaiting 项
+  生效（非暂停态时）；已 posted/uploaded/expired 的历史条目不改写。
 
 数据：复用 awaiting_approval.json 的条目字段（不另建状态文件，避免状态分裂）：
   lease_paused: bool               是否处于暂停中
@@ -39,6 +44,7 @@ INBOX_PATH = "/home/hatch/data/collab/inbox.json"
 
 APPROVAL_TTL_HOURS = 24  # 与 dead_state_watchdog.check_approval_ttl 一致
 LEASE_PAUSE_MAX_HOURS = 12  # 见模块 docstring rationale
+LEASE_PAUSE_TOTAL_MAX_HOURS = 24  # C25：累计暂停上限，与 TTL 等长
 
 
 def _now_utc():
@@ -139,40 +145,74 @@ def effective_age_hours(item, now=None):
     return max(0.0, (now - created).total_seconds() - paused) / 3600.0
 
 
-def enforce_pause_limits():
-    """防滥用：单次暂停超 LEASE_PAUSE_MAX_HOURS → 按过期处理 + 告警。
+def _expire_item(it, now, reason, detail):
+    """C25：把一条目按过期处理 + 审计 + inbox 告警（单次/累计超限共用）。"""
+    topic = it.get("topic", "?")
+    it["lease_paused"] = False
+    it["pause_started_at"] = None
+    it["status"] = "expired"
+    it["expired_at"] = now.isoformat()
+    it["expired_reason"] = reason
+    audit_log("lease_pause_expired", it.get("video_id", ""), "paused",
+              "expired", "approval-lease", detail)
+    _inbox_alert(
+        f"lease 暂停超限自动过期：{topic} {reason}，"
+        f"approval 已按过期释放，需人工确认")
 
-    返回被过期的条目列表。
+
+def enforce_pause_limits():
+    """防滥用：单次暂停超 LEASE_PAUSE_MAX_HOURS，或累计暂停超
+    LEASE_PAUSE_TOTAL_MAX_HOURS → 按过期处理 + 告警。
+
+    返回被过期的条目列表。调用方：dead_state_watchdog.check_approval_ttl
+    （每 30 分钟一轮），故本函数即累计上限的实际执行入口。
+    累计口径 = 已累计 paused_seconds_total + 本次暂停已流逝；
+    非暂停态的累计超限只对 status == "awaiting" 的 live approval 生效，
+    不改写 posted/uploaded/expired 历史条目。
     """
     now = _now_utc()
     items = _load()
     expired = []
     changed = False
     for it in items:
-        if not isinstance(it, dict) or not it.get("lease_paused"):
+        if not isinstance(it, dict):
             continue
-        started = _parse_ts(it.get("pause_started_at"))
-        if not started:
-            continue
-        pause_h = (now - started).total_seconds() / 3600.0
-        if pause_h > LEASE_PAUSE_MAX_HOURS:
-            topic = it.get("topic", "?")
-            it["lease_paused"] = False
-            it["pause_started_at"] = None
-            it["status"] = "expired"
-            it["expired_at"] = now.isoformat()
-            it["expired_reason"] = (
-                f"lease 单次暂停 {pause_h:.1f}h 超上限 {LEASE_PAUSE_MAX_HOURS}h，"
-                f"按过期处理（防无限冻结 TTL）")
+        total = float(it.get("paused_seconds_total", 0.0) or 0.0)
+        if it.get("lease_paused"):
+            started = _parse_ts(it.get("pause_started_at"))
+            if not started:
+                continue
+            single_h = (now - started).total_seconds() / 3600.0
+            total += max(0.0, (now - started).total_seconds())
+            total_h = total / 3600.0
+            if single_h > LEASE_PAUSE_MAX_HOURS:
+                _expire_item(
+                    it, now,
+                    f"lease 单次暂停 {single_h:.1f}h 超上限 {LEASE_PAUSE_MAX_HOURS}h，"
+                    f"按过期处理（防无限冻结 TTL）",
+                    {"pause_hours": round(single_h, 1),
+                     "limit_hours": LEASE_PAUSE_MAX_HOURS})
+                changed = True
+                expired.append(it)
+            elif total_h > LEASE_PAUSE_TOTAL_MAX_HOURS:
+                _expire_item(
+                    it, now,
+                    f"lease 累计暂停 {total_h:.1f}h 超上限 "
+                    f"{LEASE_PAUSE_TOTAL_MAX_HOURS}h，按过期处理（防循环暂停冻结 TTL）",
+                    {"paused_seconds_total": round(total, 1),
+                     "limit_hours": LEASE_PAUSE_TOTAL_MAX_HOURS})
+                changed = True
+                expired.append(it)
+        elif it.get("status") == "awaiting" and total / 3600.0 > LEASE_PAUSE_TOTAL_MAX_HOURS:
+            total_h = total / 3600.0
+            _expire_item(
+                it, now,
+                f"lease 累计暂停 {total_h:.1f}h 超上限 "
+                f"{LEASE_PAUSE_TOTAL_MAX_HOURS}h，按过期处理（防循环暂停冻结 TTL）",
+                {"paused_seconds_total": round(total, 1),
+                 "limit_hours": LEASE_PAUSE_TOTAL_MAX_HOURS})
             changed = True
             expired.append(it)
-            audit_log("lease_pause_expired", it.get("video_id", ""), "paused",
-                      "expired", "approval-lease",
-                      {"pause_hours": round(pause_h, 1),
-                       "limit_hours": LEASE_PAUSE_MAX_HOURS})
-            _inbox_alert(
-                f"lease 暂停超限自动过期：{topic} 暂停 {pause_h:.1f}h 未恢复，"
-                f"approval 已按过期释放，需人工确认")
     if changed:
         _save(items)
     return expired
@@ -197,4 +237,5 @@ def _inbox_alert(msg):
 
 if __name__ == "__main__":
     print(f"approval_lease 自检：TTL={APPROVAL_TTL_HOURS}h, "
-          f"单次暂停上限={LEASE_PAUSE_MAX_HOURS}h")
+          f"单次暂停上限={LEASE_PAUSE_MAX_HOURS}h, "
+          f"累计暂停上限={LEASE_PAUSE_TOTAL_MAX_HOURS}h")
