@@ -36,3 +36,4 @@
   healer: bottleneck=draining actions=['trigger_collect:ok'] escalated=False
 2026-10-28T16:01:52.640059+00:00 publish_health status=alert publishes_last_24h:1 preuploads_last_24h:1 hours_since_last_publish:0.1 max_schedule_deviation_min_48h:- schedule_unmeasured:2
 2026-10-28T16:31:56.522700+00:00 publish_health status=alert publishes_last_24h:1 preuploads_last_24h:1 hours_since_last_publish:0.6 max_schedule_deviation_min_48h:- schedule_unmeasured:2
+2026-10-28T17:02:03.771294+00:00 publish_health status=alert publishes_last_24h:1 preuploads_last_24h:1 hours_since_last_publish:1.1 max_schedule_deviation_min_48h:- schedule_unmeasured:2

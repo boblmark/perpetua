@@ -916,6 +916,12 @@ def check_arena_manual():
       有 video_file 的可接手项归档即丢片，须人工定去留）。
     - 有 video_file 标注“可接手”，无 video_file 标注“无成片待人工”。
     返回 issues 列表（调用方进 inbox，与其他检查同口径）。
+
+    2026-10-29 G2-C（用户拍板 D20261029-001，选项 1C）：>= 168h 时，
+    无 video_file 的项自动归档（archive_reason 记清，归档动作经调用方
+    alert 进 inbox，非静默）；有 video_file 的项继续只告警不归档。
+    归档后 status 不再是 arena_manual，故下轮不再重复处理，天然幂等。
+    保存失败时不谎报已归档，只报保存失败告警（fail-closed）。
     """
     issues = []
     try:
@@ -924,6 +930,7 @@ def check_arena_manual():
         print(f"  WARN: 读 SQLite 队列失败（arena_manual 检查跳过）: {ex}")
         return issues
     items = q if isinstance(q, list) else q.get("items", [])
+    changed = False
     for it in items:
         if not isinstance(it, dict) or it.get("status") != "arena_manual":
             continue
@@ -933,13 +940,29 @@ def check_arena_manual():
         age_h = _arena_manual_age_hours(it)
         has_file = bool(it.get("video_file"))
         state = "有成片可接手" if has_file else "无成片待人工"
-        if age_h >= 168:
+        if age_h >= 168 and not has_file:
+            # G2-C：无成片项超 7 天自动归档（无片可丢），有成片项不动。
+            it["status"] = "archived"
+            it["archive_reason"] = "arena_manual_168h_no_file_auto_archive"
+            it["updated_at"] = now().isoformat()
+            changed = True
+            issues.append(
+                f"arena_manual 7天未接手已自动归档：{topic} 已 {age_h:.1f}h"
+                f"（无成片待人工），归档原因 arena_manual_168h_no_file_auto_archive")
+        elif age_h >= 168:
             issues.append(
                 f"arena_manual 7天未接手：{topic} 已 {age_h:.1f}h（{state}），"
                 f"需人工定去留（不自动归档、不打回）")
         elif age_h >= 24:
             issues.append(
                 f"arena_manual 超时：{topic} 已 {age_h:.1f}h 未接手（{state}）")
+    if changed:
+        try:
+            queue_db.pipeline_save(q)
+        except Exception as ex:
+            print(f"  WARN: arena_manual 归档保存失败（未谎报已归档）: {ex}")
+            return [f"arena_manual 自动归档保存失败（{ex}），归档未落盘，"
+                    f"请人工核查队列"]
     return issues
 
 

@@ -1256,9 +1256,22 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
                 if not review_budget_consume(1):
                     pipeline_log("select", "ok", f"评审预算耗尽，送审等待: {topic}", 0)
                     continue
+                # 2026-10-29 stale-force：刚被 stale-qid 清理过的条目（qid=None、
+                # review_auto_cleared=True）重送时必须 force，否则 topic 幂等返回
+                # 同一个旧 qid，旧答案已过 TTL → 每轮 SUSPECT 死循环（3594 实证）。
+                # force 产生全新 iid，旧答案无法再被捡到；成功拿到新 qid 后清标记，
+                # 避免之后每轮都 force；拿不到新 qid（与 stale 相同或为空）则保留
+                # 标记，下轮继续 force。
+                # 仅 selected 项走 force；rewrite/boundary 项沿用第十五批限定，
+                # 其 qid 属重审轮次，不在此强制换 qid。
+                _force_resubmit = bool(item.get("review_auto_cleared")) and _st == "selected"
+                _stale_qid = item.get("review_qid_stale")
                 qid, answer = submit_prompt_review_instant(
                     item["prompt"], item["title"], item["description"],
-                    topic=topic, instant_timeout_minutes=instant_timeout_minutes)
+                    topic=topic, force=_force_resubmit,
+                    instant_timeout_minutes=instant_timeout_minutes)
+                if _force_resubmit and qid and qid != _stale_qid:
+                    item.pop("review_auto_cleared", None)
                 # 本次提交时间（用于 qid/版本绑定，M5/N7）
                 submitted_at = None
                 try:
@@ -2357,6 +2370,14 @@ def collect_results():
         # qc_retry<2 回 review_passed 重生成，耗尽才 qc_failed，
         # 再由 Q8 看门狗 24h 归档），不裁剪、不上传、无孤儿状态。
         # ffprobe 失败时不拦，由 run_qc 自身 fail-closed。
+        # Q3-B（2026-10-29，用户拍板 D20261029-003，选项 3B）：已批的
+        # 15–25s 三拍试验开条目级例外——仅当条目带 trial_15_25s 标记时，
+        # 上限放宽到 25s（试验规格上限；超 25s 仍拒绝，不静默裁剪），
+        # 且 run_qc 传 max_duration=25、check_loop=False（三拍试验不是
+        # 循环视频，loop 硬门不适用）。未标记项仍走 11.5s 上限。
+        # 试验条目尚不存在，本批只装机制，不标记任何生产条目。
+        _trial_15_25s = bool(item.get("trial_15_25s"))
+        _trial_ceiling = 25.0 if _trial_15_25s else 11.5
         _pre_dur = None
         try:
             import subprocess as _sp_ff, json as _js_ff
@@ -2366,9 +2387,9 @@ def collect_results():
             _pre_dur = float(_js_ff.loads(_pr.stdout)["format"]["duration"])
         except Exception:
             _pre_dur = None
-        if _pre_dur is not None and _pre_dur > 11.5:
+        if _pre_dur is not None and _pre_dur > _trial_ceiling:
             qc = {"passed": False, "needs_regen": True,
-                  "rejects": [f"[longform] 实测时长 {_pre_dur:.1f}s > 11.5s，"
+                  "rejects": [f"[longform] 实测时长 {_pre_dur:.1f}s > {_trial_ceiling}s，"
                               "禁走 Shorts QC，未裁剪，待重生成"],
                   "warnings": [], "regen_used": 0, "repair_used": 0,
                   "output_file": final, "experience_score": 0}
@@ -2397,6 +2418,11 @@ def collect_results():
             qc = _run_qc_with_timeout(
                 run_qc, _QC_TOTAL_TIMEOUT_S, final, title=item["title"],
                 prompt_meta={"expected_duration": item.get("duration", 8)},
+                # Q3-B：试验标记项传 max_duration=25、check_loop=False；
+                # 未标记项传默认值（max_duration=None→11、check_loop=True），
+                # 与改前行为一致。
+                max_duration=(25 if _trial_15_25s else None),
+                check_loop=(not _trial_15_25s),
                 regen_fn=_qc_regen, repair_fn=_qc_repair)
         except Exception as e:
             # Q6（2026-10-28 用户批准，按审计结论落地）：QC 异常不再
