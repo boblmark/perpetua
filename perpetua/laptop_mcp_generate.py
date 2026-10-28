@@ -145,6 +145,18 @@ def mcp_download(filename, out_path, download_url=None):
                     f.write(data)
                 return len(data)
             last = r.status
+        # 隧道模式兜底：QQ 盒部署的 downloadUrl 外域沙箱禁直连、/muse/v1/videos/
+        # 又 404，改走 VPS→盒子 SSH 直传（文件在盒内 generated-videos/）。
+        if urlparse(DIRECT_ENDPOINT).scheme == "http":
+            import subprocess
+            safe = os.path.basename(filename)
+            with open(out_path, "wb") as f:
+                cp = subprocess.run(
+                    ["/home/hatch/workspace/mcp-b-ssh.sh",
+                     f"bash /tmp/qqbox_cat_video.sh {safe}"],
+                    stdout=f, stderr=subprocess.PIPE, timeout=300)
+            if cp.returncode == 0 and os.path.getsize(out_path) > 10000:
+                return os.path.getsize(out_path)
         raise RuntimeError(f"download failed, last HTTP {last} for {filename}")
     px = urlparse(os.environ.get("HTTPS_PROXY", ""))
     auth = "Basic " + base64.b64encode((px.username + ":" + px.password).encode()).decode()
