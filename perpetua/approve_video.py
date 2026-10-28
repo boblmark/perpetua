@@ -46,6 +46,17 @@ def approve(topic):
     awaiting = _load(APPROVAL_PATH, [])
     for a in awaiting:
         if a.get("topic") == topic and a.get("status") == "awaiting":
+            # P3（2026-10-28）：auto_retitle 条目批准后不建 generate_video
+            # 任务（它没有 prompt，旧路径会 KeyError/误生成）；只标记 approved，
+            # 由 apply_retitle.py 取 alt_titles[0] 调 update_metadata 换标题。
+            if a.get("type") == "auto_retitle":
+                a["status"] = "approved"
+                a["approved_at"] = now_iso()
+                _save(APPROVAL_PATH, awaiting)
+                return {"ok": True, "retitle": True,
+                        "video_id": a.get("video_id"),
+                        "alt_titles": a.get("alt_titles", []),
+                        "title": a.get("title", a.get("old_title", ""))}
             os.makedirs(PENDING_DIR, exist_ok=True)
             jid = "job-%s-%s" % (
                 datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"),
@@ -98,8 +109,14 @@ if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "list":
         items = list_awaiting()
+        # P3（2026-10-28）：混入 auto_retitle 条目时旧硬取值 a["topic"]/
+        # a["title"] 会 KeyError 崩掉；改 .get 兜底（老条目无 topic/title
+        # 时用 old_title），并透出 type/video_id 供换标题审批辨认。
         print(json.dumps(
-            [{"topic": a["topic"], "title": a["title"],
+            [{"topic": a.get("topic", a.get("old_title", "")),
+              "title": a.get("title", a.get("old_title", "")),
+              "type": a.get("type", ""),
+              "video_id": a.get("video_id", ""),
               "score": a.get("review_score"),
               "submitted_at": a.get("submitted_at")}
              for a in items], ensure_ascii=False, indent=2))

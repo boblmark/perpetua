@@ -507,6 +507,33 @@ def queue_stats(queue=None):
 # ------------------------------------------------------- per-queue shims
 # Each shim preserves the exact Python-object shape the JSON file had.
 
+# X2（2026-10-28）：pipeline shim 行状态映射。行级 status 此前恒为 PENDING，
+# 与 payload 状态完全脱节，任何按行状态判断的消费者都会误判 pipeline 全是
+# 待处理。只映射真正终态；在途状态一律保留 PENDING（与今日行为一致）。
+# 刻意不用 DEAD：_load_all 过滤 status!='DEAD'，行一旦变 DEAD，下次
+# load→save 就会把该行从表里删掉（数据丢失陷阱）；COMPLETED/FAILED 仍被
+# _load_all 返回，且 sweep 只扫 PENDING/PROCESSING，故终态行不再被
+# 30 天 sweep 误伤。shim 行不参与 lease：INSERT 不写 lease_alarm（恒 NULL），
+# consumer 字段只是 payload 状态字符串而非 worker id，claim/reap 不会动它们。
+# 注意：按 payload 状态分级缩短 SHIM_TIMEOUT_HOURS 本批不做——sweep 一旦对
+# 在途行触发，load 会丢行、save 会删行，缩短超时只会加速该陷阱；正确修法
+# 是把 sweep 限定在非 shim 队列，留待办（当前 sweep/reap/claim 在
+# perpetua/youtube 顶层代码与 cron 定义中均无调用方，陷阱目前是 latent）。
+_PIPELINE_ROW_STATUS = {
+    "uploaded": "COMPLETED",
+    "archived": "COMPLETED",
+    "superseded": "COMPLETED",
+    "generate_failed": "FAILED",
+    "upload_permanently_failed": "FAILED",
+}
+
+
+def _pipeline_row_status(it):
+    if isinstance(it, dict):
+        return _PIPELINE_ROW_STATUS.get(str(it.get("status", "")), "PENDING")
+    return "PENDING"
+
+
 def _save_all(queue_name, items, owner, consumer_fn, event_type):
     # 2026-10-11 fail-closed：拒绝非 list 输入。曾发生 pipeline_save({'items':[...]})
     # 把 dict 的 key 当行写入、29 行变 1 行垃圾的事故；必须 loud 失败，绝不静默写坏。
@@ -567,13 +594,24 @@ def _save_all(queue_name, items, owner, consumer_fn, event_type):
                 # 全表刷成同一秒），行级 updated_at 完全丧失 stale 判别力——与
                 # 10-18 hub 误报同类（Rule 10-18 未覆盖到行级列）。SQLite SET 右值
                 # 按旧行求值，故 CASE WHEN payload IS ? 可原子判定是否实变。
-                c.execute(
-                    """UPDATE event_bus SET payload=?, consumer=?,
-                       updated_at=CASE WHEN payload IS ?
-                                      THEN updated_at
-                                      ELSE datetime('now') END
-                       WHERE id=?""",
-                    (payload_json, consumer, payload_json, rid))
+                if queue_name == "pipeline":
+                    # X2：终态映射进写行状态（在途行仍 PENDING，与今日一致）
+                    c.execute(
+                        """UPDATE event_bus SET payload=?, consumer=?, status=?,
+                           updated_at=CASE WHEN payload IS ?
+                                          THEN updated_at
+                                          ELSE datetime('now') END
+                           WHERE id=?""",
+                        (payload_json, consumer, _pipeline_row_status(it),
+                         payload_json, rid))
+                else:
+                    c.execute(
+                        """UPDATE event_bus SET payload=?, consumer=?,
+                           updated_at=CASE WHEN payload IS ?
+                                          THEN updated_at
+                                          ELSE datetime('now') END
+                           WHERE id=?""",
+                        (payload_json, consumer, payload_json, rid))
                 seen_ids.add(rid)
             else:
                 cur = c.execute(
@@ -582,7 +620,9 @@ def _save_all(queue_name, items, owner, consumer_fn, event_type):
                         timeout_alarm, status, retry_count)
                        VALUES (?,?,?,?,?,?,?,?,0)""",
                     (uuid.uuid4().hex, queue_name, event_type,
-                     payload_json, owner, consumer, alarm, "PENDING"))
+                     payload_json, owner, consumer, alarm,
+                     _pipeline_row_status(it) if queue_name == "pipeline"
+                     else "PENDING"))
                 seen_ids.add(cur.lastrowid)
         if seen_ids:
             c.execute(

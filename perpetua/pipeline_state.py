@@ -93,7 +93,13 @@ TRANSITIONS = {
     (VideoState.STABLE_LIVE, VideoState.QUARANTINED): {"actors": {"cron:zero_view_alert"}, "command": "QUARANTINE", "tier3": True},
     (VideoState.STABLE_LIVE, VideoState.INTENTIONAL_PRIVATE): {"actors": {"human"}, "command": "SET_PRIVATE"},
     (VideoState.QUARANTINED, VideoState.STABLE_LIVE): {"actors": {"cron:zero_view_alert"}, "command": None, "tier3": True},
-    (VideoState.QUARANTINED, VideoState.INTENTIONAL_PRIVATE): {"actors": {"human"}, "command": None},
+    # Z1（2026-10-28）：zero_view_alert 的 released_scheduled 分支需把误隔离的
+    # 排期视频状态从 QUARANTINED 修回 INTENTIONAL_PRIVATE，否则 private_flip 的
+    # gated_flip 会被 STALE_FROM_STATE 挡回。两边 visibility_tag 同为
+    # QUARANTINED_LOW_VIEW，此跃迁不改变任何可见性，仅做状态修复；
+    # 审计原文的 actor="system" 在此表下会被判 ILLEGAL_TRANSITION（本行此前
+    # 只允许 human），故显式加 cron:zero_view_alert，不冒充 human。
+    (VideoState.QUARANTINED, VideoState.INTENTIONAL_PRIVATE): {"actors": {"human", "cron:zero_view_alert"}, "command": None},
     (VideoState.QUARANTINED, VideoState.DELETED): {"actors": {"human"}, "command": None, "tier3": True},
     (VideoState.INTENTIONAL_PRIVATE, VideoState.STABLE_LIVE): {"actors": {"human", "cron:private_flip"}, "command": "PUBLISH", "tier3": True},
     (VideoState.INTENTIONAL_PRIVATE, VideoState.DELETED): {"actors": {"human"}, "command": None},

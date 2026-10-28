@@ -8,12 +8,12 @@
   python3 auto_retitle.py              # 扫描并生成备选（默认 48h / 50播放）
   python3 auto_retitle.py --dry-run    # 只打印不写入
 """
-sys.path.insert(0, "/home/hatch/data/perpetua")
-from json_safe import atomic_write_json
 import json
 import os
 import re
 import sys
+sys.path.insert(0, "/home/hatch/data/perpetua")
+from json_safe import atomic_write_json
 from datetime import datetime, timezone
 
 DATA = "/home/hatch/data"
@@ -130,6 +130,10 @@ def main():
         entry = {
             "type": "auto_retitle",
             "video_id": d["video_id"],
+            # P3（2026-10-28）：补 topic/title 使 approve/reject/list 能跑通。
+            # topic 用原标题派生（标题本身即唯一可读键）；title = old_title。
+            "topic": d["title"],
+            "title": d["title"],
             "old_title": d["title"],
             "alt_titles": alts,
             "views_at_check": d["views"],

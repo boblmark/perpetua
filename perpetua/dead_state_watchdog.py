@@ -312,13 +312,38 @@ def check_pipeline_stuck():
             continue
         if st not in TRANSIENT:
             continue
-        # 找最后更新时间
-        ts = (it.get("updated_at") or it.get("reviewed_at") or
-              it.get("selected_at") or it.get("created_at", ""))
-        updated = parse_time(ts)
-        if not updated:
-            continue
-        age_h = (now() - updated).total_seconds() / 3600
+        # X1（2026-10-28）：job_submitted 不再用 updated_at 判龄——collect 每
+        # 20 分钟 _gen_poll_tick 经 pipeline_save 刷新 updated_at，job_submitted
+        # 的 updated_at 永远 <6h，本分支永不触发。改用 submitted_at；无
+        # submitted_at 的老条目用 gen_poll_count × 20 分钟估算；两者皆无才
+        # 回落旧 updated_at 链。其他 TRANSIENT 状态不受影响。
+        _age_note = ""  # X1：job_submitted 判龄口径备注，非该状态恒为空
+        if st == "job_submitted":
+            _sub = parse_time(it.get("submitted_at", ""))
+            if _sub:
+                age_h = (now() - _sub).total_seconds() / 3600
+            elif it.get("gen_poll_count") is not None:
+                try:
+                    _ticks = int(it.get("gen_poll_count") or 0)
+                except Exception:
+                    _ticks = 0
+                age_h = _ticks * 20 / 60
+                _age_note = "（按 gen_poll_count×20分钟估算）"
+            else:
+                _ts = (it.get("updated_at") or it.get("reviewed_at") or
+                       it.get("selected_at") or it.get("created_at", ""))
+                _upd = parse_time(_ts)
+                if not _upd:
+                    continue
+                age_h = (now() - _upd).total_seconds() / 3600
+        else:
+            # 找最后更新时间
+            ts = (it.get("updated_at") or it.get("reviewed_at") or
+                  it.get("selected_at") or it.get("created_at", ""))
+            updated = parse_time(ts)
+            if not updated:
+                continue
+            age_h = (now() - updated).total_seconds() / 3600
         # 2026-10-16 P1-3：job_submitted 用 6h 门限（dispatcher 任务正常数分钟~数小时；
         # 2h 对它太激进），其他 TRANSIENT 保持 2h
         _min_age = 6 if st == "job_submitted" else 2
@@ -389,7 +414,7 @@ def check_pipeline_stuck():
             else:
                 issues.append(f"pipeline_queue 卡死：{topic} status={st} 已 {age_h:.1f}h")
         else:
-            issues.append(f"pipeline_queue 卡死：{topic} status={st} 已 {age_h:.1f}h")
+            issues.append(f"pipeline_queue 卡死：{topic} status={st} 已 {age_h:.1f}h{_age_note}")
     if changed:
         queue_db.pipeline_save(q)  # D20261011-001 P1: pipeline_queue 已迁 SQLite
     return issues, auto_fixed
@@ -549,8 +574,28 @@ def check_approval_ttl():
         if not isinstance(it, dict):
             continue
         st = it.get("status", "")
-        # 只处理待人工的（approved/rejected/uploaded 不动）
-        if st in ("approved", "rejected", "uploaded"):
+        # 只处理待人工的（approved/rejected/uploaded/applied 不动）
+        if st in ("approved", "rejected", "uploaded", "applied"):
+            continue
+        # P3（2026-10-28）：auto_retitle 条目无 video_file，旧逻辑
+        # `if not video_file: continue` 使其永不过期；改按 created_at
+        # 计 7 天 TTL（换标题审批比生成终审宽松），到期转 expired。
+        if it.get("type") == "auto_retitle":
+            if it.get("lease_paused"):
+                continue
+            _cts = it.get("created_at") or it.get("created", "")
+            _created = parse_time(_cts)
+            if _created:
+                _age_h = (now() - _created).total_seconds() / 3600
+                if _age_h > 7 * 24:
+                    topic = it.get("topic") or it.get("old_title", "?")
+                    it["status"] = "expired"
+                    it["expired_at"] = now().isoformat()
+                    it["expired_reason"] = (
+                        f"换标题 7 天未审批（年龄 {_age_h:.1f}h），自动过期释放")
+                    changed = True
+                    issues.append(
+                        f"换标题过期自动释放：{topic}（年龄 {_age_h:.1f}h 无人处理）")
             continue
         if not it.get("video_file"):
             continue
@@ -789,6 +834,27 @@ def main():
     for msg in e_issues:
         print(f"  EXPIRED: {msg}")
         alert(f"死状态：{msg}")
+
+    # P3（2026-10-28）：已批准 auto_retitle 条目的应用动作（消费者）。
+    # best-effort：异常绝不拖垮看门狗；失败留 approved 下轮重试，
+    # alert() 自带 12h 去重，失败告警不刷屏。
+    try:
+        from apply_retitle import apply_approved
+        _applied, _failed, _stale = apply_approved()
+        for _a in _applied:
+            print(f"  RETITLE-APPLIED: {_a.get('video_id')} → "
+                  f"{_a.get('applied_title', '')[:40]}")
+        for _f in _failed:
+            _msg = (f"换标题应用失败：{_f.get('video_id')} "
+                    f"（{_f.get('apply_last_error', '')[:80]}），"
+                    f"已保留 approved 下轮重试")
+            print(f"  RETITLE-FAILED: {_msg}")
+            alert(f"死状态：{_msg}")
+        for _s in _stale:
+            print(f"  RETITLE-STALE: {_s.get('video_id')} 批准后标题已被改过，"
+                  f"未覆盖，待人工看")
+    except Exception as _re:
+        print(f"  WARN: apply_retitle 调用失败（不阻塞看门狗）: {_re}")
 
     # AI Studio #14: 拒绝风暴聚合告警
     r_issues = check_reject_storm()
