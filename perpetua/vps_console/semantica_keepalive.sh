@@ -7,9 +7,13 @@ LOG=/home/hatch/data/perpetua/vps_console/semantica_keepalive.log
 # 1. explorer 本体
 if ! curl -s -o /dev/null --max-time 5 http://127.0.0.1:18091/ ; then
   echo "$(date '+%F %T') explorer down, restarting" >> "$LOG"
-  cd /home/hatch/data/research/semantica-pilot && \
+  # NOTE 2026-10-28: previous form `cd ... && setsid ... &` left the explorer as a
+  # child of the keepalive subshell (PPID=keepalive), so it was SIGTERMed when the
+  # cron run's session ended — 83 startups, graceful shutdowns, restart every 5 min
+  # since 08:33. kb-search's parenthesised form below detaches (PPID 1) and survives.
+  (cd /home/hatch/data/research/semantica-pilot && \
     SEMANTICA_ALLOW_ANONYMOUS=true setsid nohup ./venv/bin/python -m semantica.explorer --graph graph_kb.json \
-      --port 18091 --host 127.0.0.1 --no-browser >> explorer_run.log 2>&1 < /dev/null &
+      --port 18091 --host 127.0.0.1 --no-browser >> explorer_run.log 2>&1 < /dev/null &)
 fi
 
 # 2. 反向隧道（ssh -R 18091/18092）
