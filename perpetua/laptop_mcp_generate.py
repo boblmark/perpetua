@@ -229,6 +229,10 @@ def main():
     item["prompt_original_backup"] = backup
     item["prompt"] = prompt
     item["video_file"] = out_path
+    # QQ 盒空间政策（2026-10-28）：记下盒内原片名，上传 YouTube 核验成功后
+    # 凭此删除盒内原片；无此字段的旧条目不得凭猜测删除。
+    item["box_filename"] = fname
+    item["box_path"] = "/data/home/muse/generated-videos/" + fname
     item["clip_source"] = (f"laptop_mcp muse_video {args.account} condensed "
                            f"({len(prompt)} chars) 2026-10-28; orig template prompt "
                            f"failed integrity_check_failed when sent raw")
