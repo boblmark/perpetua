@@ -86,8 +86,28 @@ def _dedup_key(msg):
     return key
 
 def alert(msg):
-    """写入 inbox 告警（messages + notices，控制台事件流可见）。
-    2026-10-09：同一消息 12h 内只告警一次（防 30min 轮询重复刷屏）。"""
+    """C19（2026-10-29）：改走 graded_assertions.escalate 单通道
+    （P2 建单 + SLA 分页/P1 + FALLBACK），废弃独立的 12h 去重 inbox 通道。
+    escalate 自带 24h 去重（未 ack 记录合并；condition 用剥离年龄的稳定
+    key，30 分钟轮询不刷屏），且未 ack 升级会按 SLA 阶梯自动分页/升 P1，
+    不再出现“12h 一次、inbox 满 100 条截断、无人 ack 也不升级”。
+    escalate 异常时 fail-open 回落旧 inbox 写法，告警绝不静默丢失。
+    旧 12h 去重文件（ALERT_DEDUP_PATH）不再由本通道写入，留盘作废，不删。
+    """
+    try:
+        from graded_assertions import escalate as _ga_escalate
+        rec = _ga_escalate("dead_state_watchdog", "dead_state",
+                           _dedup_key(msg), severity="P2", detail=msg)
+        print(f"ALERT: {msg}")
+        return rec
+    except Exception as ex:
+        print(f"  WARN: 升级通道异常，回落 inbox 写法: {ex}")
+    return _alert_legacy(msg)
+
+
+def _alert_legacy(msg):
+    """C19 回落通道：旧 alert() 本体（12h 去重 + inbox 双写）。
+    仅当 escalate 通道异常时调用；正常路径不再经过此处。"""
     try:
         dedup = load(ALERT_DEDUP_PATH, {})
         key = _dedup_key(msg)
@@ -408,7 +428,7 @@ def check_pipeline_stuck():
             continue
         # Q9（2026-10-28，按审计结论落地）：ready_to_upload 被关卡
         # 持有超 24h → inbox 升级（只告警，不自动改状态、不放行；
-        # alert() 自带 12h 去重，30 分钟轮询不会刷屏）。
+        # C19 后 alert() 走 escalate 单通道，24h 去重 + SLA 阶梯）。
         if st == "ready_to_upload" and it.get("upload_gate_held"):
             _hts = it.get("upload_gate_held_at") or it.get("updated_at") or ""
             _hup = parse_time(_hts)
@@ -929,7 +949,7 @@ def check_privateq_stuck():
     - waiting 且 scheduled_at 已过 2h 仍未翻 → inbox 告警
     - flip_blocked → inbox 告警（救援口见 private_flip.emergency_flip，
       已放宽到 waiting+flip_blocked，U10）
-    只告警不改状态；alert() 自带 12h 去重。scheduled_at 解析
+    只告警不改状态；C19 后 alert() 走 escalate 单通道去重。scheduled_at 解析
     失败的不在此判（属 U9 坏 scheduled_at，另案处理）。"""
     issues = []
     try:
@@ -1063,7 +1083,7 @@ def check_teaser_blocked_review():
 def check_pending_instant_reconcile():
     """C4（2026-10-28）：pending_instant 对账。只告警不改状态。
     1. event_bus 里 status=pending_instant 的项：>24h 未动即告警
-       （无时间戳的同样告警一次，12h 去重兜底）。
+       （无时间戳的同样告警一次，C19 后 escalate 去重兜底）。
     2. instant_queue.json 里 status=pending_instant 的项：按 key
        （topic md5 前 16 位）对不上任何 event_bus 条目 → 孤儿告警
        （僵尸候选，交队列处理任务体的 superseded 清理，不在此处改状态）。
@@ -1228,6 +1248,119 @@ def check_vps_orphans():
     return issues
 
 
+# C20（2026-10-29，空转审计第 20 条：元看门狗从未运行）。
+# 审计二选一（给 7 个看门狗加 beat + 新建元看门狗 cron；或删除
+# watchdog_watchdog.py）中，本批因“不新建/不改动任何定时任务”
+# 约束，取第三条路：元检查内嵌进本看门狗已有的 30 分钟轮次，
+# watchdog_watchdog.py 保留作检查库 + 手动 CLI，不删除。
+# 本地可接线子集（LOCAL_WATCHERS）：5 个本地有 main() 入口的看门狗。
+# 未纳入的 2 个及原因：
+# - mcp-b-queue-consumer：运行入口是 cron 任务体里的 SSH 命令，无本地
+#   main() 可挂 beat，接线须改任务体，本批禁改，故不纳入；
+# - platform-matrix-sync：本机未找到其运行入口，纳入前须先定位入口。
+# 缺失文件宽限：首见缺失只记 first_missing_at 不告警（部署后各看门狗
+# 需一轮时间写出首个 beat）；宽限（2×interval）后仍无文件才告警。
+# 告警文本刻意不含实时年龄：alert() 的 _dedup_key 只剥离“小时/h”
+# 写法，含“分钟”年龄的文本每轮 key 都不同，会绕过 C18/C19 去重刷屏。
+META_HEARTBEAT_STATE_PATH = f"{DATA}/perpetua/watchdog_watchdog_meta_state.json"
+META_LOCAL_WATCHERS = {
+    "dead-state-watchdog": 30,
+    "publish-health-watch": 30,
+    "dispatch-lifeline-watch": 10,
+    "private-flip-scheduler": 10,
+    "perpetua-pipeline-collect": 20,
+}
+
+
+def _beat_watchdog(name, interval_min):
+    """best-effort 写元看门狗 heartbeat；失败静默，绝不拖垮调用方。"""
+    try:
+        from watchdog_watchdog import write_heartbeat as _ww_beat
+        _ww_beat(name, interval_min)
+    except Exception:
+        pass
+
+
+def check_watchdog_heartbeats(heartbeat_dir=None, state_path=None):
+    """C20 元检查：读各本地看门狗的 heartbeat 文件，返回告警文本列表。
+
+    只告警不改状态。heartbeat_dir/state_path 仅隔离测试注入用，
+    生产默认走 watchdog_watchdog.HEARTBEAT_DIR 与 META 状态文件。
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    try:
+        from watchdog_watchdog import check_heartbeat as _check_hb
+        from watchdog_watchdog import HEARTBEAT_DIR as _HB_DIR
+    except Exception as ex:
+        print(f"  WARN: 元看门狗检查无法导入 watchdog_watchdog（跳过）: {ex}")
+        return []
+    hb_dir = _Path(heartbeat_dir) if heartbeat_dir else _HB_DIR
+    spath = _Path(state_path) if state_path else _Path(META_HEARTBEAT_STATE_PATH)
+    try:
+        state = _json.loads(spath.read_text()) if spath.exists() else {}
+        if not isinstance(state, dict):
+            state = {}
+    except Exception:
+        state = {}
+    now_utc = datetime.now(timezone.utc)
+    issues = []
+    state_changed = False
+    for name, interval in META_LOCAL_WATCHERS.items():
+        try:
+            # _check_hb 用模块内 HEARTBEAT_DIR；测试注入目录时临时改写常量。
+            if heartbeat_dir is not None:
+                import watchdog_watchdog as _ww
+                _orig = _ww.HEARTBEAT_DIR
+                _ww.HEARTBEAT_DIR = hb_dir
+                try:
+                    r = _check_hb(name, interval)
+                finally:
+                    _ww.HEARTBEAT_DIR = _orig
+            else:
+                r = _check_hb(name, interval)
+        except Exception as ex:
+            print(f"  WARN: 元检查 {name} 异常（跳过）: {ex}")
+            continue
+        status = r.get("status")
+        if status == "ok":
+            if name in state:
+                state.pop(name, None)
+                state_changed = True
+            continue
+        if status == "no_heartbeat_file":
+            first = state.get(name)
+            try:
+                first_dt = datetime.fromisoformat(str(first)) if first else None
+                if first_dt is not None and first_dt.tzinfo is None:
+                    first_dt = first_dt.replace(tzinfo=timezone.utc)
+            except Exception:
+                first_dt = None
+            if first_dt is None:
+                state[name] = now_utc.isoformat()
+                state_changed = True
+                continue
+            if (now_utc - first_dt).total_seconds() < interval * 2 * 60:
+                continue
+            issues.append(
+                f"元看门狗：{name} 从未写过 heartbeat"
+                f"（宽限期后仍无文件）")
+            continue
+        if status == "stale":
+            issues.append(
+                f"元看门狗：{name} 心跳过期"
+                f"（间隔 {interval} 分钟，超 2 倍阈值未更新）")
+        else:  # error：文件损坏等
+            issues.append(f"元看门狗：{name} heartbeat 文件损坏")
+    if state_changed:
+        try:
+            spath.parent.mkdir(parents=True, exist_ok=True)
+            spath.write_text(_json.dumps(state, ensure_ascii=False))
+        except Exception as ex:
+            print(f"  WARN: 元检查状态文件写失败（本轮缺失只宽限不告警）: {ex}")
+    return issues
+
+
 def main():
     print(f"=== 死状态扫描 {now().isoformat()[:19]} ===")
     stuck = check_stuck_uploads()
@@ -1295,7 +1428,7 @@ def main():
 
     # P3（2026-10-28）：已批准 auto_retitle 条目的应用动作（消费者）。
     # best-effort：异常绝不拖垮看门狗；失败留 approved 下轮重试，
-    # alert() 自带 12h 去重，失败告警不刷屏。
+    # C19 后 alert() 走 escalate 单通道，失败告警不刷屏。
     try:
         from apply_retitle import apply_approved
         _applied, _failed, _stale = apply_approved()
@@ -1373,13 +1506,28 @@ def main():
         print(f"  VPS-DONE-UNFETCHED: {msg}")
         alert(f"死状态：{msg}")
 
+    # C20（2026-10-29）：元看门狗内嵌检查（只告警不改状态）。
+    # 本轮先检查、后写自身 beat：检查读到的是上一轮的 beat，
+    # 30 分钟间隔 < 60 分钟阈值，首轮部署不误报。
+    try:
+        meta_issues = check_watchdog_heartbeats()
+    except Exception as ex:
+        print(f"  WARN: 元看门狗检查异常（跳过）: {ex}")
+        meta_issues = []
+    for msg in meta_issues:
+        print(f"  META-WATCHDOG: {msg}")
+        alert(msg)
+
+    # C20：本轮完成才写 beat（挂起的轮次无 beat，元检查能发现）。
+    _beat_watchdog("dead-state-watchdog", 30)
+
     print("=== 扫描完成 ===")
     return (len(stuck) + len(p_issues) + len(a_issues) + len(d_issues)
             + len(e_issues) + len(r_issues) + len(o_issues)
             + len(s_issues) + len(s_archived) + len(b_issues) + len(r2_issues)
             + len(am_issues) + len(pq_issues) + len(rh_issues)
             + len(mm_issues) + len(tb_issues) + len(pi_issues)
-            + len(vo_issues) + len(vu_issues))
+            + len(vo_issues) + len(vu_issues) + len(meta_issues))
 
 if __name__ == "__main__":
     with run_lock("dead_state_watchdog"):

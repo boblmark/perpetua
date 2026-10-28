@@ -31,7 +31,7 @@ GRADER_SUSPECT_RATIO = 0.8
 GRADER_MIN_SAMPLES = 5
 
 
-def _inbox_append(msg, msg_type="anomaly_watchdog"):
+def _inbox_append(msg, msg_type="anomaly_watchdog", for_="dash_main"):
     try:
         inbox = json.load(open(INBOX_PATH, encoding="utf-8"))
     except Exception:
@@ -47,7 +47,7 @@ def _inbox_append(msg, msg_type="anomaly_watchdog"):
     items.append({
         "type": msg_type,
         "message": msg,
-        "for": "dash_main",
+        "for": for_,
         "read": False,
         "created": ga.utcnow(),
     })
@@ -99,6 +99,16 @@ def check_sla():
         action = by_id.get(rec.get("escalation_id"))
         if action is None:
             continue
+        if action == "FALLBACK":
+            # C16：升级链第二级——已是 P1 且满 6h 仍未 ack，走到 user_direct。
+            # 只触发一次（fallback_stage 置 1 后 sla_due 不再返回它）。
+            rec["fallback_stage"] = 1
+            _inbox_append(
+                f"[FALLBACK→user_direct] 升级未 ack：{rec['checker']}/{rec['subject']} "
+                f"（{rec['condition']}），已等待超过 6h 且已是 P1，"
+                f"请用户侧介入（fallback 链终点）。",
+                msg_type="escalation_fallback_user", for_="user")
+            continue
         rec["pages_sent"] = rec.get("pages_sent", 0) + 1
         if action == "P1":
             rec["severity"] = "P1"
@@ -122,6 +132,42 @@ def check_forever():
     return subjects
 
 
+W1_RUNLOG_PATH = "/home/hatch/data/perpetua/publish_health_runlog.txt"
+W1_RUNLOG_MAX_AGE_HOURS = 24
+
+
+def _check_w1_runlog_freshness(path=None,
+                               max_age_hours=W1_RUNLOG_MAX_AGE_HOURS):
+    """C21（2026-10-29）：W1 数据源断线自检。
+
+    审计原文：runlog 超过 1 天未更新时 W1 自身先 tripwire 告警“数据源断线”。
+    背景：C10 已修复写方格式（冒号格式）且 publish_health 每轮写 runlog，
+    本批只补自检一侧；写方本身不动。
+    返回 (status, msg)：status ∈ ok/missing/stale；msg 仅非 ok 时有值。
+    命中经 check_council_watches 末尾 _inbox_append 写 inbox，与既有
+    tripwire 同通道、无去重——断线持续期间每轮一记（同其他常驻
+    tripwire 的行为，属已知限定）。
+    """
+    import os as _os
+    p = path or W1_RUNLOG_PATH
+    try:
+        st = _os.stat(p)
+    except FileNotFoundError:
+        return ("missing",
+                "W1 数据源断线：publish_health_runlog.txt 缺失，"
+                "W1 近 7 天统计不可信")
+    except Exception:
+        return ("missing",
+                "W1 数据源断线：publish_health_runlog.txt 不可读，"
+                "W1 近 7 天统计不可信")
+    age_h = (datetime.now(timezone.utc).timestamp() - st.st_mtime) / 3600
+    if age_h > max_age_hours:
+        return ("stale",
+                "W1 数据源断线：publish_health_runlog.txt 超 24h 未更新，"
+                "W1 近 7 天统计不可信")
+    return ("ok", None)
+
+
 def check_council_watches():
     """D20261017-00X：议会 7 WATCH 转监控（W2 跳过：tripwire 无机器可读定义，
     见 kill_implementation_log.md；W6 由 dead_state_watchdog 覆盖）。
@@ -141,6 +187,12 @@ def check_council_watches():
 
     # W1：空档计数/周 → 代理指标：publish_health_runlog trailing 7 天中
     # 日发布<2条的天数；>=3 → 强制政策复核
+    # C21（2026-10-29）：数据源断线自检先行——原统计块的 except-pass
+    # 保留（解析失败不改变 tripwire 语义），但断线信号已由本检查发出，
+    # 不再静默丢失。
+    _w1_status, _w1_msg = _check_w1_runlog_freshness()
+    if _w1_msg:
+        hits.append(_w1_msg)
     try:
         per_day = {}
         with open("/home/hatch/data/perpetua/publish_health_runlog.txt",

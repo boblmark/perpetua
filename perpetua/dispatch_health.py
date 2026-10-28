@@ -43,6 +43,13 @@ SSH_BASE = ["ssh", "-i", SSH_KEY, "-o", "StrictHostKeyChecking=no",
 
 CHECKER = "dispatch_health"
 
+# A12（2026-10-28）：qc 心跳遥测源。collect 任务体步骤 2 每轮写
+# pipeline.py default qc ok "收集 N 个任务"（硬编码 ok，任务体改动须用户
+# 同意，本批不动任务体）；本检查改为读窗口内全部 qc 条目，区分真空闲与
+# 探针自坏掩盖（窗口内有 error 条目即 SUSPECT，不再只看最新一条 ok）。
+PIPELINE_RUNS_FILE = os.path.join(BASE, "pipeline_runs.json")
+QC_HEARTBEAT_WINDOW_MIN = 40
+
 
 def ssh(cmd, timeout=25):
     try:
@@ -424,6 +431,69 @@ def save_state(s):
         pass
 
 
+def check_qc_heartbeat():
+    """A12：qc 心跳窗口检查。读本地 pipeline_runs.json 最近 40 分钟
+    （约 2 个 collect 轮次）的全部 qc 条目：
+    - 窗口内无记录 → SUSPECT（collect 心跳断线；collect 每 20 分钟必写）；
+    - 窗口内有 error 条目 → SUSPECT（探针自坏；即使最新一条是任务体
+      硬编码的“收集 N 个任务”ok，也不得掩盖——真空闲须 0 异常）；
+    - 窗口内全 ok 且 0 异常 → OK。
+    SUSPECT 按 C8 只升级不跃迁（不驱动 DEGRADED）。本检查只读本地文件，
+    不 SSH、不写队列。"""
+    snap_ts = ga.utcnow()
+    try:
+        with open(PIPELINE_RUNS_FILE, encoding="utf-8") as f:
+            runs = json.load(f).get("runs", [])
+    except Exception as e:
+        return _suspect("check_qc_heartbeat", "pipeline-qc-heartbeat",
+                        "qc_heartbeat_file_unreadable",
+                        f"qc 心跳文件不可读：{e}，无法区分真空闲与探针自坏",
+                        snap_ts, "qc_heartbeat")
+    now = time.time()
+    recent = []
+    for r in runs:
+        if r.get("stage") != "qc":
+            continue
+        try:
+            ts = datetime.fromisoformat(
+                str(r.get("at", "")).replace("Z", "+00:00")).timestamp()
+        except Exception:
+            continue
+        if now - ts <= QC_HEARTBEAT_WINDOW_MIN * 60:
+            recent.append(r)
+    if not recent:
+        return _suspect("check_qc_heartbeat", "pipeline-qc-heartbeat",
+                        "qc_heartbeat_silent",
+                        f"qc 心跳 {QC_HEARTBEAT_WINDOW_MIN} 分钟无记录"
+                        "（collect 每 20 分钟必写，心跳断线）",
+                        snap_ts, "qc_heartbeat")
+    errors = [r for r in recent if r.get("status") == "error"]
+    if errors:
+        latest_err = errors[-1].get("detail", "")[:80]
+        return _suspect("check_qc_heartbeat", "pipeline-qc-heartbeat",
+                        "qc_probes_failed",
+                        f"qc 探针异常 {len(errors)} 项（窗口内 {len(recent)} 条，"
+                        f"最新 error：{latest_err}）；任务体 ok 心跳不得掩盖",
+                        snap_ts, "qc_heartbeat")
+    return ga.make_verdict(ga.OK,
+                           f"qc 心跳正常（窗口内 {len(recent)} 条，0 异常）",
+                           snap_ts, "qc_heartbeat",
+                           checker=CHECKER, subject="pipeline-qc-heartbeat",
+                           checker_health={"probe_ok": True})
+
+
+def _beat_watchdog(name, interval_min):
+    """C20（2026-10-29）：best-effort 写元看门狗 heartbeat；失败静默。"""
+    try:
+        _pp = "/home/hatch/data/perpetua"
+        if _pp not in sys.path:
+            sys.path.insert(0, _pp)
+        from watchdog_watchdog import write_heartbeat as _ww_beat
+        _ww_beat(name, interval_min)
+    except Exception:
+        pass
+
+
 def main():
     verdicts = {
         "dispatcher": check_dispatcher(),
@@ -433,6 +503,7 @@ def main():
         "h3": check_h3(),
         "vids": check_vids(),
         "builtin": check_builtin(),
+        "qc_heartbeat": check_qc_heartbeat(),
     }
     overall = summarize(verdicts)
     # 台账自愈（2026-10-21）：OK/CONFIRMED 结论落盘即 resolve 同 (checker,subject)
@@ -507,6 +578,7 @@ def main():
            "suspect_forever_p1": forever,
            "alert": alert}
     print(json.dumps(out, ensure_ascii=False, indent=1))
+    _beat_watchdog("dispatch-lifeline-watch", 10)
     return {"HEALTHY": 0, "DEGRADED": 1, "DOWN": 2}[overall]
 
 

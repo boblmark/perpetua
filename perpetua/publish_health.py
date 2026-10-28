@@ -198,6 +198,18 @@ def _notify_api_blind(skipped):
         return False
 
 
+def _beat_watchdog(name, interval_min):
+    """C20（2026-10-29）：best-effort 写元看门狗 heartbeat；失败静默。"""
+    try:
+        _pp = "/home/hatch/data/perpetua"
+        if _pp not in sys.path:
+            sys.path.insert(0, _pp)
+        from watchdog_watchdog import write_heartbeat as _ww_beat
+        _ww_beat(name, interval_min)
+    except Exception:
+        pass
+
+
 def main():
     import inbox
     r = check()
@@ -206,6 +218,7 @@ def main():
     if r.get("skipped"):
         print("publish_health: unknown -", r["skipped"])
         _notify_api_blind(r["skipped"])
+        _beat_watchdog("publish-health-watch", 30)
         return 2
     print(f"publish_health: ok={r['ok']} metrics={r['metrics']}")
     for a in r["alerts"]:
@@ -232,6 +245,7 @@ def main():
                 })
             except Exception as e2:
                 print(f"  inbox 写入失败: {e2}")
+    _beat_watchdog("publish-health-watch", 30)
     return 0 if r["ok"] else 1
 
 

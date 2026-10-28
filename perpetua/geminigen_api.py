@@ -207,6 +207,35 @@ def _download_video(video_url, job_id, out_dir, backend):
     return local_path, size
 
 
+def _reflux_to_queue(job_id, fallback_id):
+    """S3（2026-10-28）：geminigen 全败后除写浏览器 fallback 文件外，
+    best-effort 把队列里对应的在途条目转 arena_manual（人工浏览器派发
+    语义，与 fallback 文件的用途一致；G2 看门狗覆盖 arena_manual 的
+    24h 告警/168h 升级）。只动 job_id 精确匹配且状态为 job_submitted /
+    generating 的在途条目；无匹配、状态不对、任何异常 → 静默不动，
+    绝不改写无关条目、不阻塞原有的 raise。返回 True 表示已回流。"""
+    try:
+        sys.path.insert(0, "/home/hatch/data/perpetua")
+        import queue_db
+        q = queue_db.pipeline_load()
+        changed = False
+        for it in q:
+            if it.get("job_id") != job_id:
+                continue
+            if it.get("status") not in ("job_submitted", "generating"):
+                continue
+            it["status"] = "arena_manual"
+            it["geminigen_fallback_id"] = fallback_id
+            it["note"] = ((it.get("note") or "")
+                          + f" [geminigen 全败回流 arena_manual {fallback_id}]")
+            changed = True
+        if changed:
+            queue_db.pipeline_save(q)
+        return changed
+    except Exception:
+        return False
+
+
 def run_one_job(prompt_file, job_id, out_dir, aspect, model, duration, tag="",
                 backend="auto", free=False):
     """跑单个生成任务，返回本地视频路径（失败抛异常）。
@@ -292,6 +321,9 @@ def run_one_job(prompt_file, job_id, out_dir, aspect, model, duration, tag="",
         with open(fb_path, "w", encoding="utf-8") as f:
             json.dump(fallback_job, f, ensure_ascii=False, indent=2)
         p(f"已写入平台浏览器 fallback 队列: {fb_path}")
+        # S3：fallback 文件仍是 watcher 的触发器（保留）；同时 best-effort
+        # 回流队列（在途条目转 arena_manual），失败不影响原 raise。
+        _reflux_to_queue(job_id, fallback_job["fallback_id"])
     except Exception as fb_e:
         p(f"写入 fallback 队列失败: {fb_e}")
     raise RuntimeError(f"所有后端均失败，最后错误: {last_err[:120]}")

@@ -65,19 +65,26 @@ def _save(d):
     d["runs"] = d["runs"][-MAX_RUNS:]
     atomic_write_json(RUNS_FILE, d)
 
-def log(tenant_id, stage, status="ok", detail="", count=0):
+def log(tenant_id, stage, status="ok", detail="", count=0, receipt=None):
     """记录一次阶段执行。status: ok / working / error / idle。
     A11：未知阶段不再抛 ValueError（曾使 12 处 submit 心跳与 nowatch 心跳
     在子进程里静默丢失）——改为 stderr 警告 + 返回 False，调用方可据此
-    落盘可见（见 auto_pipeline.pipeline_log 的非零处理）。"""
+    落盘可见（见 auto_pipeline.pipeline_log 的非零处理）。
+    C15（2026-10-29）：postop 记录可附 receipt（dict，形如
+    {"exit_code": 0, "checked": "<video_id 哈希前 16 位>"}），即优化器
+    本轮真实运行回执；无 receipt 的旧式记录由 postop_receipt_state()
+    判为 legacy，不冒充 fresh。receipt 非 dict 时忽略（fail-open）。"""
     if stage not in STAGES:
         print(f"pipeline.log: 未知阶段 {stage}（未记录）", file=sys.stderr)
         return False
     d = _load()
-    d["runs"].append({
+    rec = {
         "tenant_id": tenant_id, "stage": stage, "status": status,
         "detail": detail, "count": count, "at": now_iso(),
-    })
+    }
+    if isinstance(receipt, dict):
+        rec["receipt"] = receipt
+    d["runs"].append(rec)
     _save(d)
     return True
 
@@ -100,14 +107,51 @@ def status(tenant_id="default"):
                     # 继续往前找今日计数，但已有最新状态可跳出优化
                     pass
         info = STAGE_INFO.get(s, {"zh": s, "needs_ai": False})
+        # C13（2026-10-29）：select/generate/qc/publish 最新一条 status 为 ok
+        # 但 count==0 时记 idle 而非 ok——做了零活不得显示绿灯。error 等
+        # 非 ok 状态不受影响；其余阶段不套用（心跳类阶段 count 天然为 0）。
+        st = latest["status"] if latest else "idle"
+        if (latest and st == "ok" and s in ("select", "generate", "qc", "publish")
+                and latest.get("count", 0) == 0):
+            st = "idle"
         out[s] = {
             "label": info["zh"], "needs_ai": info["needs_ai"],
-            "status": latest["status"] if latest else "idle",
+            "status": st,
             "last_run": latest["at"] if latest else None,
             "detail": latest["detail"] if latest else "暂无运行记录",
             "today_count": day_count,
         }
     return out
+
+
+def postop_receipt_state(tenant_id="default", hours=12):
+    """C15（2026-10-29）：postop 心跳的回执新鲜度三态，供未来任务体
+    改查回执时调用（现行任务体仍按 at 时间判，函数本身不改变任何
+    现有判定）。返回 {"state": ..., "at": ..., "receipt": ...}：
+    - fresh：最新 postop 有 receipt 且 exit_code==0 且在 hours 内；
+    - stale：最新 postop 有 receipt 但 exit_code!=0 或已超 hours；
+    - legacy：最新 postop 无 receipt（旧任务体写法），不冒充 fresh；
+    - none：无任何 postop 记录。"""
+    d = _load()
+    latest = None
+    for r in reversed(d["runs"]):
+        if r["tenant_id"] == tenant_id and r["stage"] == "postop":
+            latest = r
+            break
+    if latest is None:
+        return {"state": "none", "at": None, "receipt": None}
+    rec = latest.get("receipt")
+    if not isinstance(rec, dict):
+        return {"state": "legacy", "at": latest["at"], "receipt": None}
+    try:
+        age_h = (datetime.now(timezone.utc)
+                 - datetime.fromisoformat(latest["at"].replace("Z", "+00:00"))
+                 ).total_seconds() / 3600.0
+    except Exception:
+        age_h = float("inf")
+    if rec.get("exit_code") == 0 and age_h <= hours:
+        return {"state": "fresh", "at": latest["at"], "receipt": rec}
+    return {"state": "stale", "at": latest["at"], "receipt": rec}
 
 def status_all():
     """所有租户的状态（Dashboard 用）"""
@@ -118,10 +162,18 @@ def status_all():
 if __name__ == "__main__":
     import sys
     if len(sys.argv) >= 4:
-        # pipeline.py <tenant> <stage> <status> [detail] [count]
+        # pipeline.py <tenant> <stage> <status> [detail] [count] [receipt_json]
+        # C15：第 6 参为可选回执 JSON（仅 postop 有意义），解析失败则忽略。
+        receipt = None
+        if len(sys.argv) > 6:
+            try:
+                receipt = json.loads(sys.argv[6])
+            except Exception:
+                receipt = None
         ok = log(sys.argv[1], sys.argv[2], sys.argv[3],
                  sys.argv[4] if len(sys.argv) > 4 else "",
-                 int(sys.argv[5]) if len(sys.argv) > 5 else 0)
+                 int(sys.argv[5]) if len(sys.argv) > 5 else 0,
+                 receipt=receipt)
         # A11：未知阶段退出码 2，使调用方（pipeline_log）能感知丢失的心跳。
         print("logged" if ok else "unknown stage")
         sys.exit(0 if ok else 2)

@@ -13,11 +13,15 @@
 每步写 pipeline_log（pipeline_runs.json）。状态文件：pipeline_queue.json。
 全要素清单：perpetua/viral_factor_checklist.md。
 """
+import atexit
+import fcntl
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
+import threading
 import uuid
 from datetime import datetime, timezone, timedelta
 
@@ -169,6 +173,24 @@ def pipeline_log(stage, status="ok", detail="", count=0):
                 pass
     except Exception:
         pass
+
+
+def _write_qc_round_summary():
+    """A12：collect 轮末 qc 探针区分心跳。仅当轮次内有 qc error 心跳时写
+    error 心跳（detail 含 probes_failed=K，供 dispatch_health 读取）；0 异常
+    时不额外写（任务体步骤 2 的“收集 N 个任务”ok 心跳即为真空闲证明）。
+    调用后清计数与置位（无论是否写心跳）。"""
+    global _QC_PROBE_ERRORS
+    k = _QC_PROBE_ERRORS[0]
+    # 先清置位，避免小结心跳本身被计入计数；再写心跳；最后清计数。
+    _QC_PROBE_TRACKING[0] = False
+    try:
+        if k:
+            pipeline_log("qc", "error",
+                         f"probes_failed={k} collect 轮次探针异常"
+                         "（本轮 qc error 心跳数；0 收集不代表健康）", 0)
+    finally:
+        _QC_PROBE_ERRORS[0] = 0
 
 
 def load_queue():
@@ -1577,6 +1599,35 @@ def collect_musemain_results(queue):
     return changed
 
 
+def _write_nano_error_done(rp, payload, raw, jid):
+    """S6（2026-10-29）：写 nano error done 文件时同时把 raw 全文落盘。
+    审计原问题：error done 只留 file_or_summary[:100]，raw 丢失，后续重试
+    无法复核 nano 当时到底返回了什么（若实际已出片但路径解析失败，成片
+    即成孤儿）。本函数把 raw 全文写到与 done 文件同目录的
+    nano_raw_<jid>.txt，并在 payload 附 nano_raw_path 供人工复核/找回。
+    raw 写盘失败时 fail-open：仍写 error done 文件，不丢主错误。
+    注意：本函数仅服务存量排空（2026-10-28 起不再新派 nano）；error done
+    文件一旦存在，下轮 collect 即跳过，故此处只做证据保全，不新增自动
+    重试消费者（自动重试须另案定消费者，见实施记录限定）。"""
+    from atomic_json import atomic_write as _awr
+    raw_path = None
+    try:
+        raw_path = os.path.join(os.path.dirname(rp), "nano_raw_%s.txt" % jid)
+        with open(raw_path, "w", encoding="utf-8") as f:
+            f.write(raw or "")
+    except Exception as e:
+        try:
+            pipeline_log("generate", "error",
+                         "nano raw 落盘失败 %s: %s" % (jid, e), 0)
+        except Exception:
+            pass
+        raw_path = None
+    if raw_path:
+        payload["nano_raw_path"] = raw_path
+    _awr(rp, payload)
+    return raw_path
+
+
 def collect_nano_results(queue):
     """历史 nano 项排空轮询：只轮询已标记 gen_backend=nano 的在途项。
 
@@ -1646,20 +1697,143 @@ def collect_nano_results(queue):
                 pipeline_log("generate", "ok",
                              f"nano 取回 {item.get('topic')} → {os.path.basename(local_path)}", 1)
             else:
-                _aw(rp, {"status": "error", "error": f"nano 未返回有效文件: {file_or_summary[:100]}",
-                         "backend": "nano", "topic": item.get("topic")})
+                # S6：error done 同时落盘 raw 全文并记 nano_raw_path。
+                _raw_path = _write_nano_error_done(
+                    rp, {"status": "error",
+                         "error": f"nano 未返回有效文件: {file_or_summary[:100]}",
+                         "backend": "nano", "topic": item.get("topic")},
+                    raw, item.get("job_id"))
+                if _raw_path:
+                    item["nano_raw_path"] = _raw_path
                 pipeline_log("generate", "error",
                              f"nano 生成无有效文件 {item.get('topic')}", 0)
         else:
             _gen_poll_reset(item)
-            _aw(rp, {"status": "error", "error": file_or_summary[:300],
-                     "backend": "nano", "topic": item.get("topic")})
+            # S6：error done 同时落盘 raw 全文并记 nano_raw_path。
+            _raw_path = _write_nano_error_done(
+                rp, {"status": "error", "error": file_or_summary[:300],
+                     "backend": "nano", "topic": item.get("topic")},
+                raw, item.get("job_id"))
+            if _raw_path:
+                item["nano_raw_path"] = _raw_path
             pipeline_log("generate", "error",
                          f"nano 生成失败 {item.get('topic')}: {file_or_summary[:100]}", 0)
         changed = True
     if changed:
         save_queue(queue)
     return changed
+
+
+def _beat_watchdog(name, interval_min):
+    """C20（2026-10-29）：best-effort 写元看门狗 heartbeat；失败静默。"""
+    try:
+        from watchdog_watchdog import write_heartbeat as _ww_beat
+        _ww_beat(name, interval_min)
+    except Exception:
+        pass
+
+
+# S7（2026-10-29，空转审计第 7 条：QC 挂起拖垮整轮 collect，且无锁）。
+# 核验结论（见实施记录）：属实——auto_pipeline 全文件无 flock/lock；
+# pre_upload_qc 各 subprocess 有 10–300s 分项超时，但无总上限，
+# 分项超时叠加可超 20 分钟 collect 间隔，下一轮并发重入会同时改队列。
+# 根治两件套（均 fail-open，绝不让保护机制本身拖垮 collect）：
+# 1) collect_results 入口非阻塞文件锁：已持有则本轮跳过（不改状态）；
+#    锁文件放持久目录（不用 /tmp；进程退出即自动释放 flock，
+#    不存在 stale 锁文件问题）。
+# 2) run_qc 单条总超时 600s（审计原文口径）：超时抛 TimeoutError，
+#    由既有 Q6 except 计 qc_error（<2 回 job_submitted，满 2 次 qc_failed）。
+#    信号超时仅主线程可用；非主线程/无 SIGALRM 时直调（fail-open）。
+#    限定：超时只中断 QC 调用路径，不保证杀掉已在跑的 ffmpeg 子进程，
+#    但各子进程自带 10–300s 上限，孤儿有界；整轮总时长（上传等）
+#    不在本项内，_do_upload 自带 300s 超时。
+_COLLECT_LOCK_PATH = "/home/hatch/data/perpetua/collect_results.lock"
+_COLLECT_LOCK_FP = None
+_QC_TOTAL_TIMEOUT_S = 600
+
+
+def _acquire_collect_lock(lock_path=None):
+    """S7 非阻塞 collect 单飞锁。返回 True=已持有（或 fail-open 放行），
+    False=另一实例持有中，本轮应跳过。lock_path 仅隔离测试注入用。"""
+    global _COLLECT_LOCK_FP
+    if _COLLECT_LOCK_FP is not None:
+        return True  # 同进程重入：本进程已持有，不重复加锁
+    path = lock_path or _COLLECT_LOCK_PATH
+    try:
+        fp = open(path, "w")
+    except Exception as e:
+        pipeline_log("qc", "error", f"collect 单飞锁文件打不开（fail-open 放行）: {e}", 0)
+        return True
+    try:
+        fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError):
+        try:
+            fp.close()
+        except Exception:
+            pass
+        pipeline_log("qc", "ok", "collect 单飞锁：另一实例正在运行，本轮跳过", 0)
+        return False
+    except Exception as e:
+        try:
+            fp.close()
+        except Exception:
+            pass
+        pipeline_log("qc", "error", f"collect 单飞锁异常（fail-open 放行）: {e}", 0)
+        return True
+    _COLLECT_LOCK_FP = fp
+    try:
+        atexit.register(_release_collect_lock)
+    except Exception:
+        pass
+    return True
+
+
+def _release_collect_lock():
+    """S7：释放 collect 单飞锁（进程退出时 flock 本就会自动释放，
+    此函数仅作显式清理；异常静默）。"""
+    global _COLLECT_LOCK_FP
+    fp = _COLLECT_LOCK_FP
+    _COLLECT_LOCK_FP = None
+    if fp is None:
+        return
+    try:
+        fcntl.flock(fp, fcntl.LOCK_UN)
+    except Exception:
+        pass
+    try:
+        fp.close()
+    except Exception:
+        pass
+
+
+def _run_qc_with_timeout(run_qc, timeout_s, *args, **kwargs):
+    """S7：给单条 run_qc 加总超时。超时抛 TimeoutError（Q6 计 qc_error）。
+    非主线程或无 SIGALRM 时直调并记 log（fail-open）。"""
+    if (timeout_s is None or timeout_s <= 0
+            or threading.current_thread() is not threading.main_thread()
+            or not hasattr(signal, "SIGALRM")):
+        if threading.current_thread() is not threading.main_thread():
+            pipeline_log("qc", "error",
+                         "QC 总超时不可用（非主线程），直调 run_qc（fail-open）", 0)
+        return run_qc(*args, **kwargs)
+
+    def _handler(signum, frame):
+        raise TimeoutError(f"QC 总超时（>{timeout_s}s），按 Q6 计 qc_error 重试")
+
+    old_handler = signal.getsignal(signal.SIGALRM)
+    try:
+        signal.signal(signal.SIGALRM, _handler)
+        signal.setitimer(signal.ITIMER_REAL, timeout_s)
+        return run_qc(*args, **kwargs)
+    finally:
+        try:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        except Exception:
+            pass
+        try:
+            signal.signal(signal.SIGALRM, old_handler)
+        except Exception:
+            pass
 
 
 def _import_run_qc():
@@ -1949,6 +2123,13 @@ def _retry_awaiting_upload_failed():
 
 
 def collect_results():
+    # S7（2026-10-29）：入口非阻塞单飞锁；另一实例持有中则本轮跳过，
+    # 不改任何队列状态（持有轮次完成时会写 collect beat）。
+    if not _acquire_collect_lock():
+        return None
+    # A12：本轮 qc 探针异常计数置位（含 _import_run_qc 的引擎导入/自愈心跳）。
+    _QC_PROBE_TRACKING[0] = True
+    _QC_PROBE_ERRORS[0] = 0
     run_qc = _import_run_qc()
     queue = load_queue()
     changed = False
@@ -2200,9 +2381,11 @@ def collect_results():
             changed = True
             continue
         try:
-            qc = run_qc(final, title=item["title"],
-                        prompt_meta={"expected_duration": item.get("duration", 8)},
-                        regen_fn=_qc_regen, repair_fn=_qc_repair)
+            # S7（2026-10-29）：单条 QC 总超时 600s，超时按 Q6 计 qc_error。
+            qc = _run_qc_with_timeout(
+                run_qc, _QC_TOTAL_TIMEOUT_S, final, title=item["title"],
+                prompt_meta={"expected_duration": item.get("duration", 8)},
+                regen_fn=_qc_regen, repair_fn=_qc_repair)
         except Exception as e:
             # Q6（2026-10-28 用户批准，按审计结论落地）：QC 异常不再
             # 直接写 qc_error 死状态。计数重试：qc_error_count<2 回
@@ -2283,6 +2466,10 @@ def collect_results():
         changed = True
     if changed:
         save_queue(queue)
+    # A12：轮末写 qc 探针区分心跳（有异常才写 error，0 异常不额外写）。
+    _write_qc_round_summary()
+    # C20（2026-10-29）：整轮完成才写 beat；挂起的轮次无 beat，元检查能发现。
+    _beat_watchdog("perpetua-pipeline-collect", 20)
     return queue
 
 
@@ -2671,12 +2858,9 @@ def upload_approved(topic):
     if ok:
         target["uploaded_at"] = now_iso()
     _save(APPROVAL_PATH, awaiting)
-    queue = load_queue()
-    for item in queue:
-        if item.get("topic") == topic and item.get("status") == "awaiting_human":
-            item["status"] = "uploaded" if ok else "upload_failed"
-            item["upload_result"] = res[:500]
-    save_queue(queue)
+    # S5（2026-10-29）：awaiting_human 已废弃——全库无任何代码把条目写成该状态
+    # （生产 0 行），此处原有的 pipeline 同步分支已删除；upload_approved 只认
+    # awaiting 文件，不再假装存在一个无人写入、无人消费的孤儿状态。
     pipeline_log("publish", "ok" if ok else "error",
                  f"{'上传成功' if ok else '上传失败'}: {topic}", 1 if ok else 0)
     return {"ok": ok, "result": res[:300]}

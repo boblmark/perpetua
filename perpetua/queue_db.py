@@ -449,25 +449,50 @@ def claim_row(queue, worker_id, lease_seconds=900):
 SHIM_QUEUE_NAMES = ("pipeline", "instant", "privateq")
 
 
+def _notify_sweep(event_ids):
+    """A14（2026-10-29）：sweep 标记 DEAD 前写 inbox 摘要（best-effort，
+    失败绝不阻塞 sweep）。经 graded_assertions.escalate 走 24h 去重通道，
+    故同一批重复扫不会刷屏；sweep 本身无调用方时此函数亦不触发。"""
+    if not event_ids:
+        return
+    try:
+        from graded_assertions import escalate
+        escalate(
+            checker="queue_db.sweep",
+            subject="dead-data-sweep",
+            condition="sweep_dead_summary",
+            severity="P2",
+            detail="sweep 将标记 DEAD（30 天未更新）：%s"
+                   % ", ".join(event_ids[:20]),
+        )
+    except Exception:
+        pass
+
+
 def sweep():
     """Mark PENDING/PROCESSING rows past timeout_alarm as DEAD; audit to log.
 
     X2 后续：仅限非 shim 队列（shim 行见 SHIM_QUEUE_NAMES 说明）。
+    A14（2026-10-29）：判定口径由“插入时 alarm（insert+720h）”改为
+    “列 updated_at 超 720h 未变”——持续被更新的活项不再仅凭插入时间
+    无声消失（防护收紧：只减少误删，不放宽删除）；标记 DEAD 前先经
+    _notify_sweep 写 inbox 摘要，不再只留 sweep 日志。
     Returns {'scanned': N, 'escalated': M, 'details': [event_ids]}.
     """
     _ensure()
-    now = _now_iso()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=SHIM_TIMEOUT_HOURS)
+              ).strftime("%Y-%m-%d %H:%M:%S")
     sweep_id = "sweep_" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     c = _conn()
     try:
         c.execute("BEGIN IMMEDIATE")
         _placeholders = ",".join("?" * len(SHIM_QUEUE_NAMES))
         stale = c.execute(
-            """SELECT event_id, queue_name FROM event_bus
-               WHERE status IN ('PENDING','PROCESSING') AND timeout_alarm < ?
+            """SELECT event_id, queue_name, timeout_alarm FROM event_bus
+               WHERE status IN ('PENDING','PROCESSING') AND updated_at < ?
                AND queue_name NOT IN (%s)
                ORDER BY id""" % _placeholders,
-            (now,) + SHIM_QUEUE_NAMES,
+            (cutoff,) + SHIM_QUEUE_NAMES,
         ).fetchall()
         ids = [r["event_id"] for r in stale]
         scanned = c.execute(
@@ -477,13 +502,15 @@ def sweep():
             SHIM_QUEUE_NAMES,
         ).fetchone()["n"]
         if ids:
+            _notify_sweep(ids)
             c.execute(
                 "UPDATE event_bus SET status='DEAD', updated_at=datetime('now')"
                 " WHERE event_id IN (%s)" % ",".join("?" * len(ids)),
                 ids,
             )
         details = json.dumps(
-            [{"event_id": r["event_id"], "queue": r["queue_name"]} for r in stale],
+            [{"event_id": r["event_id"], "queue": r["queue_name"],
+              "timeout_alarm": r["timeout_alarm"]} for r in stale],
             ensure_ascii=False,
         )
         c.execute(

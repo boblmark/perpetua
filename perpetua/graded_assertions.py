@@ -35,6 +35,10 @@ TTL = {
 LEDGER_PATH = os.path.join(BASE, "anomaly_ledger.json")
 LEDGER_DEDUP_TTL_S = 6 * 3600  # 同一 (checker,subject,verdict) 6h 内不重复写新条目
 ESCALATION_PATH = os.path.join(BASE, "escalation_inbox.json")
+FIRST_SUSPECT_PATH = os.path.join(BASE, "suspect_first_at.json")
+# C17（2026-10-29）：每 subject 首发 SUSPECT 时钟旁路文件。台账只留最近 500 条，
+# 最早条目被截断会使 suspect_forever 计龄无声重置；此文件只记首发时间，
+# resolve 清零后重建，永不依赖台账长度。
 
 # 具名 fallback 响应人（R4）：升级无人 ack 时的接手链
 FALLBACK_CHAIN = ["dash_main", "user_direct"]
@@ -152,7 +156,35 @@ def ledger_append(verdict_rec):
     ledger.append(entry)
     # 只保留最近 500 条
     _save(LEDGER_PATH, ledger[-500:])
+    # C17：首发时钟旁路——只在新条目且 verdict 为 SUSPECT 时记首发时间；
+    # dedup 命中刷新证据不碰首发时间；台账截断不再重置熔断时钟。
+    if verdict_rec.get("verdict") == SUSPECT:
+        try:
+            first_map = _load(FIRST_SUSPECT_PATH, {})
+            if not isinstance(first_map, dict):
+                first_map = {}
+            if verdict_rec.get("subject") not in first_map:
+                first_map[verdict_rec.get("subject")] = entry["at"]
+                _save(FIRST_SUSPECT_PATH, first_map)
+        except Exception:
+            pass
     return entry["id"]
+
+
+def _prune_first_suspect(subject):
+    """subject 无未解决 SUSPECT 时清掉首发时钟（下次 SUSPECT 重建）。"""
+    try:
+        ledger = _load(LEDGER_PATH, [])
+        still = any(not e.get("resolved") and e.get("verdict") == SUSPECT
+                    and e.get("subject") == subject for e in ledger)
+        if still:
+            return
+        first_map = _load(FIRST_SUSPECT_PATH, {})
+        if isinstance(first_map, dict) and subject in first_map:
+            del first_map[subject]
+            _save(FIRST_SUSPECT_PATH, first_map)
+    except Exception:
+        pass
 
 
 def ledger_collapse(checker, subject):
@@ -172,6 +204,7 @@ def ledger_collapse(checker, subject):
         e["resolved_at"] = utcnow()
         e["resolved_reason"] = "dedup-collapse: 同一状态重复条目收敛，保留最新一条"
     _save(LEDGER_PATH, ledger)
+    _prune_first_suspect(subject)  # C17：收敛后若无未解决项则清首发时钟
     return 1
 
 
@@ -197,28 +230,73 @@ def ledger_resolve(entry_id):
 # ---------------- 升级契约（R4） ----------------
 
 def escalate(checker, subject, condition, severity="P2", detail="",
-             evidence_ts=None, ttl_key=None, checker_health=None):
+             evidence_ts=None, ttl_key=None, checker_health=None,
+             new_episode=False):
     """
     SUSPECT 升级：写 escalation inbox，24h 去重，风暴限流，SLA 计时。
     返回 escalation 记录。N9：去重命中不重置 ack SLA 计时器。
+
+    C18（2026-10-29，审计原文复核后有据取舍）：
+    审计要求“旧记录已 ack 且条件重现时新建一条升级（附 recurrence_of），
+    不再合并”。但逐项复核发现：本函数是每轮定时上报的持久条件上报口
+    （dispatch_health 每 10 分钟 C1、anomaly_watchdog grader/suspect_forever、
+    auto_pipeline gen_timeout 等），上报方无法区分“条件从未清除”与
+    “清除后复发”——若把新建改为默认行为，2026-10-21 已实证的
+    “ack→新P1→ack”无限循环会原样回归（每轮上报 + 一次 ack 即再建单）。
+    故新建只作 opt-in：new_episode=True 且 24h 窗口内同 key 记录全已 ack
+    时，才建新单并附 recurrence_of；窗口内只要还有一条未 ack 记录，
+    仍合并进该记录（不因一次 ack 就对持久条件重复建单）。
+    当前无任何调用方能证明自己只在“清除后复发”时上报，故本批无调用方
+    传 new_episode=True；默认行为与修前一致。合并进已 ack 记录时仍递增
+    storm_merged_count 并记 last_merged_at，复发痕迹可见。
+    附带两处复发必需的修正：合并目标取窗口内最新未 ack 记录（旧单条时
+    即唯一记录，行为不变）；同秒同 key 建单撞 id 时加 -n 后缀，否则
+    ack 会同时关掉两个 episode。
     """
     inbox = _load(ESCALATION_PATH, [])
     key = dedup_key(checker, subject, condition)
     now = time.time()
+    recurrence_of = None
+    window = [e for e in inbox
+              if e.get("dedup_key") == key
+              and now - e.get("filed_at_epoch", 0) < STORM_BASE_SECONDS]
+    if new_episode and window:
+        # 复发通道：窗口内同 key 记录若全已 ack，视为新 episode，建新单；
+        # 只要还有未 ack 记录，仍合并进最新未 ack 记录（持久条件不重复建单）。
+        live = [e for e in window if not e.get("ack_at")]
+        if live:
+            target = live[-1]
+            target["storm_merged_count"] = target.get("storm_merged_count", 0) + 1
+            target["last_merged_at"] = utcnow()
+            _save(ESCALATION_PATH, inbox)
+            return target
+        recurrence_of = window[-1].get("escalation_id")
     # 风暴限流：同一 key 24h 内已升级过 → 合并计数，不重复分页。
     # 2026-10-21 修：ack 不解除 24h 去重保护。旧逻辑只合并未 ack 记录，
     # 主 agent ack 后下一轮必新建 P1，形成"ack→新P1→ack"无限循环
     # （suspect_forever/grader 每 30min 各新建一条 P1 实证）。
     # N9：合并已 ack 记录时绝不碰 ack_at/ack_by，不重置 SLA 计时器。
-    for e in inbox:
-        if e.get("dedup_key") == key:
-            age = now - e.get("filed_at_epoch", 0)
-            if age < STORM_BASE_SECONDS:
-                e["storm_merged_count"] = e.get("storm_merged_count", 0) + 1
-                _save(ESCALATION_PATH, inbox)
-                return e
+    # C18：recurrence_of 已定时不走合并循环，直接建新单。
+    # C18 补：复发后窗口内可有两条同 key 记录，合并目标取最新未 ack
+    # 记录（旧单条时即唯一记录，行为不变）；若全已 ack 则并入最新一条。
+    if recurrence_of is None and window:
+        live = [e for e in window if not e.get("ack_at")]
+        target = live[-1] if live else window[-1]
+        target["storm_merged_count"] = target.get("storm_merged_count", 0) + 1
+        target["last_merged_at"] = utcnow()
+        _save(ESCALATION_PATH, inbox)
+        return target
+    # escalation_id 同秒同 key 可撞（旧格式 esc-<秒>-<key>）：复发单与旧单
+    # 若同秒建单会同 id，ack 会同时关掉两个 episode；撞时加 -n 后缀保唯一。
+    base_id = f"esc-{int(now)}-{key}"
+    eid = base_id
+    if any(e.get("escalation_id") == eid for e in inbox):
+        n = 2
+        while any(e.get("escalation_id") == f"{base_id}-{n}" for e in inbox):
+            n += 1
+        eid = f"{base_id}-{n}"
     rec = {
-        "escalation_id": f"esc-{int(now)}-{key}",
+        "escalation_id": eid,
         "dedup_key": key,
         "checker": checker,
         "subject": subject,
@@ -234,6 +312,7 @@ def escalate(checker, subject, condition, severity="P2", detail="",
         "fallback_stage": 0,  # 0=dash_main, 1=user_direct
         "storm_merged_count": 0,
         "pages_sent": 0,
+        "recurrence_of": recurrence_of,
     }
     inbox.append(rec)
     _save(ESCALATION_PATH, inbox[-200:])
@@ -251,7 +330,19 @@ def escalate_ack(escalation_id, by="dash_main"):
 
 
 def sla_due():
-    """返回到期的升级：T+2h 未 ack 需重升级+分页；T+6h 升 P1。"""
+    """返回到期的升级（C16，2026-10-29 修，旧逻辑只发一次 PAGE 后永久静默）：
+
+    - 未 ack 且满 6h、severity 已是 P1、fallback_stage 仍为 0 → FALLBACK
+      （消费方置 fallback_stage=1 并向用户侧写 urgent；此后不再重复触发，
+      升级链至此走完，不再静默丢单）。
+    - 未 ack 且满 6h、severity 非 P1 → P1（升格；下一轮检查若仍未 ack
+      且已是 P1，即走 FALLBACK，不再等另一个 6h）。
+    - 未 ack 且满 2h → PAGE，且每满 2h 重复一次：下一次分页到期点为
+      (pages_sent+1)*2h（消费方每分页一次 pages_sent+1，故 2h/4h/6h…各发一次，
+      不再以 pages_sent==0 作一次性门）；已走完 FALLBACK 的记录不再自动分页，
+      用户侧 urgent 即终态（人工 ack 关闭）。
+    - 已 ack 的记录永不返回。
+    """
     inbox = _load(ESCALATION_PATH, [])
     now = time.time()
     due = []
@@ -259,9 +350,14 @@ def sla_due():
         if e.get("ack_at"):
             continue
         age = now - e.get("filed_at_epoch", 0)
-        if age >= SLA_P1_SECONDS and e.get("severity") != "P1":
+        pages = e.get("pages_sent", 0)
+        if (age >= SLA_P1_SECONDS and e.get("severity") == "P1"
+                and e.get("fallback_stage", 0) == 0):
+            due.append((e, "FALLBACK"))
+        elif age >= SLA_P1_SECONDS and e.get("severity") != "P1":
             due.append((e, "P1"))
-        elif age >= SLA_REESCALATE_SECONDS and e.get("pages_sent", 0) == 0:
+        elif (e.get("fallback_stage", 0) == 0
+                and age >= (pages + 1) * SLA_REESCALATE_SECONDS):
             due.append((e, "PAGE"))
     return due
 
@@ -285,6 +381,7 @@ def ledger_resolve(checker, subject, reason=""):
             n += 1
     if n:
         _save(LEDGER_PATH, ledger)
+    _prune_first_suspect(subject)  # C17：自愈后若无未解决项则清首发时钟
     return n
 
 
@@ -292,6 +389,12 @@ def suspect_forever_check():
     """
     R2 SUSPECT-forever 熔断：同一 subject 持续 SUSPECT 超过 6h → 自动 P1 + 终端动作选项。
     返回需要升级的 subject 列表。
+
+    C17（2026-10-29）：计龄首选 suspect_first_at.json 的首发时钟（台账截断
+    不影响它）；旁路缺失时回落旧口径（现存最早未解决条目），并懒回填旁路，
+    使部署前已 SUSPECT 的 subject 从本轮起也不再受 500 条截断影响。
+    旁路有记录但台账已无该 subject 未解决条目时不触发（陈旧旁路无害，
+    下次 resolve 时清掉）。
     """
     ledger = _load(LEDGER_PATH, [])
     now = time.time()
@@ -300,11 +403,20 @@ def suspect_forever_check():
         if e.get("resolved") or e.get("verdict") != SUSPECT:
             continue
         by_subject.setdefault(e.get("subject"), []).append(e)
+    first_map = _load(FIRST_SUSPECT_PATH, {})
+    if not isinstance(first_map, dict):
+        first_map = {}
+    dirty = False
     out = []
     for subject, entries in by_subject.items():
         entries.sort(key=lambda x: x.get("at", ""))
+        first_at = first_map.get(subject)
+        if first_at is None:
+            first_at = entries[0]["at"]
+            first_map[subject] = first_at
+            dirty = True
         try:
-            first = datetime.fromisoformat(entries[0]["at"])
+            first = datetime.fromisoformat(first_at)
             if first.tzinfo is None:
                 first = first.replace(tzinfo=timezone.utc)
             age = (datetime.now(timezone.utc) - first).total_seconds()
@@ -316,4 +428,41 @@ def suspect_forever_check():
             key = dedup_key("suspect_forever", subject, "forever")
             if not any(x.get("dedup_key") == key and not x.get("ack_at") for x in inbox):
                 out.append(subject)
+    if dirty:
+        try:
+            _save(FIRST_SUSPECT_PATH, first_map)
+        except Exception:
+            pass
     return out
+
+
+if __name__ == "__main__":
+    # C16（2026-10-29）：给 escalate_ack 接真实入口——主 agent 命令行 ack，
+    # 不再是零调用方的摆设。用法：
+    #   python3 graded_assertions.py --ack esc-<id> [--by dash_main]
+    #   python3 graded_assertions.py --due
+    import argparse
+
+    _ap = argparse.ArgumentParser(description="graded_assertions 主 agent 命令入口")
+    _ap.add_argument("--ack", metavar="ESCALATION_ID",
+                     help="ack 指定升级，停 SLA 计时器")
+    _ap.add_argument("--by", default="dash_main", help="ack 人（默认 dash_main）")
+    _ap.add_argument("--due", action="store_true", help="列出当前 sla_due")
+    _args = _ap.parse_args()
+    if _args.ack:
+        _inbox = _load(ESCALATION_PATH, [])
+        _hit = [x for x in _inbox if x.get("escalation_id") == _args.ack]
+        if not _hit:
+            print(f"未找到升级记录：{_args.ack}")
+            raise SystemExit(1)
+        escalate_ack(_args.ack, by=_args.by)
+        print(f"已 ack：{_args.ack}（by={_args.by}，SLA 计时停止）")
+    elif _args.due:
+        for _rec, _action in sla_due():
+            print(f"{_action} {_rec.get('escalation_id')} "
+                  f"{_rec.get('checker')}/{_rec.get('subject')} "
+                  f"severity={_rec.get('severity')} "
+                  f"pages_sent={_rec.get('pages_sent', 0)} "
+                  f"fallback_stage={_rec.get('fallback_stage', 0)}")
+    else:
+        _ap.print_help()
