@@ -60,6 +60,9 @@ def open_conn(timeout):
     auth = "Basic " + base64.b64encode((px.username + ":" + px.password).encode()).decode()
     if DIRECT_ENDPOINT:
         u = urlparse(DIRECT_ENDPOINT)
+        if u.scheme == "http":
+            # 本地 SSH 隧道直达（127.0.0.1:8748 等）：明文 HTTP，不走出口代理。
+            return http.client.HTTPConnection(u.hostname, u.port or 80, timeout=timeout), u.path
         # MCP_PROXY_PORT 可覆盖出口代理端口（2026-10-28 实测：3128 路视频
         # 调用约 21 秒空 502，改 3130 隧道代理对照截断点是否在代理层）。
         pport = int(os.environ.get("MCP_PROXY_PORT", "0") or 0) or px.port or 3128
@@ -121,8 +124,11 @@ def mcp_download(filename, out_path, download_url=None):
         pport = int(os.environ.get("MCP_PROXY_PORT", "0") or 0) or px.port or 3128
         for url in candidates:
             cu = urlparse(url)
-            conn = http.client.HTTPSConnection(px.hostname, pport, timeout=300)
-            conn.set_tunnel(cu.hostname, cu.port or 443, {"Proxy-Authorization": auth})
+            if cu.scheme == "http":
+                conn = http.client.HTTPConnection(cu.hostname, cu.port or 80, timeout=300)
+            else:
+                conn = http.client.HTTPSConnection(px.hostname, pport, timeout=300)
+                conn.set_tunnel(cu.hostname, cu.port or 443, {"Proxy-Authorization": auth})
             conn.request("GET", cu.path + ("?" + cu.query if cu.query else ""),
                          headers={"Accept": "*/*"})
             r = conn.getresponse()
