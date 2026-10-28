@@ -35,17 +35,48 @@ DB = "/home/hatch/data/ops_center.db"
 MCP_HOST = "laptop-cgb2026-1.tail5c5fad.ts.net"
 BACKUP_DIR = os.path.expanduser("~/workspace/muse_control_test")
 VEO_INBOX = "/home/hatch/data/veo_inbox"
+# 2026-10-28 新增：直连端点模式。MCP_ENDPOINT 形如
+# https://8101-<box>.instabox.tech/mcp 时直连，不走 Tailscale 隧道；
+# 未设置时沿用旧的 Tailscale 直调路。MCP_API_KEY 覆盖文件 key，
+# 仅瞬时使用，脚本本身永不写 key 到任何文件或日志。
+DIRECT_ENDPOINT = os.environ.get("MCP_ENDPOINT", "")
+
+
+QQBOX_KEY_FILE = "/home/hatch/data/laptop_muse_mcp/api_key_qqbox"
+
+
+def get_key():
+    if os.environ.get("MCP_API_KEY", ""):
+        return os.environ["MCP_API_KEY"]
+    if DIRECT_ENDPOINT and os.path.exists(QQBOX_KEY_FILE):
+        return open(QQBOX_KEY_FILE).read().strip()
+    return open(KEY_FILE).read().strip()
+
+
+def open_conn(timeout):
+    # 本机出网一律走运行时出口代理 CONNECT（直连 TLS 会被透明代理挡，
+    # 报 SSL WRONG_VERSION_NUMBER）；直连端点与 Tailscale 模式只差隧道目标。
+    px = urlparse(os.environ.get("HTTPS_PROXY", ""))
+    auth = "Basic " + base64.b64encode((px.username + ":" + px.password).encode()).decode()
+    if DIRECT_ENDPOINT:
+        u = urlparse(DIRECT_ENDPOINT)
+        # MCP_PROXY_PORT 可覆盖出口代理端口（2026-10-28 实测：3128 路视频
+        # 调用约 21 秒空 502，改 3130 隧道代理对照截断点是否在代理层）。
+        pport = int(os.environ.get("MCP_PROXY_PORT", "0") or 0) or px.port or 3128
+        conn = http.client.HTTPSConnection(px.hostname, pport, timeout=timeout)
+        conn.set_tunnel(u.hostname, u.port or 443, {"Proxy-Authorization": auth})
+        return conn, u.path
+    conn = http.client.HTTPSConnection(px.hostname, 3130, timeout=timeout)
+    conn.set_tunnel(MCP_HOST, 443, {"Proxy-Authorization": auth})
+    return conn, "/muse/mcp"
 
 
 def mcp_call(method, arguments, timeout):
-    key = open(KEY_FILE).read().strip()
-    px = urlparse(os.environ.get("HTTPS_PROXY", ""))
-    auth = "Basic " + base64.b64encode((px.username + ":" + px.password).encode()).decode()
-    conn = http.client.HTTPSConnection(px.hostname, 3130, timeout=timeout)
-    conn.set_tunnel(MCP_HOST, 443, {"Proxy-Authorization": auth})
+    key = get_key()
+    conn, path = open_conn(timeout)
     payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                "params": {"name": method, "arguments": arguments}}
-    conn.request("POST", "/muse/mcp", body=json.dumps(payload),
+    conn.request("POST", path, body=json.dumps(payload),
                  headers={"Content-Type": "application/json",
                           "Accept": "application/json, text/event-stream",
                           "X-API-Key": key})
@@ -62,6 +93,7 @@ def mcp_call(method, arguments, timeout):
             except Exception:
                 pass
     if msg is None:
+        # 直连端点（InstaBox 公开端口）返回普通 JSON，不是 SSE
         try:
             msg = json.loads(body)
         except Exception:
@@ -71,8 +103,37 @@ def mcp_call(method, arguments, timeout):
     return r.status, res.get("isError"), "\n".join(texts)
 
 
-def mcp_download(filename, out_path):
-    key = open(KEY_FILE).read().strip()
+def mcp_download(filename, out_path, download_url=None):
+    key = get_key()
+    if DIRECT_ENDPOINT:
+        # 直连模式：优先用结果里返回的下载地址（换到新端点主机），
+        # 失败则回落到 /muse/v1/videos/<file>?key= 旧路径。
+        u = urlparse(DIRECT_ENDPOINT)
+        candidates = []
+        if download_url:
+            du = urlparse(download_url)
+            candidates.append(du._replace(netloc=u.netloc, scheme="https").geturl())
+            candidates.append(download_url)
+        candidates.append(f"https://{u.netloc}/muse/v1/videos/{filename}?key={key}")
+        last = None
+        px = urlparse(os.environ.get("HTTPS_PROXY", ""))
+        auth = "Basic " + base64.b64encode((px.username + ":" + px.password).encode()).decode()
+        pport = int(os.environ.get("MCP_PROXY_PORT", "0") or 0) or px.port or 3128
+        for url in candidates:
+            cu = urlparse(url)
+            conn = http.client.HTTPSConnection(px.hostname, pport, timeout=300)
+            conn.set_tunnel(cu.hostname, cu.port or 443, {"Proxy-Authorization": auth})
+            conn.request("GET", cu.path + ("?" + cu.query if cu.query else ""),
+                         headers={"Accept": "*/*"})
+            r = conn.getresponse()
+            data = r.read()
+            conn.close()
+            if r.status == 200 and len(data) > 10000:
+                with open(out_path, "wb") as f:
+                    f.write(data)
+                return len(data)
+            last = r.status
+        raise RuntimeError(f"download failed, last HTTP {last} for {filename}")
     px = urlparse(os.environ.get("HTTPS_PROXY", ""))
     auth = "Basic " + base64.b64encode((px.username + ":" + px.password).encode()).decode()
     conn = http.client.HTTPSConnection(px.hostname, 3130, timeout=300)
@@ -136,7 +197,9 @@ def main():
     fname = files[0]["filename"]
     print(f"generated: {fname} sizeMB={files[0].get('sizeMB')} elapsed={parsed.get('elapsed')}")
     out_path = os.path.join(VEO_INBOX, f"{args.name}_condensed_20261028.mp4")
-    nbytes = mcp_download(fname, out_path)
+    dl_url = (files[0].get("downloadUrl") or files[0].get("playUrl")
+              or parsed.get("downloadUrl") or parsed.get("playUrl"))
+    nbytes = mcp_download(fname, out_path, download_url=dl_url)
     print(f"downloaded: {out_path} bytes={nbytes}")
 
     item["prompt_original_backup"] = backup
