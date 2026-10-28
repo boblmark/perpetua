@@ -184,12 +184,12 @@ def select_topics(n=2, slot="12:30"):
     # B' 节流（2026-10-10 议会决议 D20261010-003）：独立 Karen 模板短剧停止自动量产。
     # Shorts 只允许从《AI UNHINGED》正片剪 teaser（走独立 teaser 流程，不走本函数）。
     # 本函数直接返回空，不再从 scenario_pool 生成独立短剧选题。
-    # D20261011-002 B-稳：60 天样本冲刺（至 2026-12-10）期间 short 冻结解除，
+    # D20261011-002 B-稳：样本冲刺延至 YPP 截止日（2027-01-31，D20261028 YPP 自行决策）期间 short 冻结解除，
     # 以 2-3 条/天跑量；到期自动恢复冻结（与 submit_jobs 的解冻期一致）。
     # 2026-10-11 补：此前解冻只加在 submit_jobs，select 漏加导致冲刺 0 选题，本次补齐。
     try:
         from datetime import date as _date
-        _bsteaday = _date.today().isoformat() <= "2026-12-10"
+        _bsteaday = _date.today().isoformat() <= "2027-01-31"
     except Exception:
         _bsteaday = False
     try:
@@ -221,7 +221,8 @@ def select_topics(n=2, slot="12:30"):
     # 之前只有 uploaded/rejected/review_failed 被排除，review_timeout 等 transient
     # 失败永久留在 used 里，一个 topic 超时一次就永不复选。
     # D20261015-009：review_failed 去 TERMINAL 化（重审闭环入口）；archived 为新终点
-    _TERMINAL = {"uploaded", "rejected", "archived"}
+    _TERMINAL = {"uploaded", "rejected", "archived",
+                 "upload_permanently_failed"}  # 2026-10-28 P0-3：永久失败立即释放话题坑位
     _TRANSIENT_FAIL = {"review_timeout", "review_error", "generate_failed",
                        "qc_failed", "qc_error"}
     used = set()
@@ -636,7 +637,7 @@ def _sweep_stale_submitted(queue, route_fn=None, now=None):
 
     route_fn(prompt) -> dict(backend/thread_id/job_id/reason)，默认走
     muse_or_nano 强制 nano 路由。只动 job_submitted 且无 done 文件且
-    submitted_at 可解析且超时的项；无时间戳的项不动（防误杀，交其他检查器定性）。
+    超时的项；无时间戳的项仅在轮询满 72 轮时才视为过期（P0-2 补洞）。
     """
     now = now or datetime.now(timezone.utc)
     changed = False
@@ -649,8 +650,14 @@ def _sweep_stale_submitted(queue, route_fn=None, now=None):
             continue
         submitted_at = _parse_iso_ts(item.get("submitted_at"))
         if submitted_at is None:
-            continue
-        age_min = (now - submitted_at).total_seconds() / 60.0
+            # 2026-10-28 P0-2：无时间戳项此前永不被扫。轮询满 72 轮
+            # （约 24h，与 _gen_poll_tick 升级阈值一致）才视为过期；
+            # 未满 72 轮不动，防误杀慢启动。
+            if int(item.get("gen_poll_count") or 0) < 72:
+                continue
+            age_min = 10 ** 9
+        else:
+            age_min = (now - submitted_at).total_seconds() / 60.0
         if age_min < GEN_CLAIM_TIMEOUT_MIN:
             continue
         attempts = int(item.get("gen_attempts") or 0)
@@ -1251,9 +1258,9 @@ def submit_jobs():
     # B' 纵深防御（2026-10-10 D20261010-003）：独立短剧冻结期间，short 格式的
     # review_passed 不提交生成。D20261010-007/009：longform（teaser GREEN 转正）
     # 不受冻结影响；teaser 本体走 teaser_validate.py 独立流程，不走本函数。
-    # D20261011-002 B-稳：60 天样本冲刺（至 2026-12-10）期间 short 冻结解除，
+    # D20261011-002 B-稳：样本冲刺延至 YPP 截止日（2027-01-31，D20261028 YPP 自行决策）期间 short 冻结解除，
     # 以 2-3 条/天跑量；到期自动恢复以 teaser_spec_bprime.json 为准。
-    BSTEADY_UNFREEZE_UNTIL = "2026-12-10"
+    BSTEADY_UNFREEZE_UNTIL = "2027-01-31"
     try:
         from datetime import date as _date
         _bsteaday = _date.today().isoformat() <= BSTEADY_UNFREEZE_UNTIL
@@ -1529,6 +1536,78 @@ def _import_run_qc():
         return None
 
 
+UPLOAD_FAILED_RETRY_MIN = 60
+UPLOAD_FAILED_MAX_RETRIES = 3
+
+
+def _retry_upload_failed(queue):
+    """2026-10-28 P0-3（D20261028-004）：upload_failed 消费者。
+
+    审计前 upload_failed 无任何消费者且话题永久占坑。本函数每轮 collect
+    扫一次，只动主链路 private 上传失败项：
+    - 跳过 urgent 直发项（走 urgent_upload_ready 的 public 路径，不得改 private 重试）；
+    - 无 video_file 的项无法重试，直接转永久失败；
+    - 无 upload_failed_at 的遗留项先补时间戳、本轮不动（防误判为立即重试）；
+    - 失败满 60 分钟且重试 <3 次：回 ready_to_upload（下一段 ready_to_upload
+      循环会调 _auto_upload_private，间隔门若拦则保持 ready_to_upload，不回
+      upload_failed；门放行才真正重传）；
+    - 重试满 3 次：转 upload_permanently_failed（select_topics 的 _TERMINAL
+      含此状态，话题坑位立即释放），并记 inbox 升级。
+    返回 (changed, actions)。不抛异常到 collect（调用方已包 try）。
+    """
+    now = datetime.now(timezone.utc)
+    changed = False
+    actions = []
+    for item in queue:
+        if item.get("status") != "upload_failed":
+            continue
+        if item.get("urgent"):
+            continue
+        topic = item.get("topic")
+        if not item.get("video_file"):
+            item["status"] = "upload_permanently_failed"
+            item["upload_failed_reason"] = "no_video_file"
+            pipeline_log("publish", "error",
+                         f"P0-3 永久失败（无成片）: {topic}", 0)
+            changed = True
+            actions.append(("permanent_no_file", topic))
+            continue
+        failed_at = _parse_iso_ts(item.get("upload_failed_at"))
+        if failed_at is None:
+            item["upload_failed_at"] = now_iso()
+            changed = True
+            actions.append(("stamp_missing_ts", topic))
+            continue
+        age_min = (now - failed_at).total_seconds() / 60.0
+        if age_min < UPLOAD_FAILED_RETRY_MIN:
+            continue
+        retries = int(item.get("upload_failed_retries", 0) or 0)
+        if retries >= UPLOAD_FAILED_MAX_RETRIES:
+            item["status"] = "upload_permanently_failed"
+            item["upload_failed_reason"] = "retries_exhausted"
+            pipeline_log("publish", "error",
+                         f"P0-3 永久失败（重试 {retries} 次耗尽）: {topic}", 0)
+            try:
+                notify_inbox("auto_upload_permanently_failed",
+                             f"【自动发布永久失败】{item.get('title', '')[:80]}："
+                             f"上传失败重试 3 次耗尽，话题已释放重选",
+                             {"topic": topic,
+                              "title": item.get("title", "")})
+            except Exception:
+                pass
+            changed = True
+            actions.append(("permanent", topic))
+            continue
+        item["upload_failed_retries"] = retries + 1
+        item["upload_failed_at"] = now_iso()
+        item["status"] = "ready_to_upload"
+        pipeline_log("publish", "ok",
+                     f"P0-3 上传失败第 {retries + 1} 次重试: {topic}", 0)
+        changed = True
+        actions.append(("retry_ready", topic))
+    return changed, actions
+
+
 def collect_results():
     run_qc = _import_run_qc()
     queue = load_queue()
@@ -1541,6 +1620,13 @@ def collect_results():
             pipeline_log("generate", "ok", f"清道夫动作：{_acts}", 0)
     except Exception as e:
         pipeline_log("generate", "error", f"清道夫异常（不阻塞 collect）：{e}", 0)
+    try:
+        _swept_up, _up_acts = _retry_upload_failed(queue)
+        if _swept_up:
+            changed = True
+            pipeline_log("publish", "ok", f"P0-3 上传失败消费者动作：{_up_acts}", 0)
+    except Exception as e:
+        pipeline_log("publish", "error", f"P0-3 消费者异常（不阻塞 collect）：{e}", 0)
     try:
         _write_gen_capacity(queue)
     except Exception:
@@ -1869,6 +1955,8 @@ def _auto_upload_private(item):
         item["upload_result"] = res[:500]
         item["uploaded_at"] = now_iso()
         item.pop("upload_retries", None)  # 2026-10-16 P2-6：成功后清重试计数
+        item.pop("upload_failed_retries", None)  # 2026-10-28 P0-3：成功后清上传失败重试计数
+        item.pop("upload_failed_at", None)
         # 状态机记录：进入 INTENTIONAL_PRIVATE（经跃迁门）
         try:
             import pipeline_state as ps
@@ -1928,6 +2016,7 @@ def _auto_upload_private(item):
     else:
         item["status"] = "upload_failed"
         item["upload_result"] = res[:500]
+        item["upload_failed_at"] = now_iso()  # 2026-10-28 P0-3：失败时间戳，供重试消费者算退避
         pipeline_log("publish", "error",
                      f"自动上传失败: {item['topic']}: {res[:120]}", 0)
         notify_inbox("auto_upload_failed",

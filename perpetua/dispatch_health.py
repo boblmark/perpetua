@@ -95,10 +95,19 @@ def check_dispatcher():
                            checker_health={"probe_ok": True})
 
 
+CLAIMED_STALE_MIN = 360
+
+
 def check_queue():
     """pending 深度 + 消费者新鲜度。
     M4/N1：pending==0 → 直接 OK，不看"上次消费时间"（杀口径 bug）。
-    M9：SSH 失败 → SUSPECT。"""
+    M9：SSH 失败 → SUSPECT。
+    2026-10-28 P0-2：认领态文件（*.claimed-*.json）仍在 pending 目录内，
+    旧口径只看 pending 总数会把认领卡死误判为“有活干但心跳新鲜”。
+    本函数新增认领态探针：drained = pending==0 且 claimed==0；
+    stuck = 任一认领文件最老年龄 >360 分钟（6 小时，与闲时看门狗口径一致，
+    不用 90 分钟，避免误杀慢认领）→ CONFIRMED 升级，不自动删/改 VPS 文件
+    （认领文件归消费者所有，本地无已验证的释放协议，擅自改动属破坏性操作）。"""
     snap_ts = ga.utcnow()
     out, rc = ssh("ls /opt/mcp-b/data/mcp_jobs/pending/*.json 2>/dev/null | grep -v result | wc -l")
     if rc != 0 or out.startswith("SSH_ERR"):
@@ -109,9 +118,33 @@ def check_queue():
     except ValueError:
         return _suspect("check_queue", "mcp-b-queue", f"pending 解析失败: {out[:80]}",
                         "队列快照不可解析，无法定论", snap_ts, "queue_snapshot")
-    # M4：空队列先行返回 OK
+    # P0-2 认领态探针：stat 无匹配时 rc 非 0 属正常（claimed=0），只有 SSH_ERR 才 SUSPECT
+    claimed_out, _claimed_rc = ssh(
+        "stat -c %Y /opt/mcp-b/data/mcp_jobs/pending/*.claimed-*.json 2>/dev/null | sort -n")
+    if claimed_out.startswith("SSH_ERR"):
+        return _suspect("check_queue", "mcp-b-claimed", "认领态探针 SSH 失败",
+                        "认领文件状态读不到，无法定论是否卡死", snap_ts,
+                        "claimed_snapshot")
+    claimed_epochs = [int(x) for x in claimed_out.split() if x.isdigit()] \
+        if claimed_out else []
+    claimed_n = len(claimed_epochs)
+    claimed_oldest_min = ((time.time() - min(claimed_epochs)) / 60
+                          if claimed_epochs else None)
+    if claimed_oldest_min is not None and claimed_oldest_min > CLAIMED_STALE_MIN:
+        return ga.make_verdict(
+            ga.CONFIRMED,
+            f"认领卡死：claimed={claimed_n}，最老认领 "
+            f"{claimed_oldest_min:.0f} 分钟前（>{CLAIMED_STALE_MIN} 分钟），"
+            f"消费者未写回（本地不自动删/改 VPS 认领文件，只升级）",
+            snap_ts, "queue_snapshot",
+            checker=CHECKER, subject="mcp-b-claimed",
+            checker_health={"probe_ok": True})
+    claimed_detail = (f"，认领中 {claimed_n}（最老 "
+                      f"{claimed_oldest_min:.0f} 分钟前）"
+                      if claimed_n else "，无认领中文件")
+    # M4：空队列先行返回 OK（此时 claimed 必然为 0，否则上一步已返回）
     if pending == 0:
-        return ga.make_verdict(ga.OK, "pending=0（空队列，消费者无需工作）",
+        return ga.make_verdict(ga.OK, "pending=0 且 claimed=0（空队列，消费者无需工作）",
                                snap_ts, "queue_snapshot",
                                checker=CHECKER, subject="mcp-b-queue",
                                checker_health={"probe_ok": True})
@@ -122,7 +155,7 @@ def check_queue():
                         f"pending={pending} 但消费者心跳读不到，无法定论是否停滞",
                         snap_ts, "consumer_heartbeat")
     age_min = (time.time() - int(out2.strip())) / 60
-    detail = f"pending={pending}，最近消费 {age_min:.0f} 分钟前"
+    detail = f"pending={pending}，最近消费 {age_min:.0f} 分钟前{claimed_detail}"
     if age_min > 30:
         return ga.make_verdict(ga.CONFIRMED, detail + "（消费者停滞）",
                                snap_ts, "queue_snapshot",
