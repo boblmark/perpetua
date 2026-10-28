@@ -107,9 +107,16 @@ def check_queue():
     本函数新增认领态探针：drained = pending==0 且 claimed==0；
     stuck = 任一认领文件最老年龄 >360 分钟（6 小时，与闲时看门狗口径一致，
     不用 90 分钟，避免误杀慢认领）→ CONFIRMED 升级，不自动删/改 VPS 文件
-    （认领文件归消费者所有，本地无已验证的释放协议，擅自改动属破坏性操作）。"""
+    （认领文件归消费者所有，本地无已验证的释放协议，擅自改动属破坏性操作）。
+    2026-10-28 C9：pending 计数排除认领文件（grep -v 'claimed-'），
+    只计未认领任务；未认领 pending==0 时直接返回“全部外部认领中”，
+    不再进入消费者新鲜度分支（旧口径把认领文件计入 pending，认领新鲜
+    但 done 心跳超 30 分钟时会误判 CONFIRMED“消费者停滞”）。
+    认领老化只由上方的 P0-2 探针定论。"""
     snap_ts = ga.utcnow()
-    out, rc = ssh("ls /opt/mcp-b/data/mcp_jobs/pending/*.json 2>/dev/null | grep -v result | wc -l")
+    # C9：只计未认领 pending（排除 *.claimed-*.json），认领文件另由
+    # 下方 P0-2 探针单独计数；旧口径含认领文件会误判“消费者停滞”。
+    out, rc = ssh("ls /opt/mcp-b/data/mcp_jobs/pending/*.json 2>/dev/null | grep -v result | grep -v 'claimed-' | wc -l")
     if rc != 0 or out.startswith("SSH_ERR"):
         return _suspect("check_queue", "mcp-b-queue", f"SSH/目录异常: {out[:80]}",
                         "队列快照不可读，无法定论", snap_ts, "queue_snapshot")
@@ -142,21 +149,43 @@ def check_queue():
     claimed_detail = (f"，认领中 {claimed_n}（最老 "
                       f"{claimed_oldest_min:.0f} 分钟前）"
                       if claimed_n else "，无认领中文件")
-    # M4：空队列先行返回 OK（此时 claimed 必然为 0，否则上一步已返回）
+    # M4：空队列先行返回 OK。C9：pending 已是未认领计数，故 pending==0
+    # 时 claimed 可能 >0（全部任务在外部认领中、新鲜未 stale）——此时
+    # 本地消费者无事可做，直接返回“全部外部认领中”，绝不进入下方
+    # 消费者新鲜度分支（旧口径在此误判“消费者停滞”）。
     if pending == 0:
+        if claimed_n:
+            return ga.make_verdict(ga.OK,
+                f"全部外部认领中（claimed={claimed_n}，最老 "
+                f"{claimed_oldest_min:.0f} 分钟前），本地消费者无事可做",
+                snap_ts, "queue_snapshot",
+                checker=CHECKER, subject="mcp-b-queue",
+                checker_health={"probe_ok": True})
         return ga.make_verdict(ga.OK, "pending=0 且 claimed=0（空队列，消费者无需工作）",
                                snap_ts, "queue_snapshot",
                                checker=CHECKER, subject="mcp-b-queue",
                                checker_health={"probe_ok": True})
-    # pending>0：看消费者新鲜度
+    # pending>0（未认领任务在队）：看消费者新鲜度
     out2, rc2 = ssh("ls -t /opt/mcp-b/data/mcp_jobs/done/*.result.json 2>/dev/null | head -1 | xargs stat -c %Y 2>/dev/null")
     if rc2 != 0 or not out2.strip().isdigit():
         return _suspect("check_queue", "mcp-b-consumer", "消费者心跳不可读",
-                        f"pending={pending} 但消费者心跳读不到，无法定论是否停滞",
+                        f"未认领 pending={pending} 但消费者心跳读不到，无法定论是否停滞",
                         snap_ts, "consumer_heartbeat")
     age_min = (time.time() - int(out2.strip())) / 60
-    detail = f"pending={pending}，最近消费 {age_min:.0f} 分钟前{claimed_detail}"
+    detail = f"未认领 pending={pending}，最近消费 {age_min:.0f} 分钟前{claimed_detail}"
     if age_min > 30:
+        # C12（2026-10-28）：30 分钟阈值对小时级任务是误判——消费者可能
+        # 正在处理一个长任务（done 心跳自然陈旧）。定论停滞须同时满足
+        # “无新 result”且“无在途证据”。在途证据 = 未 stale 的认领文件
+        # （stale 认领已在上方 P0-2 分支先行 CONFIRMED，故到此处认领
+        # 均未 stale，即为在途证据）；独立的消费者心跳文件不存在，
+        # done result mtime 本身就是唯一心跳，故认领存在即降为 SUSPECT。
+        if claimed_n:
+            return _suspect("check_queue", "mcp-b-consumer",
+                            "consumer_heartbeat_stale_with_claims",
+                            detail + "（在途认领存在，可能是长任务处理中，"
+                            "降为 SUSPECT 不定论停滞）",
+                            snap_ts, "consumer_heartbeat")
         return ga.make_verdict(ga.CONFIRMED, detail + "（消费者停滞）",
                                snap_ts, "queue_snapshot",
                                checker=CHECKER, subject="mcp-b-consumer",

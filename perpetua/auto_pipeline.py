@@ -130,12 +130,43 @@ def _save(p, obj):
     atomic_write(p, obj)
 
 
+# A12（2026-10-28）：collect 轮次 qc 探针异常计数（模块级，单进程单轮次）。
+_QC_PROBE_TRACKING = [False]
+_QC_PROBE_ERRORS = [0]
+
+
 def pipeline_log(stage, status="ok", detail="", count=0):
+    # A12（2026-10-28）：collect 轮次探针异常计数。collect_results 开始时
+    # 置位，轮次内所有 qc error 心跳（引擎导入失败、自愈失败、QC 异常等）
+    # 均计数；轮末由 _write_qc_round_summary 写区分心跳。非 collect 上下文
+    # （review/submit 等单次调用）不计数，避免跨轮次污染。
+    global _QC_PROBE_ERRORS
+    if _QC_PROBE_TRACKING[0] and stage == "qc" and status == "error":
+        _QC_PROBE_ERRORS[0] += 1
+    # A11（2026-10-28）：查子进程返回码——此前不查，pipeline.py 对非法阶段
+    # 的抛错（及一切非零退出）都被静默吞掉，心跳丢失不可见。非零时把 stderr
+    # 写进当日日志（~/memory/YYYY-MM-DD.md，运维日志惯例），best-effort。
     try:
-        subprocess.run(
+        r = subprocess.run(
             ["python3", f"{BASE}/pipeline.py", "default", stage, status,
              detail[:200], str(count)],
-            capture_output=True, timeout=10)
+            capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            try:
+                import os as _os
+                _logdir = _os.environ.get(
+                    "PIPELINE_LOG_ERROR_DIR",
+                    _os.path.expanduser("~/memory"))
+                _os.makedirs(_logdir, exist_ok=True)
+                _day = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+                with open(_os.path.join(_logdir, f"{_day}.md"),
+                          "a", encoding="utf-8") as _f:
+                    _f.write(
+                        f"[pipeline_log] stage={stage} status={status} "
+                        f"rc={r.returncode} "
+                        f"stderr={(r.stderr or '')[-300:]}\n")
+            except Exception:
+                pass
     except Exception:
         pass
 
