@@ -24,8 +24,8 @@ cd /home/hatch/data/mcp_server
 
 ## 验证
 ```bash
-TOKEN=$(cat /home/hatch/data/mcp_server/.token)
-# 经 VPS 公网调 tools/list，应返回 6 个工具名
+TOKEN=$(cat /home/hatch/data/mcp_server/.token-<调用方>)
+# 经 VPS 公网调 tools/list，应返回该 token scope 内的工具名
 curl -s --max-time 20 -X POST http://192.166.82.123:8734/mcp \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \

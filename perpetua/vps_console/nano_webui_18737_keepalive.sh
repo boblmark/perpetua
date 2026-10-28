@@ -26,7 +26,7 @@ sleep 2
 # 主脚本 shell 的 job 表里从不出现它,不依赖 disown(2026-10-16 实测 disown 在后台调用时不可靠)
 # 2026-10-18 修正：实测双 fork 仍导致主脚本卡在 do_wait 等子进程永不退出
 # （pid 2608，2026-10-18 15:00 CST 实测），回退到 2026-10-16 实测有效的 disown 方案
-cd "$WEB_DIR" && setsid nohup python3 -m http.server 18737 --bind 127.0.0.1 > /tmp/nano-webui-18737.log 2>&1 < /dev/null &
+cd "$WEB_DIR" && setsid nohup python3 -m http.server 18737 --bind 127.0.0.1 >> /home/hatch/data/perpetua/vps_console/nano-webui-18737-server.log 2>&1 < /dev/null &
 disown
 sleep 3
 if curl -s -m 5 -o /dev/null -w "%{http_code}" http://127.0.0.1:18737/ 2>/dev/null | grep -q "200"; then

@@ -18,7 +18,7 @@ MCP 协议是客户端拉取式：外部 agent 主动调 Dash，Dash 无法主�
 
 ## Auth
 - Header：`Authorization: Bearer <token>`
-- Token 文件：`/home/hatch/data/mcp_server/.token`（600 权限，勿外传至非授权方）
+- Token 文件：分权限制（2026-10-28 起旧全量 `.token` 已停用）；各调用方用 `.tokens.json` 中分发的专用 token 文件（如 `.token-marvis`），600 权限，勿外传至非授权方
 
 ## Tooling（9 个工具）
 | 工具 | 用途 |

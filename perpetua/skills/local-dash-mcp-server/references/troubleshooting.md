@@ -15,7 +15,7 @@
 - `/home/hatch/data/mcp_server/server.py` — MCP server 实现
 - `/home/hatch/data/mcp_server/tunnel.sh` — SSH 反向隧道保活脚本
 - `/home/hatch/data/mcp_server/watchdog.py` — 看门狗（cron 每 5 分钟）
-- `/home/hatch/data/mcp_server/.token` — Bearer token（600）
+- `/home/hatch/data/mcp_server/.tokens.json` — 分权限 token 注册表（600）；旧全量 `.token` 已于 2026-10-28 停用
 - `/home/hatch/data/mcp_server/venv` — Python 虚拟环境（mcp<2）
 - `/home/hatch/data/collab/inbox.json` — 异步取货货架
 - `/home/hatch/data/collab/pilot_status.md` — 试点状态说明
