@@ -124,16 +124,22 @@ def mcp_download(filename, out_path, download_url=None):
         pport = int(os.environ.get("MCP_PROXY_PORT", "0") or 0) or px.port or 3128
         for url in candidates:
             cu = urlparse(url)
-            if cu.scheme == "http":
-                conn = http.client.HTTPConnection(cu.hostname, cu.port or 80, timeout=300)
-            else:
-                conn = http.client.HTTPSConnection(px.hostname, pport, timeout=300)
-                conn.set_tunnel(cu.hostname, cu.port or 443, {"Proxy-Authorization": auth})
-            conn.request("GET", cu.path + ("?" + cu.query if cu.query else ""),
-                         headers={"Accept": "*/*"})
-            r = conn.getresponse()
-            data = r.read()
-            conn.close()
+            try:
+                if cu.scheme == "http":
+                    conn = http.client.HTTPConnection(cu.hostname, cu.port or 80, timeout=300)
+                else:
+                    conn = http.client.HTTPSConnection(px.hostname, pport, timeout=300)
+                    conn.set_tunnel(cu.hostname, cu.port or 443, {"Proxy-Authorization": auth})
+                conn.request("GET", cu.path + ("?" + cu.query if cu.query else ""),
+                             headers={"Accept": "*/*"})
+                r = conn.getresponse()
+                data = r.read()
+                conn.close()
+            except Exception as e:
+                # 候选地址不可达（如下载 URL 指向沙箱禁直连的外域）时换下一个，
+                # 不让单个候选的异常杀死整次下载。
+                last = f"{type(e).__name__}"
+                continue
             if r.status == 200 and len(data) > 10000:
                 with open(out_path, "wb") as f:
                     f.write(data)
