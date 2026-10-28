@@ -248,11 +248,15 @@ def submit_teaser_jobs():
 
 
 def _run_qc(video_path, title, multi_clip=False):
+    """返回 (ok, msg, output_file)。Q5（2026-10-28，按审计结论落地）：
+    此前只返回 (ok, msg)，run_qc 的裁剪/修复/字幕产物被调用方丢弃、
+    上传的仍是原文件，QC 结论与实传文件不一致。失败时 output_file
+    为 None，调用方须沿用原 video_file，不得用空值覆盖。"""
     sys.path.insert(0, BASE)
     try:
         from pre_upload_qc import run_qc
     except Exception as e:
-        return False, "qc import 失败: %s" % str(e)[:100]
+        return False, "qc import 失败: %s" % str(e)[:100], None
     # Q1/Q2（2026-10-28，按审计结论落地）：单段 teaser 事前分流。
     # 单段本应约 10s，实测 >11.5s 时禁调 run_qc（默认会静默裁到
     # 11s），直接 fail-closed，调用方按 teaser_failed 处理，
@@ -266,7 +270,7 @@ def _run_qc(video_path, title, multi_clip=False):
             _dur = float(_js_ff.loads(_pr.stdout)["format"]["duration"])
             if _dur > 11.5:
                 return False, ("[longform] 实测时长 %.1fs > 11.5s，"
-                               "禁走 Shorts QC，未裁剪" % _dur)
+                               "禁走 Shorts QC，未裁剪" % _dur), None
         except Exception:
             pass
     try:
@@ -278,9 +282,9 @@ def _run_qc(video_path, title, multi_clip=False):
         ok = bool(r.get("passed"))
         rej = r.get("rejects") or []
         msg = "; ".join(rej[:2]) if rej else "体验分 %s/100" % r.get("experience_score")
-        return ok, msg[:500]
+        return ok, msg[:500], r.get("output_file")
     except Exception as e:
-        return False, "qc 异常: %s" % str(e)[:150]
+        return False, "qc 异常: %s" % str(e)[:150], None
 
 
 def _bprime_allows_publish():
@@ -498,7 +502,14 @@ def collect_teaser_results():
             changed = True
             continue
         is_multi = len(clip_files) > 1
-        ok, msg = _run_qc(video_file, item.get("title", ""), multi_clip=is_multi)
+        ok, msg, _qc_out = _run_qc(video_file, item.get("title", ""),
+                                   multi_clip=is_multi)
+        # Q5：QC 通过且有修复产物时，后续快检/推迟/上传一律用产物文件，
+        # 不再用未经 QC 的原文件；产物缺失或不存在时沿用原文件。
+        if ok and _qc_out:
+            import os as _os_q5
+            if _os_q5.path.exists(_qc_out):
+                video_file = _qc_out
         # 实验格式前 3 条 40s：QC 通过后转浏览器快检，不自动公开发布（v5.3.1）
         if ok and is_multi and item.get("experimental") and not item.get("browser_checked"):
             item["status"] = "teaser_awaiting_check"

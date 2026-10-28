@@ -137,9 +137,20 @@ def collect():
                 json.dumps(job, ensure_ascii=False, indent=1), encoding="utf-8")
             continue
 
-        # 成品即最终文件
+        # Q4（2026-10-28，按审计结论落地）：QC 结论必须与实传文件一致。
+        # run_qc 的 output_file 才是裁剪/修复/字幕烧录后的产物；此前代码
+        # 直接把 tmp_fixed 改名成 _final.mp4，QC 产物被丢弃。ffprobe
+        # >11.5s 事前拒绝已在 Q1/Q2 落地（本段之前），此处只补产物取用。
         out = BASE / "veo_jobs" / "done" / f"{job_id}_final.mp4"
-        tmp_fixed.rename(out)
+        _qc_out = qc.get("output_file")
+        if _qc_out and os.path.exists(_qc_out) and _qc_out != str(tmp_fixed):
+            shutil.move(_qc_out, out)
+            try:
+                tmp_fixed.unlink()
+            except Exception:
+                pass
+        else:
+            tmp_fixed.rename(out)
 
         # 进待审批
         approval = []

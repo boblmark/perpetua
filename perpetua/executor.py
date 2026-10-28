@@ -36,6 +36,49 @@ def _now_utc():
     return datetime.now(timezone.utc)
 
 
+def _inbox_upgrade(title, body, dedup_key):
+    """P6：failed_permanent 升级告警（best-effort；inbox 失败绝不
+    阻塞队列处理本身）。调用点只在向 failed_permanent 跃迁时，
+    故同一命令只告警一次，不重复刷屏。"""
+    try:
+        sys.path.insert(0, str(BASE))
+        import inbox as _inbox
+        _inbox.append_notice({
+            "ts": _now_utc().isoformat(),
+            "level": "warning",
+            "dedup_key": dedup_key,
+            "title": title,
+            "body": body,
+        })
+    except Exception:
+        pass
+
+
+def _note_failure(cmd):
+    """P6：给失败命令记 failed_at/fail_count；满 3 次转
+    failed_permanent 并升级，调用方须据此改 status。返回 True
+    表示已转 failed_permanent。"""
+    cmd["failed_at"] = _now_utc().isoformat()
+    cmd["fail_count"] = int(cmd.get("fail_count", 0)) + 1
+    if cmd["fail_count"] >= 3:
+        cmd["status"] = "failed_permanent"
+        audit_log("command_failed_permanent", cmd["video_key"],
+                  cmd.get("from_state", ""), cmd.get("to_state", ""),
+                  "executor", {"command": cmd["command"],
+                               "idempotency_key": cmd["idempotency_key"],
+                               "fail_count": cmd["fail_count"],
+                               "error": str(cmd.get("error", ""))[:200]})
+        _inbox_upgrade(
+            "执行命令 3 次失败，已转 failed_permanent",
+            "命令 %s（%s，幂等键 %s）连续失败 %d 次，不再自动重试，"
+            "需人工处置。" % (cmd["command"], cmd["video_key"],
+                             cmd["idempotency_key"], cmd["fail_count"]),
+            "executor:failed_permanent:%s" % cmd["idempotency_key"])
+        return True
+    cmd["status"] = "failed"
+    return False
+
+
 def load_queue():
     return tolerant_read_json(str(QUEUE_FILE), [])
 
@@ -333,6 +376,36 @@ def process_queue(handler_overrides=None, max_batch=20):
     with run_lock("executor"):
         q = load_queue()
         executed = load_executed()
+        # P6：失败命令自动重回 pending（fail_count<3 且距上次失败
+        # >10 分钟）；已满 3 次的 failed 在此转为 failed_permanent
+        # 并升级（此前无 fail_count 的历史 failed 按可重试处理，
+        # 下次失败起正常计次）。本轮结束 save_queue 会落盘这些跃迁。
+        _now = _now_utc()
+        for _c in q:
+            if _c.get("status") != "failed":
+                continue
+            if int(_c.get("fail_count", 0)) >= 3:
+                _c["status"] = "failed_permanent"
+                audit_log("command_failed_permanent", _c["video_key"],
+                          _c.get("from_state", ""), _c.get("to_state", ""),
+                          "executor", {"command": _c["command"],
+                                       "idempotency_key": _c["idempotency_key"],
+                                       "fail_count": _c.get("fail_count")})
+                _inbox_upgrade(
+                    "执行命令 3 次失败，已转 failed_permanent",
+                    "命令 %s（%s，幂等键 %s）连续失败，需人工处置。"
+                    % (_c["command"], _c["video_key"], _c["idempotency_key"]),
+                    "executor:failed_permanent:%s" % _c["idempotency_key"])
+                continue
+            _fa = _c.get("failed_at")
+            try:
+                _age_min = ((_now - datetime.fromisoformat(
+                    str(_fa).replace("Z", "+00:00"))).total_seconds() / 60
+                    if _fa else 9999)
+            except Exception:
+                _age_min = 9999
+            if _age_min > 10:
+                _c["status"] = "pending"
         pending = [c for c in q if c.get("status") == "pending"][:max_batch]
         for cmd in pending:
             key = cmd["idempotency_key"]
@@ -381,11 +454,19 @@ def process_queue(handler_overrides=None, max_batch=20):
             try:
                 result = handler(cmd) or {}
                 ok = result.get("ok", True)
-                cmd["status"] = "done" if ok else "failed"
                 cmd["result"] = result
                 cmd["completed_at"] = _now_utc().isoformat()
-                executed[key] = {"result": result, "executed_at": cmd["completed_at"],
-                                 "command": cmd["command"], "video_key": cmd["video_key"]}
+                if ok:
+                    cmd["status"] = "done"
+                    # P6：executed 只在 ok 时写；ok=False 时写 executed
+                    # 会毒化幂等键（下次 emit 直接 already executed，
+                    # 失败命令永不能重发）。异常分支本来就不写 executed，
+                    # 此处与之对齐。
+                    executed[key] = {"result": result, "executed_at": cmd["completed_at"],
+                                     "command": cmd["command"], "video_key": cmd["video_key"]}
+                else:
+                    cmd["error"] = str(result)[:200]
+                    _note_failure(cmd)
                 audit_log("command_executed", cmd["video_key"],
                           cmd.get("from_state", ""), cmd.get("to_state", ""),
                           "executor", {"command": cmd["command"],
@@ -399,8 +480,8 @@ def process_queue(handler_overrides=None, max_batch=20):
                     _lease_pause_on_failure(cmd["video_key"], cmd["command"],
                                             str(result)[:200])
             except Exception as e:
-                cmd["status"] = "failed"
                 cmd["error"] = str(e)[:200]
+                _note_failure(cmd)
                 audit_log("command_failed", cmd["video_key"],
                           cmd.get("from_state", ""), cmd.get("to_state", ""),
                           "executor", {"command": cmd["command"], "error": str(e)[:200]})
