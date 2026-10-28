@@ -116,8 +116,12 @@ def main():
         return
 
     approvals = _load(APPROVAL_PATH, [])
-    # 避免重复：已在审批队列中的 video_id 跳过
-    existing = {a.get("video_id") for a in approvals if isinstance(a, dict)}
+    # 避免重复：仅状态为 awaiting 的条目才去重（P4，2026-10-28 空转审计）。
+    # 旧口径不论 awaiting/rejected/expired/applied，只要 video_id 在列即跳过，
+    # 同一视频拒绝/过期后永不生成新备选。改后 rejected/expired/applied 的视频
+    # 下轮哑火仍可重新生成备选。
+    existing = {a.get("video_id") for a in approvals
+                if isinstance(a, dict) and a.get("status") == "awaiting"}
 
     added = 0
     for d in duds:

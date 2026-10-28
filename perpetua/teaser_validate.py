@@ -188,6 +188,7 @@ def submit_teaser_jobs():
                         and not x.get("teaser_verdict")))
     max_new = max(0, 3 - in_flight)
     n = 0
+    dirty = False  # G11：分段落盘/断点定稿也需保存，即使 n==0
     for item in sorted(queue, key=lambda x: -(x.get("review_score") or 0)):
         if item.get("status") != "teaser_validation" or item.get("muse_job_id"):
             continue
@@ -202,15 +203,40 @@ def submit_teaser_jobs():
         if not prompt:
             plog("submit", "error", "无 prompt，跳过 %s" % item.get("topic"))
             continue
-        jid = "teaser-%s-%s" % (_now().strftime("%Y%m%d%H%M%S"),
-                                os.urandom(3).hex())
-        muse_job_ids = []
+        # G11（2026-10-28）：分段部分成功不再丢弃。已拿到的段立即写回
+        # 条目并落盘（teaser_partial），下轮从断点续补而非全量重提；
+        # 旧逻辑 break 后局部变量丢失、旧段成 VPS 孤儿烧预算。
+        muse_job_ids = list(item.get("muse_job_ids") or [])
+        if len(muse_job_ids) >= TEASER_CLIPS:
+            # 防御：上轮已集齐 4 段却未翻状态（如落盘后崩溃），直接定稿不重提。
+            item["muse_job_ids"] = muse_job_ids[:TEASER_CLIPS]
+            item.pop("teaser_partial", None)
+            item["teaser_clips"] = TEASER_CLIPS
+            item["gen_backend"] = "musemain"
+            item["teaser_submitted_at"] = _iso()
+            item["status"] = "teaser_generating"
+            n += 1
+            dirty = True
+            plog("submit", "ok", "teaser 断点续补定稿（上轮已集齐） %s"
+                 % item.get("topic", "")[:30])
+            continue
+        jid = item.get("job_id") or "teaser-%s-%s" % (
+            _now().strftime("%Y%m%d%H%M%S"), os.urandom(3).hex())
         submit_ok = True
-        for seg in range(TEASER_CLIPS):
+        for seg in range(len(muse_job_ids), TEASER_CLIPS):
             seg_jid = "%s-s%d" % (jid, seg)
             try:
                 mj = gvm.submit(_segment_prompt(prompt, seg), seg_jid)
                 muse_job_ids.append(mj)
+                # 每段成功立即落盘：后一段失败也不丢已建 job。
+                item["job_id"] = jid
+                item["muse_job_ids"] = list(muse_job_ids)
+                item["teaser_partial"] = True
+                try:
+                    save_queue(queue)
+                except Exception:
+                    pass
+                dirty = True
             except Exception as e:
                 plog("submit", "error", "dispatcher 提交失败 %s seg%d: %s"
                      % (item.get("topic"), seg, str(e)[:120]))
@@ -218,12 +244,12 @@ def submit_teaser_jobs():
                 break
         if not submit_ok or len(muse_job_ids) != TEASER_CLIPS:
             # 2026-10-10：提交异常一律视为通道级故障，整轮停摆。
-            # 继续试下一个选题只会逐个留下“已建 job 但 item 未标记”的孤儿 job
-            #（dispatcher 侧 job 已创建、id 已丢失，muse-main 照常消耗预算生成）。
+            # G11 后：已建段已写回条目并落盘，下轮续补，不再是孤儿 job。
             # 下一轮（30min）重试。
-            plog("submit", "ok", "通道异常，本轮停止提交，下轮重试")
+            plog("submit", "ok", "通道异常，本轮停止提交，下轮续补未交段")
             break
         item["job_id"] = jid
+        item.pop("teaser_partial", None)
         item["muse_job_ids"] = muse_job_ids  # 多段；老数据用 muse_job_id 单段
         item["teaser_clips"] = TEASER_CLIPS
         # 实验格式：前 3 条 40s 标记 experimental，走浏览器快检（v5.3.1）
@@ -242,7 +268,7 @@ def submit_teaser_jobs():
         n += 1
         plog("submit", "ok", "teaser 已提交(%d段) %s"
              % (TEASER_CLIPS, item.get("topic", "")[:30]))
-    if n:
+    if n or dirty:
         save_queue(queue)
     return n
 
@@ -746,6 +772,10 @@ def _collect_awaiting_check_publish(queue):
             item["teaser_block_kind"] = kind
             item["teaser_block_reason"] = str(fail_reason)[:300]
             item["teaser_blocked_at"] = _iso()
+            # G15（2026-10-28）：同时写 7 天复查到期日，看门狗到期
+            # 未人工处理则再次升级（不自动改状态）。
+            item["teaser_block_review_due_at"] = (
+                _now() + timedelta(days=7)).isoformat()
             plog("collect", "error", "发布永久阻塞，转终态 %s：%s"
                  % (item.get("topic", "")[:30], str(fail_reason)[:120]))
             _escalate_publish_blocked(item, fail_reason, kind)

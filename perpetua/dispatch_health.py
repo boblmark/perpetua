@@ -425,21 +425,46 @@ def main():
                     severity="P1",
                     detail=f"{subject} 持续 SUSPECT 超过 6h，自动升 P1（终端动作：人工介入/降级通道）")
 
+    # C1（2026-10-28）：CONFIRMED 结论不再只进 print，必须升级。
+    # condition 用检查项名 + verdict 做稳定签名（不用 detail 全文，
+    # 否则“37 分钟前”这类易变文本每轮生成新升级、刷屏；detail 全文
+    # 仍进 detail 字段）。escalate 自带 24h 去重 + 风暴限流。
+    for _k, _v in verdicts.items():
+        try:
+            if (_v.get("verdict") == ga.CONFIRMED
+                    and _v.get("checker") and _v.get("subject")):
+                ga.escalate(_v["checker"], _v["subject"],
+                            f"{_k}:{_v['verdict']}", severity="P2",
+                            detail=_v.get("detail", ""))
+        except Exception:
+            pass
+
     prev = load_state()
     prev_overall = prev.get("overall")
     now = datetime.now(timezone.utc).isoformat()
     alert = None
-    if prev_overall and prev_overall != overall:
+    # C1（2026-10-28）：删“仅变迁才报”逻辑——持续非健康也重报。
+    if overall != "HEALTHY":
         last_alert = prev.get("last_alert_at", "")
         try:
             dt = (datetime.now(timezone.utc) -
                   datetime.fromisoformat(last_alert)).total_seconds() / 3600
         except Exception:
             dt = 99
-        if dt >= 12 or overall == "DOWN":
-            alert = (f"分发器生命线状态变迁：{prev_overall} → {overall}\n" +
+        if dt >= 0.5:
+            _trans = (f"{prev_overall} → {overall}"
+                      if prev_overall and prev_overall != overall
+                      else f"持续 {overall}")
+            alert = (f"分发器生命线状态：{_trans}\n" +
                      "\n".join(f"- {k}: {v['verdict']} {v['detail']}"
                                for k, v in verdicts.items()))
+    # C2（2026-10-28）：run.log 收进 main() 自身，不再依赖 worker 代写。
+    try:
+        with open("/home/hatch/data/perpetua/dispatch_health_run.log",
+                  "a", encoding="utf-8") as _f:
+            _f.write(f"{now} overall={overall} alert={bool(alert)}\n")
+    except Exception:
+        pass
     save_state({"overall": overall, "at": now,
                 "last_alert_at": now if alert else prev.get("last_alert_at", ""),
                 "details": {k: {"verdict": v["verdict"], "state": v["verdict"].lower(),

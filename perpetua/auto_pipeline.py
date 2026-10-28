@@ -632,12 +632,61 @@ def _write_arena_manual_file(item, jid):
         return ""
 
 
+def _vps_job_is_done(muse_job_id):
+    """G9（2026-10-28）：SSH 直读 VPS done 目录，确认 muse 任务是否已完成。
+
+    返回 True（done 目录有 .result.json 或 .json 结果）、False（明确无结果）、
+    None（SSH/解析失败，结果未知，调用方按 fail-open 处理）。
+    只读远端，不写任何状态。"""
+    import re as _re
+    if not muse_job_id or not _re.fullmatch(r"[\w-]+", str(muse_job_id)):
+        return None
+    try:
+        from dispatcher_nano_bridge import DispatcherClient
+        _c = DispatcherClient()
+        _out = _c._ssh_run(
+            f"[ -f /opt/mcp-b/data/mcp_jobs/done/{muse_job_id}.result.json ] "
+            f"|| [ -f /opt/mcp-b/data/mcp_jobs/done/{muse_job_id}.json ]; "
+            f"echo $?")
+        return _out.strip().split()[-1] == "0"
+    except Exception:
+        return None
+
+
+def _supersede_vps_job(muse_job_id):
+    """G8（2026-10-28）：把 VPS pending/claimed 文件移入 pending/superseded/。
+
+    换后端（现为转 arena_manual）时调用，防 muse-main 后到出片无人认领、
+    也防 fallback/G16 把已转手工的任务当新任务重做。返回 True（已移走或
+    本就无文件）、False（SSH 失败，调用方留 marker 下轮重试）。
+    绝不抛异常。"""
+    import re as _re
+    if not muse_job_id or not _re.fullmatch(r"[\w-]+", str(muse_job_id)):
+        return False
+    try:
+        from dispatcher_nano_bridge import DispatcherClient
+        _c = DispatcherClient()
+        _c._ssh_run(
+            f"mkdir -p /opt/mcp-b/data/mcp_jobs/pending/superseded; "
+            f"for f in /opt/mcp-b/data/mcp_jobs/pending/{muse_job_id}.json "
+            f"/opt/mcp-b/data/mcp_jobs/pending/{muse_job_id}.*.json; do "
+            f"[ -f \"$f\" ] && mv \"$f\" "
+            f"/opt/mcp-b/data/mcp_jobs/pending/superseded/; done; echo OK")
+        return True
+    except Exception:
+        return False
+
+
 def _sweep_stale_submitted(queue, route_fn=None, now=None):
     """认领超时清道夫。返回 (changed, actions)。
 
     2026-10-28 起 nano 路由已下掉：超时项不再换后端，直接转 arena 手工兜底。
     route_fn 参数保留兼容，不再用于换后端。只动 job_submitted 且无 done 文件且
     超时的项；无时间戳的项仅在轮询满 72 轮时才视为过期（P0-2 补洞）。
+    G9：翻转前若 VPS 已 done（本地取回失败），不翻转，改标
+    vps_done_unfetched 等取回重试 + 看门狗 24h 升级，防已完成任务被重做。
+    G8：转 arena_manual 时同步 supersede 原 VPS 认领并 pop muse_job_id，
+    SSH 失败留 marker 由 collect 的 arena_manual 循环重试（上限 3 次）。
     """
     now = now or datetime.now(timezone.utc)
     changed = False
@@ -663,6 +712,23 @@ def _sweep_stale_submitted(queue, route_fn=None, now=None):
         attempts = int(item.get("gen_attempts") or 0)
         backend = item.get("gen_backend") or ""
         topic = item.get("topic")
+        # G9：VPS 已 done 但本地取回失败 → 不是未完成，不翻转、不判死。
+        # 只标旗：collect 每轮继续取回重试；看门狗对 24h 未取回升级。
+        # SSH 查不到（None）按 fail-open 照常翻转（停摆期窗口内翻转与旧行为一致）。
+        _mj = item.get("muse_job_id")
+        if _mj and not item.get("vps_done_unfetched"):
+            if _vps_job_is_done(_mj) is True:
+                item["vps_done_unfetched"] = True
+                item["vps_done_seen_at"] = now.isoformat()
+                pipeline_log("generate", "error",
+                             f"清道夫跳过 {topic}：VPS 已 done 但本地未取回，"
+                             f"等取回重试不重做", 0)
+                changed = True
+                actions.append(("vps_done_unfetched", topic))
+                continue
+        if item.get("vps_done_unfetched"):
+            # 已标旗的项：取回重试仍在 collect 侧跑，清道夫永不翻转它。
+            continue
         if attempts >= GEN_MAX_ATTEMPTS:
             item["status"] = "generate_failed"
             item["generate_error"] = (
@@ -688,6 +754,22 @@ def _sweep_stale_submitted(queue, route_fn=None, now=None):
         item["gen_attempts"] = attempts + 1
         item["status"] = "arena_manual"
         item["gen_rerouted_from"] = backend
+        # G8：同步注销原 VPS 认领。成功则 pop muse_job_id（此后任何轮询
+        # 都不再认领它，后到出片也不会复活本条）；SSH 失败留 marker，
+        # 由 collect 的 arena_manual 循环重试，上限 3 次后升级不断重试。
+        # 安全边界：清道夫只遍历本地 job_submitted 项；17:05 留置的 VPS-only
+        # 认领积压无本地 job_submitted 项，永不进入本分支。
+        _mj2 = item.get("muse_job_id")
+        if _mj2:
+            if _supersede_vps_job(_mj2):
+                item.pop("muse_job_id", None)
+                item["muse_job_superseded"] = _mj2
+                item["muse_job_superseded_at"] = now.isoformat()
+                item.pop("muse_claim_supersede_pending", None)
+            else:
+                item["muse_claim_supersede_pending"] = True
+                item["muse_supersede_retries"] = \
+                    int(item.get("muse_supersede_retries") or 0) + 1
         # 方案 1 收尾：兜底产物默认须人工目视放行（上传关卡拦截），防异构后端直发
         item["requires_fallback_approval"] = True
         item.pop("fallback_approved", None)
@@ -706,6 +788,33 @@ def _sweep_stale_submitted(queue, route_fn=None, now=None):
         changed = True
         actions.append(("arena_manual", topic))
     return changed, actions
+
+
+def _handle_done_error_exhausted(item, jid):
+    """G5（2026-10-28）：done-error 重试耗尽后不再直写 generate_failed
+    死胡同，改走 arena 手工兜底（与清道夫同款语义：兜底文件 + 须人工
+    目视放行），下轮由 Stage 1 ingest / G2 看门狗接手，不静默丢弃。
+    审计另一半“重提时强制换后端”已随 nano 路由下掉而作废：route()
+    现按实时健康返 muse-main/qqbox/拒绝，重提即按当前健康路由，
+    不再需要按 retry_count 钉死后端。"""
+    backend = item.get("gen_backend") or ""
+    item["status"] = "arena_manual"
+    item["gen_rerouted_from"] = backend
+    item["requires_fallback_approval"] = True
+    item.pop("fallback_approved", None)
+    path = _write_arena_manual_file(item, jid)
+    pipeline_log("generate", "error",
+                 f"生成失败(已重试2次)转 arena 手工兜底 {item.get('topic')}（文件 {path}）", 0)
+    try:
+        if ga is not None:
+            ga.escalate("auto_pipeline.gen_timeout",
+                        str(item.get("topic") or "")[:40], "arena_manual_pending",
+                        severity="P2",
+                        detail=f"{backend} done-error 耗尽，arena 手工兜底文件 {path}",
+                        evidence_ts=ga.utcnow(), ttl_key="gen_timeout")
+    except Exception:
+        pass
+    return path
 
 
 def _write_gen_capacity(queue, now=None):
@@ -861,6 +970,14 @@ def rewrite_failed_loop(instant_timeout_minutes=0):
             item["status"] = "review_failed"
             item["needs_human_review"] = True
             item["human_reason"] = "5轮重写仍未过85，已升级人工"
+            # G12（2026-10-28）：写死人工复核起止时间供看门狗消费——
+            # 只写一次（后续轮次不再刷新），7 天无人处理看门狗即归档；
+            # 归档时发 inbox，不是静默归档（2026-10-17“不静默归档”铁律）。
+            if not item.get("human_review_at"):
+                item["human_review_at"] = now_iso()
+            if not item.get("human_review_deadline_at"):
+                item["human_review_deadline_at"] = (
+                    datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
             pipeline_log("select", "error", f"重审5轮未过→升级人工: {topic}", 0)
             changed = True
             continue
@@ -1282,6 +1399,7 @@ def submit_jobs():
                     item["muse_job_id"] = ""
                     item["gen_backend"] = "qqbox"
                     item["gen_attempts"] = 0
+                    item.pop("router_retry_count", None)  # G4：提交成功清重试计数
                     item["status"] = "qqbox_pending"
                     item["submitted_at"] = now_iso()
                     item["qqbox_route_reason"] = routed.get("reason", "")[:200]
@@ -1292,15 +1410,33 @@ def submit_jobs():
                 else:
                     raise RuntimeError(f"路由拒绝: {routed.get('reason', '')}")
             except Exception as e:
-                pipeline_log("submit", "error",
-                             f"统一路由提交失败 {item.get('topic')}: {e}", 0)
-                item["status"] = "generate_failed"
-                item["generate_error"] = f"router submit: {e}"[:200]
+                # G4（2026-10-28）：瞬时异常不直接判死，回 review_passed
+                # 下轮重提；router_retry_count 满 2 次才判死。审计另一备选
+                # “强制走 nano”已随 nano 路由下掉而作废，不实施。
+                _err = str(e).lower()
+                _transient = any(m in _err for m in (
+                    "ssh", "timeout", "timed out", "connection", "thread",
+                    "temporary", "temporarily", "socket", "ssl", "econn",
+                    "502", "503", "504"))
+                _rc = int(item.get("router_retry_count", 0) or 0)
+                if _transient and _rc < 2:
+                    item["router_retry_count"] = _rc + 1
+                    item["status"] = "review_passed"
+                    item["generate_error"] = f"router transient retry {_rc + 1}: {e}"[:200]
+                    pipeline_log("submit", "error",
+                                 f"统一路由提交瞬时失败，第 {_rc + 1} 次回 review_passed 重提 "
+                                 f"{item.get('topic')}: {e}", 0)
+                else:
+                    pipeline_log("submit", "error",
+                                 f"统一路由提交失败 {item.get('topic')}: {e}", 0)
+                    item["status"] = "generate_failed"
+                    item["generate_error"] = f"router submit: {e}"[:200]
                 continue
             item["job_id"] = jid
             item["muse_job_id"] = muse_jid
             item["gen_backend"] = "musemain"
             item["gen_attempts"] = 0
+            item.pop("router_retry_count", None)  # G4：提交成功清重试计数
             item["status"] = "job_submitted"
             item["submitted_at"] = now_iso()
             n += 1
@@ -1356,6 +1492,10 @@ def collect_musemain_results(queue):
             continue
         rp = os.path.join(MCP_DONE, jid + ".result.json")
         if os.path.exists(rp):
+            # G9：本地 done 已到，旧的未取回旗即失效，清掉防看门狗误报。
+            if item.pop("vps_done_unfetched", None) is not None:
+                item.pop("vps_done_seen_at", None)
+                changed = True
             continue
         # 2026-10-16 P1-3：轮询计数（超 72 轮约 24h → 升级）
         _gen_poll_tick(item, "musemain")
@@ -1365,8 +1505,25 @@ def collect_musemain_results(queue):
         except Exception as e:
             pipeline_log("generate", "error",
                          f"muse-main 轮询异常 {item.get('topic')}: {e}", 0)
+            # G9：取回失败时先经 SSH 确认 VPS 是否已 done；已 done 则标旗，
+            # 清道夫此后永不翻转它（取回重试每轮继续），未 done 则纯 transient。
+            try:
+                _st = gvm._check_via_ssh(muse_jid)
+                if str(_st.get("status", "")).lower() in (
+                        "done", "completed", "succeeded"):
+                    if not item.get("vps_done_unfetched"):
+                        item["vps_done_unfetched"] = True
+                        item["vps_done_seen_at"] = \
+                            datetime.now(timezone.utc).isoformat()
+                        pipeline_log("generate", "error",
+                                     f"muse-main 取回失败但 VPS 已 done "
+                                     f"{item.get('topic')}：标未取回不重做", 0)
+            except Exception:
+                pass
             continue  # transient，下轮重试
         if state == "done":
+            item.pop("vps_done_unfetched", None)
+            item.pop("vps_done_seen_at", None)
             _gen_poll_reset(item)
             sys.path.insert(0, "/home/hatch/data/perpetua")
             from atomic_json import atomic_write as _aw2
@@ -1795,6 +1952,38 @@ def collect_results():
             pipeline_log("generate", "error",
                          f"arena 手工兜底待派发：{_am.get('topic')}（文件 "
                          f"{ARENA_MANUAL_DIR}/{_am.get('job_id')}.md）", 0)
+            # G8：清道夫转手工时 VPS 注销失败的重试（上限 3 次）。
+            # 成功则 pop muse_job_id；耗尽则 P2 升级一次后停 retry，留人工。
+            if _am.get("muse_claim_supersede_pending") and _am.get("muse_job_id"):
+                _rt = int(_am.get("muse_supersede_retries") or 0)
+                if _rt < 3:
+                    if _supersede_vps_job(_am["muse_job_id"]):
+                        _am["muse_job_superseded"] = _am.pop("muse_job_id")
+                        _am["muse_job_superseded_at"] = \
+                            datetime.now(timezone.utc).isoformat()
+                        _am.pop("muse_claim_supersede_pending", None)
+                        changed = True
+                        pipeline_log("generate", "ok",
+                                     f"arena 手工兜底 VPS 注销补成功 "
+                                     f"{_am.get('topic')}", 0)
+                    else:
+                        _am["muse_supersede_retries"] = _rt + 1
+                        changed = True
+                elif not _am.get("muse_supersede_escalated"):
+                    _am["muse_supersede_escalated"] = True
+                    changed = True
+                    try:
+                        if ga is not None:
+                            ga.escalate("auto_pipeline.gen_timeout",
+                                        str(_am.get("topic") or "")[:40],
+                                        "muse_claim_supersede_failed",
+                                        severity="P2",
+                                        detail="VPS 认领注销 3 次失败，"
+                                               "muse-main 后到出片可能无人认领",
+                                        evidence_ts=ga.utcnow(),
+                                        ttl_key="gen_timeout")
+                    except Exception:
+                        pass
     # 2026-10-09 自治补漏：submit 原来只在 11:00/22:00 跟选题跑，中途 review_passed 的要等数小时。
     # 每 20 分钟 collect 时扫一遍，达标即提交生成（submit_jobs 自带 ≥85 硬门禁 + 已提交的不重复）。
     # 先修复坏状态：review_passed 但无 score（历史误写）→ 打回重审。
@@ -1880,10 +2069,8 @@ def collect_results():
                 pipeline_log("generate", "ok",
                              f"生成失败，第 {retry+1} 次重试 {item['topic']}", 0)
             else:
-                item["status"] = "generate_failed"
                 item["generate_error"] = str(res.get("error", ""))[:200]
-                pipeline_log("generate", "error",
-                             f"生成失败(已重试2次，放弃) {item['topic']}", 0)
+                _handle_done_error_exhausted(item, jid)
                 # 告警：连续失败需要人工看
                 _queue_verb_expansion(f"生成连续失败: {item['topic']}") \
                     if 'verb' in str(res.get('error','')).lower() else None
@@ -2203,6 +2390,31 @@ def _enqueue_private_flip(video_id, title, slot=None, review_score=None,
     return entry
 
 
+def _is_recovered_vid_usable(vid, queue_items, privateq_items):
+    """5xx 恢复防误认（2026-10-28）：频道最近上传里同标题命中的 video_id，
+    只有在未被已占视频的条目拥有、且未已在 privateq 里时才可用。
+    同标题多条目并存时，误认会把别人的 video_id 写进来并重复入队。
+    任一来源异常时 fail-closed 返回 False（走正常重试链，不丢视频）。
+    调用方传进来的 queue_items 应只含已占视频状态的条目判断——本函数内
+    以 uploaded_private/uploaded_no_queue 为占位状态过滤，待上传的本条
+    （ready_to_upload）不会误挡自己。"""
+    if not vid:
+        return False
+    try:
+        # 注意：不用 `or []`——空列表子类 falsy 时会跳过迭代、掩盖读取异常。
+        for it in (queue_items if queue_items is not None else []):
+            if (isinstance(it, dict)
+                    and it.get("status") in ("uploaded_private", "uploaded_no_queue")
+                    and it.get("video_id") == vid):
+                return False
+        for it in (privateq_items if privateq_items is not None else []):
+            if isinstance(it, dict) and it.get("video_id") == vid:
+                return False
+    except Exception:
+        return False
+    return True
+
+
 def _find_recent_upload_by_title(title):
     """2026-10-16 P2-6（红队 WEAKEN 对冲）：5xx/网络错误可能已在服务端提交，
     重试前先查频道最近 5 条是否有同标题已发布，防止盲重传导致重复发布。
@@ -2356,14 +2568,33 @@ def _auto_upload_private(item):
         # 红队 WEAKEN 对冲：重试前先验重——5xx 可能已在服务端提交
         _dup_vid = _find_recent_upload_by_title(item["title"])
         if _dup_vid:
-            pipeline_log("publish", "ok",
-                         f"上传疑似已提交（频道已见同标题 {_dup_vid}），按成功恢复: {item['topic']}", 1)
-            item["status"] = "uploaded_private"
-            item["video_id"] = _dup_vid
-            item["upload_result"] = f"recovered:{_dup_vid}"
-            item["uploaded_at"] = now_iso()
-            item.pop("upload_retries", None)
-            return True, False
+            # 2026-10-28 5xx 恢复缺口修复：旧代码直接置 uploaded_private，
+            # 既不入 privateq（永无翻公开消费者）、也不记状态机/发通知，
+            # 且同标题误认会把别人的 video_id 写进来。改后：先验重防误认，
+            # 验过置 uploaded_no_queue，交 U5 消费者下轮补入队（节流/入队/
+            # 转 uploaded_private 全走已有链路）；验不过落回正常重试链
+            # （≤2 次后 upload_failed → P0-3），绝不谎报成功。
+            _usable = False
+            try:
+                _usable = _is_recovered_vid_usable(
+                    _dup_vid, queue_db.pipeline_load(),
+                    queue_db.privateq_load())
+            except Exception:
+                _usable = False
+            if _usable:
+                pipeline_log("publish", "ok",
+                             f"上传疑似已提交（频道已见同标题 {_dup_vid}），"
+                             f"验重通过，转 uploaded_no_queue 待 U5 补入队: {item['topic']}", 1)
+                item["status"] = "uploaded_no_queue"
+                item["video_id"] = _dup_vid
+                item["upload_result"] = f"recovered:{_dup_vid}"
+                item["uploaded_at"] = now_iso()
+                item["recovered_from_5xx"] = True
+                item.pop("upload_retries", None)
+                return True, False
+            pipeline_log("publish", "error",
+                         f"上传疑似已提交但验重未通过（{_dup_vid} 已被占用或队列读不到），"
+                         f"不按成功恢复，走重试链: {item['topic']}", 0)
         _ur = int(item.get("upload_retries", 0) or 0)
         if _ur < 2:
             item["upload_retries"] = _ur + 1

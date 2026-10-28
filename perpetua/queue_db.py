@@ -441,9 +441,18 @@ def claim_row(queue, worker_id, lease_seconds=900):
         c.close()
 
 
+# X2 后续（2026-10-28）：sweep 只扫非 shim 队列。shim 行（pipeline /
+# instant / privateq）是 JSON 队列的 SQLite 镜像：行 status 由 _save_all
+# 映射、lease_alarm 恒 NULL，且 _load_all 会过滤并删掉 DEAD 行——sweep
+# 一旦对 shim 行置 DEAD，下次 load→save 即丢行。shim 行的超时/归档由各
+# 队列自己的消费者（清道夫、看门狗）负责，绝不由通用 sweep 越俎代庖。
+SHIM_QUEUE_NAMES = ("pipeline", "instant", "privateq")
+
+
 def sweep():
     """Mark PENDING/PROCESSING rows past timeout_alarm as DEAD; audit to log.
 
+    X2 后续：仅限非 shim 队列（shim 行见 SHIM_QUEUE_NAMES 说明）。
     Returns {'scanned': N, 'escalated': M, 'details': [event_ids]}.
     """
     _ensure()
@@ -452,16 +461,20 @@ def sweep():
     c = _conn()
     try:
         c.execute("BEGIN IMMEDIATE")
+        _placeholders = ",".join("?" * len(SHIM_QUEUE_NAMES))
         stale = c.execute(
             """SELECT event_id, queue_name FROM event_bus
                WHERE status IN ('PENDING','PROCESSING') AND timeout_alarm < ?
-               ORDER BY id""",
-            (now,),
+               AND queue_name NOT IN (%s)
+               ORDER BY id""" % _placeholders,
+            (now,) + SHIM_QUEUE_NAMES,
         ).fetchall()
         ids = [r["event_id"] for r in stale]
         scanned = c.execute(
             "SELECT COUNT(*) AS n FROM event_bus WHERE status IN"
-            " ('PENDING','PROCESSING')"
+            " ('PENDING','PROCESSING') AND queue_name NOT IN (%s)"
+            % _placeholders,
+            SHIM_QUEUE_NAMES,
         ).fetchone()["n"]
         if ids:
             c.execute(

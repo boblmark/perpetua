@@ -3,6 +3,8 @@
 每 30 分钟运行，告警 + 自动修复（review_timeout 自动重送评审）。
 2026-10-08 补完 P1-3/4：非终态超时检查 + ask_studio pending 超时。
 2026-10-28 新增 check_arena_manual（空转审计 G2）：arena_manual 只告警不改状态。
+2026-10-28 新增 G13/G14/G15/G16/C3/C4：review_passed<85 路由救援、review_error
+自动重审、teaser blocked 到期复查、VPS 孤儿扫描、状态机不一致检查、非终态兜底。
 """
 import json
 import os
@@ -27,6 +29,14 @@ VEO_INBOX = f"{DATA}/veo_inbox"
 ORPHAN_STATE_PATH = f"{DATA}/perpetua/qc_orphan_alerted.json"
 ALERT_DEDUP_PATH = f"{DATA}/perpetua/dead_state_alert_dedup.json"
 ALERT_DEDUP_HOURS = 12  # 2026-10-09：同一告警 12h 内只发一次（防 30min 轮询刷屏）
+INSTANT_QUEUE_PATH = f"{DATA}/ask_studio/instant_queue.json"
+STATE_CONSUMERS_PATH = f"{DATA}/perpetua/state_consumers.json"
+# C4 兜底里视为终态（直接跳过）的状态集合：select_topics 的 _TERMINAL
+# + 其他已完结态（published/teaser_published/retired/archived_permanent/
+# uploaded_private 均已有翻公开或完结消费者，不再告警）。
+_C4_TERMINAL = {"uploaded", "rejected", "archived", "upload_permanently_failed",
+                "archived_permanent", "published", "teaser_published",
+                "retired", "uploaded_private"}
 
 def now():
     return datetime.now(timezone.utc)
@@ -38,6 +48,20 @@ def parse_time(s):
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except:
         return None
+
+def _item_age_hours(it):
+    """取条目年龄（小时）。按 updated_at/reviewed_at/selected_at/created_at
+    顺序取第一个可解析的时间戳；缺失或不可解析返回 None。
+    naive 时间戳按 UTC 计（存量 teaser_failed 有 2026-10-15 naive 串，
+    与 aware 的 now() 直接相减会 TypeError 拖垮看门狗）。"""
+    for k in ("updated_at", "reviewed_at", "selected_at", "created_at"):
+        ts = parse_time(it.get(k, "") or "")
+        if ts is not None:
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return (now() - ts).total_seconds() / 3600
+    return None
+
 
 def load(p, default):
     return tolerant_read(p, default)
@@ -126,10 +150,79 @@ def check_stuck_uploads():
     return issues
 
 def check_status_mismatch():
-    """检查状态机不一致"""
+    """C3（2026-10-28）：状态机不一致检查（此前为空壳，从未被调用；
+    main() 在 check_pipeline_stuck 之前调用）。只告警不改状态。
+    三项 concrete 检查（审计原文）：
+    1. pipeline 队列里 status=approved 但无 youtube_video_id 又无
+       video_file → 批准了却无上传路径（Rule 4 veo_v51 事故同类：
+       批准值与消费值不匹配）。
+    2. 有 video_file 但状态既不在 state_consumers 映射里、又不在
+       看门狗已覆盖分支（TRANSIENT / review_passed / ready_to_upload /
+       arena_manual(G2) / teaser_failed(C4)）里，也不在终态里
+       → 有成片却无消费者。
+    3. awaiting_approval 里 status=approved 的项，其 topic 在 pipeline
+       队列里有对应条目且全部已是死终态（archived/rejected/
+       archived_permanent）→ 批准与队列状态矛盾。无对应条目的
+       不判（MCP 直批等合法路径也有 awaiting 项，防误报）。
+    """
     issues = []
-    # upload_approved 只认 awaiting，但人工批准设 approved
-    # 这里检查是否有这种不匹配导致的卡死
+    try:
+        q = queue_db.pipeline_load()
+    except Exception as ex:
+        print(f"  WARN: 读 SQLite 队列失败（mismatch 检查跳过）: {ex}")
+        return issues
+    items = q if isinstance(q, list) else q.get("items", [])
+    consumers = {}
+    try:
+        d = load(STATE_CONSUMERS_PATH, {})
+        if isinstance(d, dict):
+            consumers = d.get("consumers", {}) or {}
+    except Exception:
+        consumers = {}
+    _covered = {"review_timeout", "review_error", "generate_failed",
+                "qc_failed", "qc_error", "selected", "job_submitted",
+                "review_passed", "ready_to_upload", "arena_manual",
+                "teaser_failed", "approved"} | _C4_TERMINAL
+    # 注：approved 排除在检查 2 外——有 video_file 的 approved 项已有
+    # 上传路径（超时由 check_stuck_uploads 覆盖），无 file 的由检查 1 覆盖。
+    by_topic = {}
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        by_topic.setdefault(str(it.get("topic", "")), []).append(it)
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        st = it.get("status", "")
+        topic = it.get("topic", "?")
+        if st == "approved" and not it.get("youtube_video_id") \
+                and not it.get("video_file"):
+            issues.append(
+                f"状态不一致：{topic} pipeline 状态 approved 但无 "
+                f"video_id 又无 video_file，无上传路径")
+        if it.get("video_file") and st not in consumers \
+                and st not in _covered:
+            issues.append(
+                f"状态不一致：{topic} 有 video_file 但状态 {st} "
+                f"不在消费映射里又无看门狗分支覆盖")
+    try:
+        aa = load(APPROVAL_PATH, [])
+    except Exception:
+        aa = []
+    aa = aa if isinstance(aa, list) else aa.get("items", [])
+    for it in aa:
+        if not isinstance(it, dict) or it.get("status") != "approved":
+            continue
+        topic = str(it.get("topic", ""))
+        if not topic:
+            continue
+        peers = by_topic.get(topic, [])
+        if peers and all((p.get("status") in
+                          ("archived", "rejected", "archived_permanent"))
+                         for p in peers):
+            issues.append(
+                f"状态不一致：awaiting 已批准 {topic}，但 pipeline "
+                f"对应条目已是死终态，批准与队列矛盾")
     return issues
 
 def _load_reject_calib_samples():
@@ -286,15 +379,32 @@ def check_pipeline_stuck():
             if isinstance(rs, (int, float)) and rs < 85 and not cg:
                 ts = it.get("updated_at") or it.get("reviewed_at") or ""
                 updated = parse_time(ts)
+                if updated is not None and updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
                 if updated:
                     age_h = (now() - updated).total_seconds() / 3600
-                    if age_h >= 2:
+                    # G13（2026-10-28，审计二选一取方案②）：此前只告警
+                    # 不路由。现告警同时执行同一改写，限一次（flag 防重复；
+                    # 改写后状态已不是 review_passed，下轮自然不再命中）。
+                    # submit_jobs 门禁本身不动（不改变新鲜条目的行为）。
+                    # 目标 teaser_validation 有消费者（teaser_validate.py
+                    # 提交流 + publish_healer ACTIONABLE，Rule 15 通过）。
+                    if age_h >= 2 and not it.get("review_passed_rerouted"):
                         topic = it.get("topic", "?")
+                        it["status"] = "teaser_validation"
+                        it["teaser_queued_at"] = now().isoformat()
+                        it["review_passed_rerouted"] = True
+                        it["updated_at"] = now().isoformat()
+                        changed = True
+                        auto_fixed.append(
+                            f"{topic}（review_passed {rs}分<85非对照组 → "
+                            f"已按 D20261010-007 路由到 teaser_validation）")
+                    elif age_h >= 2 and it.get("review_passed_rerouted"):
+                        # 异常态：已路由过一次却仍滞留 review_passed
+                        # （正常路径改写后状态已变，不应出现）→ 只告警不重复改写。
                         issues.append(
-                            f"{topic} review_passed {rs}分（<85非对照组）"
-                            f"已 {age_h:.1f}h，submit 门禁拦住，无执行者。"
-                            f"应按 D20261010-007 路由到 teaser_validation"
-                        )
+                            f"{it.get('topic', '?')} review_passed {rs}分"
+                            f"（<85非对照组）已 {age_h:.1f}h，已路由过一次仍滞留，待人工看")
             continue
         # Q9（2026-10-28，按审计结论落地）：ready_to_upload 被关卡
         # 持有超 24h → inbox 升级（只告警，不自动改状态、不放行；
@@ -311,6 +421,51 @@ def check_pipeline_stuck():
                         "待人工目视放行")
             continue
         if st not in TRANSIENT:
+            # C4（2026-10-28）：TRANSIENT 之外的非终态兜底。
+            # 终态直接跳过；arena_manual 由 G2 覆盖（24h 告警、168h
+            # 升级措辞），此处不重复处理（C4 原文“>24h 走 escalate”
+            # 与 G2 已落地口径重叠，不双写，偏差已在实施记录明示）。
+            # teaser_failed >24h 自动归档；status 缺失直接告警并归档；
+            # 其余非终态 >7 天无消费者认领即告警（只告警不改状态）。
+            topic = it.get("topic", "?")
+            if st in _C4_TERMINAL or st == "arena_manual":
+                continue
+            if st == "teaser_failed":
+                _tf_age = _item_age_hours(it)
+                if _tf_age is not None and _tf_age >= 24:
+                    it["status"] = "archived"
+                    it["archive_reason"] = "teaser_failed_24h_auto_archive"
+                    it["updated_at"] = now().isoformat()
+                    issues.append(
+                        f"pipeline_queue 归档：{topic} teaser_failed 已 "
+                        f"{_tf_age:.1f}h，转人工")
+                    changed = True
+                elif _tf_age is not None:
+                    issues.append(
+                        f"pipeline_queue 卡死：{topic} teaser_failed 已 "
+                        f"{_tf_age:.1f}h（<24h 仅告警）")
+                else:
+                    issues.append(
+                        f"pipeline_queue 卡死：{topic} teaser_failed "
+                        f"无时间戳，无法判龄")
+                continue
+            if not st:
+                it["status"] = "archived"
+                it["archive_reason"] = "status_none_auto_archive"
+                it["updated_at"] = now().isoformat()
+                issues.append(
+                    f"pipeline_queue 归档：{topic} 状态缺失（None/空），转人工")
+                changed = True
+                continue
+            _c4_age = _item_age_hours(it)
+            if _c4_age is not None and _c4_age >= 168:
+                issues.append(
+                    f"pipeline_queue 卡死：{topic} status={st} 已 "
+                    f"{_c4_age:.1f}h 无消费者认领（C4 兜底，>7 天告警）")
+            elif _c4_age is None:
+                issues.append(
+                    f"pipeline_queue 卡死：{topic} status={st} 无时间戳，"
+                    f"无法判龄（C4 兜底）")
             continue
         # X1（2026-10-28）：job_submitted 不再用 updated_at 判龄——collect 每
         # 20 分钟 _gen_poll_tick 经 pipeline_save 刷新 updated_at，job_submitted
@@ -413,6 +568,32 @@ def check_pipeline_stuck():
                 changed = True
             else:
                 issues.append(f"pipeline_queue 卡死：{topic} status={st} 已 {age_h:.1f}h")
+        elif st == "review_error":
+            # G14（2026-10-28）：review_error 超 2h 自动回 selected 重审
+            # （本分支执行时 age_h 已过 2h 门限）。沿用 review_timeout
+            # 的 auto_resubmitted 计数（上限 3 次；review_timeout 的
+            # map 口径虽写“人工”，但看门狗早已对其自动重送，G14 是
+            # 同款模式的延伸）。满 3 次转 archived（同 review_timeout
+            # 的封顶口径）。qc_error 不在此处理（Q6 已覆盖：>6h 回
+            # job_submitted，上限 qc_error_back_count 3 次，≥24h 归档），
+            # 不得双写。
+            _resub = int(it.get("auto_resubmitted", 0) or 0)
+            if _resub >= 3:
+                it["status"] = "archived"
+                it["archive_reason"] = "review_error_resubmit_cap:3次自动重送仍无评审答案"
+                it["updated_at"] = now().isoformat()
+                issues.append(
+                    f"pipeline_queue 归档：{topic} review_error 已 {age_h:.1f}h，"
+                    f"重送上限已耗尽，转人工")
+                changed = True
+            else:
+                it["status"] = "selected"
+                it["auto_resubmitted"] = _resub + 1
+                it["updated_at"] = now().isoformat()
+                changed = True
+                auto_fixed.append(
+                    f"{topic}（review_error {age_h:.1f}h → 已自动回 selected "
+                    f"重审，第 {_resub + 1} 次）")
         else:
             issues.append(f"pipeline_queue 卡死：{topic} status={st} 已 {age_h:.1f}h{_age_note}")
     if changed:
@@ -776,6 +957,277 @@ def check_privateq_stuck():
     return issues
 
 
+def check_review_failed_human():
+    """G12（2026-10-28）：review_failed 5 轮后人工持有加期限。
+    5 轮分支写 human_review_deadline_at（只写一次）；到期未处理 →
+    archived + archive_reason，main() 侧 alert 发 inbox，不是静默归档
+    （2026-10-17“不静默归档”铁律的落点）。无 deadline 的老条目：
+    human_review_at + 7 天；再无则 updated_at + 7 天；三者皆无则跳过。"""
+    try:
+        q = queue_db.pipeline_load()
+    except Exception:
+        return []
+    archived = []
+    changed = False
+    for it in q:
+        if not isinstance(it, dict):
+            continue
+        if it.get("status") != "review_failed" or not it.get("needs_human_review"):
+            continue
+        dl = parse_time(it.get("human_review_deadline_at") or "")
+        if dl is None:
+            base = (parse_time(it.get("human_review_at") or "")
+                    or parse_time(it.get("updated_at") or ""))
+            if base is None:
+                continue
+            dl = base + timedelta(days=7)
+        if now() < dl:
+            continue
+        it["status"] = "archived"
+        it["archive_reason"] = "review_failed_human_timeout_7d"
+        it["updated_at"] = now().isoformat()
+        changed = True
+        archived.append(it)
+    if changed:
+        try:
+            queue_db.pipeline_save(q)
+        except Exception:
+            return []
+    return [f"pipeline_queue 归档：{it.get('topic', '?')} 人工复核超 7 天未处理（G12），转人工"
+            for it in archived]
+
+
+def _escalate_teaser_blocked(item):
+    """G15 复查升级通道（与 teaser_validate._escalate_publish_blocked
+    同款 escalate 通道；独立函数以便测试 monkeypatch）。"""
+    from graded_assertions import escalate
+    escalate(
+        checker="dead_state_watchdog",
+        subject=str(item.get("topic", ""))[:40],
+        condition="teaser_publish_blocked_review_due",
+        severity="P2",
+        detail="blocked_at=%s re-review due, still blocked" % (
+            item.get("teaser_blocked_at", "")),
+    )
+
+
+def check_teaser_blocked_review():
+    """G15（2026-10-28）：teaser_publish_blocked 到期复查。
+    到期未人工处理 → 再次升级（不自动改状态，保住“不单方改”原则）；
+    升级成功后把复查到期日再推 7 天（每周复查一次，不每 30 分钟刷屏）。
+    无 due 且无 blocked_at 的跳过（无法判期）。升级写入失败时不推
+    到期日（下轮重试），并返回失败告警。返回 issues（调用方进 inbox）。"""
+    issues = []
+    try:
+        q = queue_db.pipeline_load()
+    except Exception as ex:
+        print(f"  WARN: 读 SQLite 队列失败（blocked 复查跳过）: {ex}")
+        return issues
+    items = q if isinstance(q, list) else q.get("items", [])
+    changed = False
+    for it in items:
+        if not isinstance(it, dict) or it.get("status") != "teaser_publish_blocked":
+            continue
+        due = parse_time(it.get("teaser_block_review_due_at", "") or "")
+        if due is None:
+            base = parse_time(it.get("teaser_blocked_at", "") or "")
+            if base is None:
+                continue
+            due = base + timedelta(days=7)
+        if due.tzinfo is None:
+            due = due.replace(tzinfo=timezone.utc)
+        if now() < due:
+            continue
+        try:
+            _escalate_teaser_blocked(it)
+        except Exception as ex:
+            issues.append(
+                f"teaser_publish_blocked 复查升级写入失败："
+                f"{it.get('topic', '?')}（{ex}），下轮重试")
+            continue
+        it["teaser_block_review_due_at"] = (now() + timedelta(days=7)).isoformat()
+        it["teaser_block_reescalated_at"] = now().isoformat()
+        it["updated_at"] = now().isoformat()
+        changed = True
+        issues.append(
+            f"teaser_publish_blocked 到期复查：{it.get('topic', '?')} "
+            f"仍未人工处理，已再次升级（下次复查 7 天后）")
+    if changed:
+        try:
+            queue_db.pipeline_save(q)
+        except Exception:
+            return []
+    return issues
+
+
+def check_pending_instant_reconcile():
+    """C4（2026-10-28）：pending_instant 对账。只告警不改状态。
+    1. event_bus 里 status=pending_instant 的项：>24h 未动即告警
+       （无时间戳的同样告警一次，12h 去重兜底）。
+    2. instant_queue.json 里 status=pending_instant 的项：按 key
+       （topic md5 前 16 位）对不上任何 event_bus 条目 → 孤儿告警
+       （僵尸候选，交队列处理任务体的 superseded 清理，不在此处改状态）。
+    现存两边均为 0 条 pending_instant（2026-10-28 核查），本检查为防复发。"""
+    import hashlib
+    issues = []
+    try:
+        q = queue_db.pipeline_load()
+    except Exception as ex:
+        print(f"  WARN: 读 SQLite 队列失败（pending 对账跳过）: {ex}")
+        return issues
+    items = q if isinstance(q, list) else q.get("items", [])
+    eb_keys = set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        t = it.get("topic")
+        if t:
+            eb_keys.add(hashlib.md5(str(t).encode()).hexdigest()[:16])
+        if it.get("status") == "pending_instant":
+            age = _item_age_hours(it)
+            if age is None or age >= 24:
+                issues.append(
+                    f"pending_instant 滞留：{it.get('topic', '?')} "
+                    f"已 {age if age is not None else '未知'}h 未动")
+    try:
+        iq = load(INSTANT_QUEUE_PATH, {})
+    except Exception:
+        iq = {}
+    iq_items = iq.get("items", []) if isinstance(iq, dict) else []
+    for it in iq_items:
+        if not isinstance(it, dict) or it.get("status") != "pending_instant":
+            continue
+        key = it.get("key", "")
+        if key and key not in eb_keys:
+            issues.append(
+                f"pending_instant 孤儿：instant_queue {key} 在 event_bus "
+                f"中无对应条目，疑似僵尸，待 superseded 清理")
+    return issues
+
+
+def check_vps_done_unfetched():
+    """G9（2026-10-28）：VPS 已 done 但本地取回失败的项，24h 未取回升级。
+
+    只告警不改状态：取回重试仍在 collect 侧每轮跑；看门狗不替它翻转、
+    不归档，防已完成任务被重做后又被看门狗埋掉。无 seen_at 的老旗
+    以 updated_at 计 24h；三者皆无则跳过（不误报）。"""
+    try:
+        q = queue_db.pipeline_load()
+    except Exception:
+        return []
+    issues = []
+    for it in q:
+        if not isinstance(it, dict):
+            continue
+        if not it.get("vps_done_unfetched"):
+            continue
+        base = (parse_time(it.get("vps_done_seen_at") or "")
+                or parse_time(it.get("updated_at") or ""))
+        if base is None:
+            continue
+        if (now() - base) < timedelta(hours=24):
+            continue
+        issues.append(
+            f"pipeline_queue VPS 已 done 但本地 24h 未取回："
+            f"{it.get('topic', '?')}（muse_job_id="
+            f"{it.get('muse_job_id', '?')}），取回重试仍在跑，"
+            f"请人工查 VPS 输出文件是否在位（G9）")
+    return issues
+
+
+def _vps_client():
+    """G16：延迟导入 DispatcherClient（SSH 失败不拖垮看门狗导入；
+    测试可 monkeypatch 本函数）。"""
+    from dispatcher_nano_bridge import DispatcherClient
+    return DispatcherClient()
+
+
+def check_vps_orphans():
+    """G16（2026-10-28）：VPS-only 任务扫描。best-effort，异常绝不
+    拖垮看门狗；SSH/交付任一步失败则该条不动（不归档）。
+    对 VPS pending 中 consumer=muse-main 的 generate_video 任务，若
+    同时满足：无本地 pipeline muse_job_id / teaser muse_job_ids /
+    job_id 关联、未被认领（文件名不含 .claimed-）、年龄 >6h
+    （queued_at 可解析；不可解析则 fail-closed 跳过）、非测试任务、
+    未已有 done 结果 → 写 failed 结果（backend 标
+    dead-state-watchdog-sweep，不冒充 nano 桥）并 mark_pending_done。
+    每轮最多 3 条（爆破半径控制）；与 17:05 认领留置令无冲突
+    （已认领文件一律排除）；与 daemon fallback 的“尝试耗尽留 pending”
+    的关系：6h 窗口已给足人工干预，超期仍无人认领才给终态。"""
+    import base64 as _b64
+    import re as _re
+    issues = []
+    try:
+        q = queue_db.pipeline_load()
+    except Exception as ex:
+        print(f"  WARN: 读 SQLite 队列失败（VPS 孤儿扫描跳过）: {ex}")
+        return issues
+    items = q if isinstance(q, list) else q.get("items", [])
+    local_muse_ids = set()
+    local_job_ids = set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if it.get("muse_job_id"):
+            local_muse_ids.add(str(it["muse_job_id"]))
+        mj = it.get("muse_job_ids")
+        if isinstance(mj, list):
+            local_muse_ids.update(str(x) for x in mj)
+        if it.get("job_id"):
+            local_job_ids.add(str(it["job_id"]))
+    try:
+        client = _vps_client()
+        jobs = client.list_pending_jobs()
+    except Exception as ex:
+        print(f"  WARN: VPS pending 列表失败（孤儿扫描跳过）: {ex}")
+        return issues
+    swept = 0
+    for job in jobs:
+        if swept >= 3:
+            break
+        try:
+            if job.job_type != "generate_video" or job.consumer != "muse-main":
+                continue
+            fname = str((job.raw or {}).get("file", ""))
+            if ".claimed-" in fname:
+                continue
+            jid = job.job_id or ""
+            if not jid or not _re.fullmatch(r"[\w-]+", jid):
+                continue
+            if jid.startswith("test-"):
+                continue
+            payload = job.payload if isinstance(job.payload, dict) else {}
+            if payload.get("test_marker"):
+                continue
+            if client.job_already_done(jid):
+                continue
+            age = job.age_minutes
+            if age is None or age < 0 or age <= 360:
+                continue
+            if jid in local_muse_ids or jid in local_job_ids:
+                continue
+            result = {"job_id": jid, "status": "failed",
+                      "backend": "dead-state-watchdog-sweep",
+                      "completed_at": now().isoformat(),
+                      "error": "vps_orphan_6h_no_local_link"}
+            b64 = _b64.b64encode(
+                json.dumps(result, ensure_ascii=False).encode()).decode()
+            from dispatcher_nano_bridge import VPS_DONE_DIR
+            client._ssh_run(
+                f"echo {b64} | base64 -d > {VPS_DONE_DIR}/{jid}.result.json")
+            client.mark_pending_done(jid)
+            swept += 1
+            issues.append(
+                f"VPS 孤儿已终态：{jid}（muse-main generate_video 无本地"
+                f"关联、滞留 {age:.0f} 分钟，已写 failed 并归档 pending）")
+        except Exception as ex:
+            issues.append(
+                f"VPS 孤儿处理失败（任务保留 pending）："
+                f"{getattr(job, 'job_id', '?')}（{ex}）")
+            continue
+    return issues
+
+
 def main():
     print(f"=== 死状态扫描 {now().isoformat()[:19]} ===")
     stuck = check_stuck_uploads()
@@ -787,6 +1239,12 @@ def main():
             alert(msg)
     else:
         print("  无卡死上传")
+
+    # C3（2026-10-28）：状态机不一致检查（此前为空壳，从未被调用）
+    mm_issues = check_status_mismatch()
+    for msg in mm_issues:
+        print(f"  MISMATCH: {msg}")
+        alert(f"死状态：{msg}")
 
     # P1-3: pipeline 非终态卡死
     p_issues, p_fixed = check_pipeline_stuck()
@@ -881,11 +1339,47 @@ def main():
         print(f"  PRIVATEQ: {msg}")
         alert(f"死状态：{msg}")
 
+    # G12（2026-10-28）：review_failed 人工持有 7 天到期归档（发 inbox，非静默）
+    rh_issues = check_review_failed_human()
+    for msg in rh_issues:
+        print(f"  REVIEW-HUMAN-TIMEOUT: {msg}")
+        alert(f"死状态：{msg}")
+
+    # G15（2026-10-28）：teaser_publish_blocked 到期复查再升级
+    tb_issues = check_teaser_blocked_review()
+    for msg in tb_issues:
+        print(f"  TEASER-BLOCKED-REVIEW: {msg}")
+        alert(f"死状态：{msg}")
+
+    # C4（2026-10-28）：pending_instant 对账（只告警不改状态）
+    pi_issues = check_pending_instant_reconcile()
+    for msg in pi_issues:
+        print(f"  PENDING-INSTANT: {msg}")
+        alert(f"死状态：{msg}")
+
+    # G16（2026-10-28）：VPS-only 任务扫描（best-effort，不拖垮看门狗）
+    try:
+        vo_issues = check_vps_orphans()
+    except Exception as ex:
+        print(f"  WARN: VPS 孤儿扫描异常（跳过）: {ex}")
+        vo_issues = []
+    for msg in vo_issues:
+        print(f"  VPS-ORPHAN: {msg}")
+        alert(f"死状态：{msg}")
+
+    # G9（2026-10-28）：VPS 已 done 但本地 24h 未取回，只告警不改状态
+    vu_issues = check_vps_done_unfetched()
+    for msg in vu_issues:
+        print(f"  VPS-DONE-UNFETCHED: {msg}")
+        alert(f"死状态：{msg}")
+
     print("=== 扫描完成 ===")
     return (len(stuck) + len(p_issues) + len(a_issues) + len(d_issues)
             + len(e_issues) + len(r_issues) + len(o_issues)
             + len(s_issues) + len(s_archived) + len(b_issues) + len(r2_issues)
-            + len(am_issues) + len(pq_issues))
+            + len(am_issues) + len(pq_issues) + len(rh_issues)
+            + len(mm_issues) + len(tb_issues) + len(pi_issues)
+            + len(vo_issues) + len(vu_issues))
 
 if __name__ == "__main__":
     with run_lock("dead_state_watchdog"):
