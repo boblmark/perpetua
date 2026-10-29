@@ -1,0 +1,21 @@
+name: browser_scheduled_upload_slot_check
+title: Browser Scheduled Upload Slot Check
+description: Create a slot check at browser upload time so a scheduled video is verified and rescued at its slot.
+category: Creation
+include_in_prompt: true
+skill_improvement:
+  managed: true
+  status: active
+  evidence_handles:
+  - 'memory/2026-10-28.md: karaoke J8KzNV3Hgqc still private at 23:45 on 2026-10-28, no schedule shown, flipped 23:52-23:53 after approval'
+  - 'memory/2026-10-28.md: oven QL9IHBvGhkk still private at 05:35 on 2026-10-29, 5 minutes after its 05:30 slot, browser upload never written back to privateq'
+  - '/opt/muse/skills/social-publishing/SKILL.md: Publish and verify returns scheduled time and reads post back after publication, with no slot-time recheck'
+  measurement:
+    proxy_metric_id: scheduled_flip_success_rate
+    success_criterion: In the window, every browser-scheduled upload has a slot check created at upload, every slot check runs at its slot, a missed slot with unchanged title and description is flipped under the upload schedule approval at the slot check without a fresh-decision delay, and a missed slot outside that cover is escalated within 15 minutes. A window with no browser-scheduled upload is inconclusive, not a failure.
+    window_days: 30
+  needs_review: false
+  rationale: 'WHAT keeps failing: two browser-scheduled videos missed their Studio slots in one night, karaoke at 23:30 on 2026-10-28 and oven at 05:30 on 2026-10-29, and browser uploads were invisible to the pipeline private queue flipper, so that flipper could not rescue them. WHY this revision changes outcomes, unlike incidental patrols and unlike a check with no executor: the skill is listed in every conversation so the upload session loads it, and at upload it creates a single scheduled check with cron.add set to run at the slot, so an actor exists at the slot after the upload session ends. It does not depend on the private queue flipper at all, so private queue invisibility no longer blocks rescue. It also changes the cited cases: karaoke was found only by an incidental 23:45 patrol, while a slot check would run at 23:30, and oven was found at 05:35 but then awaited a fresh user decision, while this skill treats the upload schedule approval as covering a rescue flip of the same video at the same slot when title and description are unchanged, with immediate escalation when that cover does not apply. The existing social_publishing skill returns a scheduled time and reads a post back after publication but has no slot-time recheck, so this narrow slot check fills that gap without changing pipeline code or the schedule itself.'
+  review_after: 2026-11-27T23:54:45.416600+00:00
+  reviewed_at: 2026-10-28T23:54:45.416600+00:00
+  run_id: sirun_fd62c5a791da4912ae85be50222aa6b1
