@@ -233,7 +233,48 @@ def _trend_heat_map():
     return out
 
 
-def select_topics(n=2, slot="12:30"):
+def hook_strength(hook: str, topic: str = "") -> int:
+    """钩子强度评分（viral-rate item 3，排序用权重，非门禁阈值）。
+    0-100 确定性打分，无外部依赖：
+    - 冲突动词（40）：hook 含 Karen 主动冲突动词
+    - 反转/报应线索（30）：then / instant karma / 后果词
+    - 具体性（20）：数字 + 具体物件（coupon/scanner/gate/...）
+    - 长度带（10）：20-120 字符满分，过短/过长扣分
+    """
+    import re as _re
+    h = (hook or "").lower()
+    score = 0
+    _verbs = ["slam", "refus", "block", "demand", "tailgat", "shov", "throw",
+              "scream", "rant", "waving", "push", "grab", "kick", "complain"]
+    if any(v in h for v in _verbs):
+        score += 40
+    _payoff = ["then", "instant karma", "gets", "backfir", "turns on",
+               "replay", "everyone", "towed", "soaked", "locked"]
+    if any(x in h for x in _payoff):
+        score += 30
+    if _re.search(r"\d", h):
+        score += 10
+    if _re.search(r"coupon|scanner|gate|kiosk|register|pump|doorbell|meter|"
+                  r"treadmill|escalator", h):
+        score += 10
+    n = len(hook or "")
+    if 20 <= n <= 120:
+        score += 10
+    elif n >= 10:
+        score += 5
+    return min(score, 100)
+
+
+def _publish_slot_for(weekday: str):
+    """现行发布档体系（publish_slots.json）：工作日 23:30/05:30+1，周末 22:30/04:00+1。
+    返回 (slot_label, is_weekend)。周五/周一均为工作日档。
+    """
+    if weekday in ("Saturday", "Sunday"):
+        return "22:30/04:00+1", True
+    return "23:30/05:30+1", False
+
+
+def select_topics(n=2, slot="23:30"):
     # B' 节流（2026-10-10 议会决议 D20261010-003）：独立 Karen 模板短剧停止自动量产。
     # Shorts 只允许从《AI UNHINGED》正片剪 teaser（走独立 teaser 流程，不走本函数）。
     # 本函数直接返回空，不再从 scenario_pool 生成独立短剧选题。
@@ -259,9 +300,16 @@ def select_topics(n=2, slot="12:30"):
     from viral_prompt import build_viral_prompt
     from datetime import datetime
 
-    # P1-9 周五档：周五 12:30 时段优先选 preferred_day=Friday 的品牌系列
+    # P1-9 周五档（viral-rate item 3 修复）：原先挂在已退役 12:30 档上。
+    # 现改挂现行档体系：退役档位 12:30 视为别名 -> 23:30；周五/周一判定改按
+    # 目标发布日（weekday），不再按 caller 传入的 slot 参数。
+    if slot == "12:30":
+        pipeline_log("select", "ok", "退役档位别名: 12:30 -> 23:30", 0)
+        slot = "23:30"
     weekday = datetime.now().strftime("%A")  # Monday..Sunday
-    is_friday_slot = (weekday == "Friday" and slot == "12:30")
+    _pub_slot, _ = _publish_slot_for(weekday)
+    is_friday_slot = (weekday == "Friday")
+    is_fri_mon_slot = weekday in ("Friday", "Monday")
 
     pool = _load(SCENARIO_POOL, [])
     if not pool:
@@ -353,10 +401,15 @@ def select_topics(n=2, slot="12:30"):
             sc["_series_name"] = _ms["name"]
             pipeline_log("select", "ok",
                          f"剧集亲和加权: {topic} -> {_ms['name']} (+{_affinity_boost})", 0)
-        scored.append((base + boost, sc))
-    scored.sort(key=lambda x: -x[0])
+        _hs = hook_strength(hook, topic)
+        scored.append((base + boost, sc, _hs))
+    if is_fri_mon_slot:
+        # 周五/周一档：钩子强度优先，其次总分
+        scored.sort(key=lambda x: (-x[2], -x[0]))
+    else:
+        scored.sort(key=lambda x: -x[0])
     selected = []
-    for total, sc in scored:
+    for total, sc, _hs in scored:
         if len(selected) >= n:
             break
         topic, hook = sc["topic"], sc["hook"]

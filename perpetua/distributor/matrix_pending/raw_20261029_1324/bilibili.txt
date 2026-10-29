@@ -1,0 +1,1 @@
+member platform redirected to passport login, no login attempted, no verified own space URL (recorded URL is flagged isolated/disabled) - stale, old data kept

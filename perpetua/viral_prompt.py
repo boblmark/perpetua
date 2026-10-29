@@ -86,8 +86,8 @@ V11_CAUSAL_EVOLUTION = (
     "consequence of the payoff, not a mere visual reset. Dialogue: Karen speaks "
     "at most 6 words in total, total spoken English at most 22 words, and the AI "
     "never delivers a long rebuttal sentence. Title: at most 55 characters, strong "
-    "verb-object structure, never a spoiler payoff name, never a 'Then the AI Read...' "
-    "spoiler pattern; emoji may decorate the title at the end only and must never "
+    "verb-object structure, spoiler payoff name ALLOWED per D20261030-001 (CTR-first), 'Then the AI Read...' pattern allowed "
+    "emoji may decorate the title at the end only and must never "
     "carry plot information. Novelty ledger (output field, required): list the "
     "previous six Shorts' setting, Karen goal, AI mechanism, and payoff type; change "
     "at least two of those four elements versus the previous six; NEVER repeat the "
@@ -143,6 +143,41 @@ V53_BEAT_MAP = (
     "Loop-back is OPTIONAL, never required."
 )
 
+# ---------------------------------------------------------------------------
+# TEARDOWN ALIGNMENT -- PROPOSED, NOT WIRED (viral-rate item 1, 2026-10-30)
+# Conflict declaration (do NOT silently pick one):
+#   (a) Teardown winners (10videos_raw.md + winners_report_20261010.md):
+#       wide establishing opening (7-8/11); payoff at 40-60% of runtime;
+#       burned dialogue subtitles (7-8/11); state-reversal gag engine.
+#   (b) v5.4 MANDATORY OPENING (D20261015-009): 0-1s TIGHT CLOSE-UP punch-in;
+#       fixed-perspective wide from 0.00s FORBIDDEN. Contradicts (a).
+#   (c) Builder body below ("0-1.2s SPATIAL CONTEXT"): frame 0.00s OPENS on a
+#       FIXED CCTV wide/medium shot, NO close-up/punch-in before 1.20s.
+#       Contradicts (b) inside the same prompt; partly agrees with (a).
+#   (d) Current payoff window 5.50-6.30s = 69-79% of 8s, vs teardown 40-60%
+#       (= 3.20-4.80s). MOTION RAMP + CLIMAX RULES are built on (d).
+# Proposed teardown-aligned beat map (NOT wired into the builder yet):
+#   0.00-1.00s WIDE ESTABLISHING (scene + character relationships first);
+#   1.00-3.20s ESCALATION (conflict legible, state-reversal setup);
+#   3.20-4.80s PAYBACK (first karma contact inside the 40-60% window);
+#   4.80-6.50s REACTION; 6.50-8.00s NO-EXIT-RUNWAY.
+#   + burned SPOKEN-DIALOGUE subtitles REQUIRED (teardown 7-8/11);
+#   + explicit STATE-REVERSAL beat (dry->wet, tidy->mess, scolding->towed).
+# Wiring this in supersedes the D20261015-009 close-up rule AND moves
+# MOTION RAMP / CLIMAX RULES windows. Landing decision stays with parent.
+# ---------------------------------------------------------------------------
+V53_BEAT_MAP_TEARDOWN_PROPOSED = (
+    "BEAT MAP -- TEARDOWN-ALIGNED PROPOSAL (NOT LIVE, 2026-10-30): "
+    "0.00-1.00s WIDE ESTABLISHING: fixed wide/medium shot, scene and "
+    "character relationships first, no close-up punch-in. "
+    "1.00-3.20s ESCALATION: conflict legible within 1.5s, state-reversal setup. "
+    "3.20-4.80s PAYBACK: first karma contact inside the 40-60% window. "
+    "4.80-6.50s REACTION: stunned consequence state. "
+    "6.50-8.00s NO-EXIT-RUNWAY: end on punchline impact or hard cut. "
+    "Burned SPOKEN-DIALOGUE subtitles REQUIRED (teardown 7-8/11). "
+    "Gag engine MUST be a STATE REVERSAL (dry->wet, tidy->mess, scolding->towed)."
+)
+
 V53_MOTION_RAMP = (
     "MOTION RAMP (v5.3, critical for QC):\n"
     "MUST maintain baseline motion within [0.25, 0.40] normalized optical-flow "
@@ -163,18 +198,16 @@ V53_CLIMAX_RULES = (
     "between 3.0s and 5.5s."
 )
 
+# D20261030-001 (user-approved 2026-10-30): spoiler ban LIFTED. Titles may use
+# result-first for CTR; clicks prioritized over interaction. This block replaces
+# the former AUTO-REJECT spoiler rule. Grammar gate + rotation gate unchanged.
 V53_TITLE_SPOILER_GATE = (
-    "TITLE RULE (v5.3.1 dual-track, Ask Studio 2026-10-10): "
-    "TRACK TEASER (40s): suspense-style. Title MUST create an unresolved question "
-    "(setup + escalation hint), NEVER name the exact physical payoff. "
-    "TRACK LONGFORM: premise & stakes. Title MUST sell the conflict and escalation "
-    "(e.g. 'When an AI Drive-Thru Refuses to Back Down'), NEVER reveal the ending. "
-    "Rationale: spoiler titles buy CTR on Shorts but kill long-form retention. "
-    "AUTO-REJECT hard-spoiler titles matching: "
-    "(?i)\\b(soak(s|ed|ing)?|spray(s|ed|ing)?|blast(s|ed|ing)?|drench(es|ed|ing)?|"
-    "wet|wash(es|ed|ing)?|hit(s)?|slap(s|ped|ping)?|karma|regret(s)?|fail(s|ed|ing)?|"
-    "ruin(s|ed|ing)?|destroy(s|ed|ing)?|zapp(ed|ing)?|electrocute(d|s)?|lock(ed|s|ing)?|"
-    "trap(s|ped|ping)?|splash(es|ed|ing)?|drop(s|ped|ping)?|smash(es|ed|ing)?|owned)\\b"
+    "TITLE RULE (D20261030-001, CTR-first): "
+    "Title MAY name the exact physical payoff (result-first) to buy CTR. "
+    "Spoiler titles are ALLOWED; the former AUTO-REJECT spoiler list is void. "
+    "Prefer: conflict + payoff up front, within title length limits. "
+    "Rationale: teardown winners show spoiler titles average 2.1x mean views; "
+    "clicks prioritized over interaction per user decision D20261030-001."
 )
 
 V53_PAYBACK_ROTATION = (
@@ -637,7 +670,7 @@ def build_viral_prompt(topic, hook, karma_payoff=None, emoji_pair=("🤖", "😂
     )
 
     # Title v2.0 (2026-10-07): 悬念型 — [emoji]Karen [作恶]—Then [反转] [emoji]
-    # "上集预告"替代旧的"大结局剧透"。保留：emoji 开头、Karen 主语。
+    # D20261030-001: 结果前置可用（保点击优先）；悬念型不再是唯一导向。保留：Karen 主语。emoji 开头 vs build_suspense_title 禁开头规格冲突未决，见审计。
     if misdeed is None:
         misdeed = _misdeed_from_hook(hook)
     if reversal is None:

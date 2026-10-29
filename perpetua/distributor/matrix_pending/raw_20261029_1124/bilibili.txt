@@ -1,0 +1,20 @@
+Status: STALE - login required, no login performed, no videos collected.
+
+The existing logged-in state was not present. Opening https://member.bilibili.com/platform/home twice redirected to the Bilibili passport login page (https://passport.bilibili.com/login?gourl=https%3A%2F%2Fmember.bilibili.com%2F&site=OVERSEAS&lang=en), showing QR-code and password login options. Per the task rules, no login was attempted and no like, comment, follow, post, or other change was made. No avatar or own-space URL (space.bilibili.com/<UID>) could be obtained, and nickname search was not used. Therefore no pinned/latest videos, comments, or brand fields could be verified.
+
+Structured result:
+{
+  "status": "STALE",
+  "reason": "login required, no login performed, no videos collected",
+  "space_url": null,
+  "uid": null,
+  "videos": [],
+  "comments": [],
+  "brand": {
+    "avatar_image_url": null,
+    "cover_image_url": null,
+    "description": null
+  }
+}
+
+Next step to unblock: restore the Bilibili logged-in session in this browser (by the user, outside this read-only task) and rerun the snapshot, or provide the exact space URL for collection.

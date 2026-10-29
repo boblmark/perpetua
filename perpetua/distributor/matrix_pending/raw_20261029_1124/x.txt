@@ -1,0 +1,114 @@
+Status: OK — Profile and posts were readable in the existing browser state without logging in, liking, commenting, following, or posting.
+
+```json
+{
+  "platform": "X (Twitter)",
+  "profile_url": "https://x.com/cgb2025194995",
+  "profile_name": "Cyber Detective 2026",
+  "handle": "@cgb2025194995",
+  "collected_at": "2026-10-29T11:26-11:36 Asia/Shanghai",
+  "brand": {
+    "avatar_image_url": "https://pbs.twimg.com/profile_images/1983903087715872768/_zSd5OPB_200x200.jpg",
+    "cover_image_url": "https://pbs.twimg.com/profile_banners/1980131464273600512/1762223106/1500x500",
+    "description": "📂 Digital Forensics from the Future\n📍 Neo-Tokyo / Silicon Valley",
+    "profile_link_displayed": "youtube.com/@CGB2025-boblm",
+    "joined": "October 2025",
+    "posts_count_displayed": "78"
+  },
+  "posts": [
+    {
+      "text_first_80": "🤯 ALGORITHM BROKEN! 11s video → 1:00 AVG DURATION! IMPOSSIBLE. Digital Empathy?",
+      "url": "https://x.com/cgb2025194995/status/1988270046788120894",
+      "media_image_url": null,
+      "media_note": "No embedded image shown; post links to youtube.com/shorts/Bf7RfAL",
+      "views": 335,
+      "likes": 1,
+      "published_time": "2025-11-11T23:38:00",
+      "published_displayed": "11:38 PM · Nov 11, 2025",
+      "pinned": true
+    },
+    {
+      "text_first_80": "The hard part of an HNTE certification practice isn't finding policies. It's that",
+      "url": "https://x.com/cgb2025194995/status/2104511624120004938",
+      "media_image_url": null,
+      "media_note": "29-second embedded video; no static cover image URL was exposed",
+      "views": 463,
+      "likes": 0,
+      "published_time": "2026-09-28T18:00:00",
+      "published_displayed": "6:00 PM · Sep 28, 2026",
+      "pinned": false
+    },
+    {
+      "text_first_80": "We run a 40-person manufacturer and our HNTE application got rejected last year. Do",
+      "url": "https://x.com/cgb2025194995/status/2104556455248748825",
+      "media_image_url": null,
+      "views": 224,
+      "likes": 0,
+      "published_time": "2026-09-28T20:58:00",
+      "published_displayed": "8:58 PM · Sep 28, 2026",
+      "pinned": false,
+      "note": "Shown in the profile timeline as a post and in the conversation as a reply to the preceding HNTE post"
+    },
+    {
+      "text_first_80": "Enterprise AI compute freedom: one machine, no API bills. AMD Ryzen AI MAX+ 395,",
+      "url": "https://x.com/cgb2025194995/status/2100845971521601645",
+      "media_image_url": null,
+      "views": 138,
+      "likes": 0,
+      "published_time": "2026-09-18T15:14:00",
+      "published_displayed": "3:14 PM · Sep 18, 2026",
+      "pinned": false
+    },
+    {
+      "text_first_80": "Quick notes from real usage: per-user RPM/TPM/RPD quotas make multi-tenant sharing",
+      "url": "https://x.com/cgb2025194995/status/2101527174629232948",
+      "media_image_url": null,
+      "views": 187,
+      "likes": 0,
+      "published_time": "2026-09-20T12:21:00",
+      "published_displayed": "12:21 PM · Sep 20, 2026",
+      "pinned": false
+    },
+    {
+      "text_first_80": "OpenAI 改了 system prompt：Add ChatGPT Work Codex Local variant 【这次变了什么】 OpenAI",
+      "url": "https://x.com/cgb2025194995/status/2099671818118508964",
+      "media_image_url": null,
+      "views": 93,
+      "likes": 0,
+      "published_time": "2026-09-15T09:29:00",
+      "published_displayed": "9:29 AM · Sep 15, 2026",
+      "pinned": false
+    }
+  ],
+  "comments": [
+    {
+      "author": "Cyber Detective 2026 (@cgb2025194995)",
+      "text_first_120": "We run a 40-person manufacturer and our HNTE application got rejected last year. Does this actually help us figure out what we",
+      "likes": 0,
+      "published_time": "2026-09-28T20:58:00",
+      "belongs_to_post_url": "https://x.com/cgb2025194995/status/2104511624120004938",
+      "belongs_to_post_title": "The hard part of an HNTE certification practice isn't finding policies.",
+      "comment_url": "https://x.com/cgb2025194995/status/2104556455248748825"
+    },
+    {
+      "author": "Cyber Detective 2026 (@cgb2025194995)",
+      "text_first_120": "Sorry for the rejection. We can provide guidance on common issues in HNTE applications. Please leave your needs or visit our webs",
+      "likes": 0,
+      "published_time": "2026-09-28T21:00:00",
+      "published_displayed": "9:00 PM · Sep 28, 2026",
+      "belongs_to_post_url": "https://x.com/cgb2025194995/status/2104556455248748825",
+      "belongs_to_post_title": "We run a 40-person manufacturer and our HNTE application got rejected last year.",
+      "comment_url": "https://x.com/cgb2025194995/status/2104556814637617220"
+    }
+  ],
+  "notes": {
+    "post_order": "Pinned post first, then the first 5 non-pinned posts in profile-timeline order. The profile timeline order is not strictly chronological (Sep 18 appears before Sep 20).",
+    "published_times": "ISO times are the times as displayed by X, without a timezone offset stated by X; no timezone was invented.",
+    "view_counts": "View counts are live on X and rose slightly while browsing (e.g. pinned 335 to 339, first Sep 28 post 463 to 468). The values above are the initial profile-timeline snapshot values, except where noted, to keep the snapshot coherent.",
+    "comments_scope": "Pinned post had 0 replies. The newest non-pinned posts yielded 2 replies total, both by the same account, forming a thread; no other comments were found in the newest 1-2 posts opened, so fewer than the 8-comment maximum were available.",
+    "actions_taken": "Read-only browsing only; no login action, like, comment, follow, or post was made."
+  }
+}
+```
+
+One-line status: OK

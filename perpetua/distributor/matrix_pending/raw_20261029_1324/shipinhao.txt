@@ -1,0 +1,1 @@
+creator platform showed login page (needs_user), no login attempted per task rules - stale, old data kept

@@ -1,0 +1,18 @@
+STALE — WeChat Channels / 视频号 platform is unreadable: https://channels.weixin.qq.com/platform redirected to https://channels.weixin.qq.com/login.html and rendered blank with no interactive elements, indicating a login is required. Per the read-only instruction, no login was attempted and nothing was liked, commented, followed, posted, or changed. No videos, comments, or brand fields could be collected, and no numbers were invented.
+
+Structured JSON:
+{
+  "platform": "WeChat Channels / 视频号",
+  "source_url": "https://channels.weixin.qq.com/platform",
+  "final_url": "https://channels.weixin.qq.com/login.html",
+  "status": "STALE",
+  "reason": "Login required: platform redirected to login.html and rendered blank with no readable content; existing browser session did not provide logged-in access, and login was prohibited by the assignment.",
+  "videos": [],
+  "comments": [],
+  "brand": {
+    "profile_avatar_image_url": null,
+    "profile_cover_image_url": null,
+    "channel_description": null
+  },
+  "collected_at": "2026-10-29T11:28:00+08:00"
+}

@@ -1,7 +1,7 @@
 """v5.3 硬门禁（2026-10-10 三脑会诊结论落地）。
 
 三个门：
-1. 标题禁剧透（title spoiler gate）：标题不得明示/强烈暗示物理报应
+1. 标题剧透（D20261030-001 已解除：结果前置可用，保点击优先；本模块仅保留空值与长度检查）
 2. 标题语法门（title grammar gate）：畸形动词变形自动打回
 3. 报应轮换（payback rotation）：6 类报应，滚动 1-in-5 硬上限，永久执行
 
@@ -21,7 +21,7 @@ import queue_db
 BASE = Path("/home/hatch/data/perpetua")
 
 # ---------------------------------------------------------------------------
-# Gate 1: 标题禁剧透
+# Gate 1: 标题剧透 -- VOID per D20261030-001 (kept for reference only)
 # ---------------------------------------------------------------------------
 SPOILER_RE = re.compile(
     r"(?i)\b(soak(s|ed|ing)?|spray(s|ed|ing)?|blast(s|ed|ing)?|"
@@ -34,16 +34,17 @@ SPOILER_RE = re.compile(
 
 # v2 悬念结构：[emoji]Karen [作恶]—Then [反转] [emoji]，且反转不能是剧透词
 def check_title_spoiler(title: str):
-    """标题禁剧透门。返回 (ok, reason)。"""
+    """标题剧透检查（D20261030-001：禁剧透门已解除）。
+    仅保留空值与长度检查（25-100，阈值不动）；剧透词一律放行。
+    放行时 reason 为 spoiler_allowed_D20261030_001。
+    """
     if not title or not title.strip():
         return False, "title_empty"
     t = title.strip()
     if not (25 <= len(t) <= 100):
         return False, f"title_length_{len(t)}"
-    m = SPOILER_RE.search(t)
-    if m:
-        return False, f"title_spoiler:{m.group(0)}"
-    return True, None
+    # SPOILER_RE retained for reference only; NOT enforced (D20261030-001).
+    return True, "spoiler_allowed_D20261030_001"
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +75,7 @@ def check_title_grammar(title: str):
 
 
 def check_title(title: str):
-    """标题双门（剧透+语法）。返回 (ok, reason)。"""
+    """标题门（剧透已解除 D20261030-001 + 语法）。返回 (ok, reason)。"""
     ok, reason = check_title_spoiler(title)
     if not ok:
         return False, reason
@@ -157,6 +158,24 @@ def check_payback_rotation(category: str):
 # ---------------------------------------------------------------------------
 # 一站式：新选题三门全检
 # ---------------------------------------------------------------------------
+def check_title_formula(title: str):
+    """标题公式自查（WARN-ONLY，未接入硬门禁）。
+    公式（criteria.json title_formula）：emoji 开头 + 含 Karen/AI。
+    未接入原因：build_suspense_title 规格要求 emoji 禁开头，与公式直接冲突；
+    硬接入会把全部生成标题打回。待 parent 裁决 emoji 开头 vs 末尾后再定。
+    返回 (ok, warnings)；ok=False 仅表示自查有警告，不代表打回。
+    """
+    t = (title or "").strip()
+    if not t:
+        return False, ["title_empty"]
+    warnings = []
+    if t[0].isascii() and t[0].isalnum():
+        warnings.append("formula_no_emoji_opening")
+    if "Karen" not in t and "AI" not in t:
+        warnings.append("formula_no_karen_ai")
+    return (len(warnings) == 0), warnings
+
+
 def check_v53_package(title: str, prompt: str = "", payback_category: str = None):
     """v5.3 新选题三门全检。返回 (ok, reason, detail)。"""
     ok, reason = check_title(title)

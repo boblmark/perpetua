@@ -1,0 +1,72 @@
+Status: OK
+
+Read-only snapshot for TikTok @cgb20250, collected on 2026-10-29 from https://www.tiktok.com/@cgb20250 without logging in, liking, commenting, following, or posting. No slider verification or captcha blocked reading. No pinned videos were indicated in the Latest grid (no pinned badge/label observed), so the 5 latest non-pinned videos are reported below. View counts are the play counts shown on the profile grid; like counts and dates are from each video page. Published times are shown as the dates displayed by TikTok (no time of day was shown, so a full ISO timestamp was not available).
+
+```json
+{
+  "platform": "TikTok",
+  "profile_url": "https://www.tiktok.com/@cgb20250",
+  "handle": "cgb20250",
+  "profile_stats_as_displayed": {
+    "following": "1",
+    "followers": "5",
+    "likes": "65"
+  },
+  "brand": {
+    "avatar_image_url": null,
+    "profile_cover_background_image_url": null,
+    "description": "Here, I’ll use AI to bring all kinds of wild concepts to life."
+  },
+  "videos": [
+    {
+      "title_caption_first_80_chars": "She tried to fine me for my lawn, but the universe hit her back in 4K. 🤣 The end",
+      "url": "https://www.tiktok.com/@cgb20250/video/7570986712361356558",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/ogAAjFaxvElfDFvAVfCCYEC3gSE6DAAQWpzKIA~tplv-tiktokx-origin.image?dr=9636&x-expires=1793415600&x-signature=Js9aoeA%2FgQwAnEMNkKh86FKF36o%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": "616",
+      "like_count": "9",
+      "published_time": "2025-11-10",
+      "pinned": false
+    },
+    {
+      "title_caption_first_80_chars": "STOP SCROLLING ⚠️ Protocol Breach Detected. This is not a glitch. Watch closely.",
+      "url": "https://www.tiktok.com/@cgb20250/video/7570389537172573454",
+      "cover_image_url": "https://p16-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/oMfjAQSA2pdbEgEMbe9FQC9DCaAzDIVP05SAAD~tplv-tiktokx-origin.image?dr=9636&x-expires=1793415600&x-signature=i92UKU5zQGrvU1iOsZLbZZ%2FyzyY%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": "108",
+      "like_count": "0",
+      "published_time": "2025-11-09",
+      "pinned": false
+    },
+    {
+      "title_caption_first_80_chars": "Caught This VR Entity Looping?! 🔁 What's Your Theory? #ProtocolGuardian #092",
+      "url": "https://www.tiktok.com/@cgb20250/video/7570376486872419597",
+      "cover_image_url": "https://p16-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/o0qIPAGi2SAjxEIpADFfDCgaeYUACREkVADkCI~tplv-tiktokx-origin.image?dr=9636&x-expires=1793415600&x-signature=x0VD2B8HkAfFPCbWgFjp%2FX4Tjz4%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": "102",
+      "like_count": "0",
+      "published_time": "2025-11-08",
+      "pinned": false
+    },
+    {
+      "title_caption_first_80_chars": "VR Glitch Captures a SENTIENT Entity?! | Protocol Guardian #091 #viral #hoakaren",
+      "url": "https://www.tiktok.com/@cgb20250/video/7570364033862274317",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/o80QeMuTHGqHjkseVsLAAvgIrAujAwReEAESAq~tplv-tiktokx-origin.image?dr=9636&x-expires=1793415600&x-signature=8kplfyrm0egkjmTkIPAlT6szB2g%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": "96",
+      "like_count": "0",
+      "published_time": "2025-11-08",
+      "pinned": false
+    },
+    {
+      "title_caption_first_80_chars": "Full Forensic Breakdown ➡️ [https://youtube.com/shorts/buRuDTT-1Bg]",
+      "url": "https://www.tiktok.com/@cgb20250/video/7570357005639060749",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/osEdVAVCEDAfiIAPApAgCEfaSCF4FTDD0Xwngn~tplv-tiktokx-origin.image?dr=9636&x-expires=1793415600&x-signature=NRjZZ1jHpq2xlCNeYQHF9uy4Lms%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": "34",
+      "like_count": "0",
+      "published_time": "2025-11-08",
+      "pinned": false
+    }
+  ],
+  "comments": [],
+  "comments_note": "The newest 2 videos were opened: the 2025-11-10 video showed Comments (0) and the 2025-11-09 video showed Comments (0) / 'Start the conversation', so there were no comments to collect (limit was up to 8)."
+}
+```
+
+Notes and limitations: The profile avatar is visible in the page screenshot, but its image URL was not exposed in the browser's page view, so it is reported as null rather than invented. No profile cover/banner image was visible, so that field is null. A transient browser error occurred on the final attempt to reopen the newest video, after all required data had already been collected; it did not affect the snapshot.

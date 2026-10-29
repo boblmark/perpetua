@@ -1,0 +1,65 @@
+OK — Read-only snapshot completed on 2026-10-29. The creator backend was already logged in (account shown as 档案管理员, 473 notes total); no login, like, comment, follow, or post was performed. No pinned-note badge was visible on the backend manager or on the public profile list, so the 5 latest non-pinned notes are reported below; the profile description mentions a “置顶合集” (pinned collection), not a pinned individual note.
+
+{
+  "platform": "Xiaohongshu (小红书)",
+  "profile_name": "档案管理员",
+  "profile_id": "267112808",
+  "profile_url": "https://www.xiaohongshu.com/user/profile/5977d44850c4b449fd8f80e0",
+  "brand": {
+    "avatar_image_url": null,
+    "cover_image_url": null,
+    "description": "AI历史视觉还原实验室｜每日调阅一份硬核档案\n正在解密：《明朝覆灭的最后72小时》\n下集移步置顶合集｜上/中/下三集连载更新中"
+  },
+  "notes": [
+    {
+      "title": "Smart Parking Meter vs Karen",
+      "url": "https://www.xiaohongshu.com/explore/6acb6b91000000001403be97",
+      "cover_image_url": null,
+      "view_count": 211,
+      "like_count": 0,
+      "published_time": "2026-10-11T18:57:00+08:00",
+      "pinned": false
+    },
+    {
+      "title": "众策通｜政策匹配一键出清单",
+      "url": "https://www.xiaohongshu.com/explore/6aba4bce00000000150100b8",
+      "cover_image_url": null,
+      "view_count": 103,
+      "like_count": 1,
+      "published_time": "2026-09-28T19:13:00+08:00",
+      "pinned": false
+    },
+    {
+      "title": "打工人实现 AI 算力自由的唯一答案",
+      "url": "https://www.xiaohongshu.com/explore/6aaa74a6000000002600837e",
+      "cover_image_url": null,
+      "view_count": 70,
+      "like_count": 1,
+      "published_time": "2026-09-16T18:51:00+08:00",
+      "pinned": false
+    },
+    {
+      "title": "OpenAI更新提示词",
+      "url": "https://www.xiaohongshu.com/explore/6aa828b7000000002803094b",
+      "cover_image_url": null,
+      "view_count": 42,
+      "like_count": 0,
+      "published_time": "2026-09-15T01:02:00+08:00",
+      "pinned": false
+    },
+    {
+      "title": "用Git追4大AI提示词变更指南",
+      "url": "https://www.xiaohongshu.com/explore/6aa80d6c0000000029017c79",
+      "cover_image_url": null,
+      "view_count": 38,
+      "like_count": 0,
+      "published_time": "2026-09-14T23:06:00+08:00",
+      "pinned": false
+    }
+  ],
+  "comments": [],
+  "comments_note": "The newest 2 notes were opened; both comment areas displayed '这是一片荒地' (no comments), so 0 comments were found out of a maximum of 8. Backend comment counts for both were also 0.",
+  "notes_on_nulls": "Cover and avatar image URLs are null because the browser accessibility view did not expose those image URLs (they are rendered as background/CSS images); no URLs were invented. The profile page shows no background/cover banner, so cover is null. Published times were shown on the backend as 'YYYY-MM-DD HH:MM' and are reported here with the +08:00 Asia/Shanghai offset."
+}
+
+Status: OK

@@ -1,0 +1,110 @@
+Status: OK
+
+Read-only snapshot collected 2026-10-29 from the existing logged-in session; no login, like, comment, follow, or post action was taken.
+
+```json
+{
+  "platform": "Facebook",
+  "page_id": "61594841955473",
+  "page_name": "Mark Bobl - Karen vs AI",
+  "page_url": "https://www.facebook.com/61594841955473",
+  "profile_url": "https://www.facebook.com/profile.php?id=61594841955473",
+  "followers_displayed": "0",
+  "brand": {
+    "profile_avatar_image_url": null,
+    "profile_avatar_note": "Avatar is visible as an orange ring on a black background, but its direct CDN URL was not exposed in the page accessibility tree.",
+    "profile_cover_image_url": "https://scontent-mia3-2.xx.fbcdn.net/v/t39.30808-6/838614781_122106886833494731_1208334038598042794_n.jpg?stp=dst-jpg_tt6&cstp=mx2352x896&ctp=s2352x896&_nc_cat=103&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=eOtArC_sy4cQ7kNvwGuxpE5&_nc_oc=Adp3PACOVe_Ro7qJ5Cjn62_-X0RGdwO6IRWlwWFJkYLxBBUQ0aoudFFoVFse_blo2zh6vna_lJOOTOLTP3QaSHJt&_nc_zt=23&_nc_ht=scontent-mia3-2.xx&_nc_gid=S10-1YEKdhENQsHEQVEXWg&_nc_ss=792a8&oh=00_AQQmt3WUJ8w9aQwm2x6TOBs7WdJAZ7LQr8FkMBOHw_7Cjw&oe=6AE8A02D",
+    "profile_cover_page_url": "https://www.facebook.com/photo/?fbid=122106886827494731&set=a.122106886989494731",
+    "page_description": "🤖 Karen vs AI | Daily comedy shorts. She demands, AI delivers… karma. Follow for your daily dose of instant karma!",
+    "category": "Digital content creator"
+  },
+  "pinned_posts": [],
+  "pinned_note": "No post was marked as pinned in the timeline. The profile has a separate Featured (精选) section containing only the Smart Meter Reel below, which is not labeled as pinned, so pinned=true was not assigned to any item.",
+  "featured_item": {
+    "title_caption_80": "🅿️ Karen Fought A Smart Meter… And Lost Instantly 😂",
+    "link_url": "https://www.facebook.com/reel/1661639808947527/",
+    "published_time_displayed": "10月8日02:42",
+    "published_time": "2026-10-08T02:42"
+  },
+  "posts": [
+    {
+      "order": 1,
+      "type": "Reel",
+      "title_caption_80": "🍭 Karen Doubled My Swirl: Neon-Blue Cotton Candy Beehive Wig: Karen Bangs On The",
+      "full_caption": "🍭 Karen Doubled My Swirl: Neon-Blue Cotton Candy Beehive Wig: Karen Bangs On The Acrylic Window Of A Robotic Cotton-candy Machine: \"This Cone Is Tiny! Give Me Triple Sugar Or I'm Unplugging You!\"—Then the AI Read Her Search History Out Loud 😱",
+      "link_url": "https://www.facebook.com/reel/851162221387331/",
+      "cover_image_url": null,
+      "view_count": null,
+      "like_count": 3,
+      "published_time_displayed": "10月10日21:02",
+      "published_time": "2026-10-10T21:02",
+      "pinned": false
+    },
+    {
+      "order": 2,
+      "type": "Reel",
+      "title_caption_80": "🅿️ Karen Shook The Parking Meter… It SOAKED Her Instantly 😭",
+      "link_url": "https://www.facebook.com/reel/1469467041729733/",
+      "cover_image_url": null,
+      "view_count": null,
+      "like_count": 11,
+      "published_time_displayed": "10月9日20:42",
+      "published_time": "2026-10-09T20:42",
+      "pinned": false
+    },
+    {
+      "order": 3,
+      "type": "Post",
+      "title_caption_80": "🤖 Karen vs AI: Veo v5.1 Test",
+      "link_url": "https://www.facebook.com/permalink.php?story_fbid=pfbid0ynsdsqkUxJZuTLe2QQqUVjEe59DRiGuar715Lweh6ZPdA5xJciprxxe28hFaf5J8l&id=61594841955473",
+      "cover_image_url": null,
+      "view_count": null,
+      "like_count": null,
+      "published_time_displayed": "10月8日20:12",
+      "published_time": "2026-10-08T20:12",
+      "pinned": false
+    },
+    {
+      "order": 4,
+      "type": "Profile update - cover photo change",
+      "title_caption_80": "Mark Bobl - Karen vs AI changed cover photo",
+      "link_url": "https://www.facebook.com/permalink.php?story_fbid=4510962555848930&id=61594841955473&substory_index=4510962555848930",
+      "cover_image_url": "https://scontent-mia3-2.xx.fbcdn.net/v/t39.30808-6/838614781_122106886833494731_1208334038598042794_n.jpg?stp=dst-jpg_tt6&cstp=mx2352x896&ctp=s2352x896&_nc_cat=103&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=eOtArC_sy4cQ7kNvwGuxpE5&_nc_oc=Adp3PACOVe_Ro7qJ5Cjn62_-X0RGdwO6IRWlwWFJkYLxBBUQ0aoudFFoVFse_blo2zh6vna_lJOOTOLTP3QaSHJt&_nc_zt=23&_nc_ht=scontent-mia3-2.xx&_nc_gid=S10-1YEKdhENQsHEQVEXWg&_nc_ss=792a8&oh=00_AQQmt3WUJ8w9aQwm2x6TOBs7WdJAZ7LQr8FkMBOHw_7Cjw&oe=6AE8A02D",
+      "view_count": null,
+      "like_count": null,
+      "published_time_displayed": "10月8日02:50",
+      "published_time": "2026-10-08T02:50",
+      "pinned": false
+    },
+    {
+      "order": 5,
+      "type": "Profile update - avatar change",
+      "title_caption_80": "Mark Bobl - Karen vs AI changed profile picture",
+      "link_url": null,
+      "cover_image_url": null,
+      "view_count": null,
+      "like_count": null,
+      "published_time_displayed": "10月8日02:49",
+      "published_time": "2026-10-08T02:49",
+      "pinned": false
+    },
+    {
+      "order": 6,
+      "type": "Reel",
+      "title_caption_80": "🅿️ Karen Fought A Smart Meter… And Lost Instantly 😂",
+      "link_url": "https://www.facebook.com/reel/1661639808947527/",
+      "cover_image_url": null,
+      "view_count": null,
+      "like_count": 2,
+      "published_time_displayed": "10月8日02:42",
+      "published_time": "2026-10-08T02:42",
+      "pinned": false
+    }
+  ],
+  "posts_note": "The timeline contains 6 entries in total. Only 4 are content posts/Reels; the other 2 are profile-update posts. The Smart Meter Reel is included as the 6th timeline entry and as the sole Featured item, so no Reel is omitted. Published years are inferred as the current year because Facebook displayed month/day/time without a year; no timezone was displayed. View counts and Reel cover-image CDN URLs were not displayed/exposed, so they are null rather than invented. Like counts for the two newest Reels were taken from their Reel detail pages (3 and 11); the Smart Meter count of 2 was shown on the timeline.",
+  "comments": [],
+  "comments_note": "The newest 2 posts were opened: the Oct 10 Reel and the Oct 9 Reel. Both comment sections displayed '还没有任何评论哦' (no comments yet), so 0 comments were collected, within the requested maximum of 8."
+}
+```
+
+No changes were made to the page. The profile tab is left open for verification.

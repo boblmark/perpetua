@@ -1,0 +1,30 @@
+STALE — Kuaishou works list is login-gated and no login was performed, so no videos or comments could be collected.
+
+Structured JSON:
+{
+  "platform": "Kuaishou (快手)",
+  "status": "STALE",
+  "status_reason": "Login required: creator center https://cp.kuaishou.com/ shows only a '立即登录' (Log in now) landing page, and the public profile works tab shows '想看更多视频，快去登录吧～' (To see more videos, please log in) with no videos listed. Per the read-only assignment, no login, like, comment, follow, or post action was taken.",
+  "account": {
+    "name": "CGB2024",
+    "profile_url": "https://www.kuaishou.com/profile/3xsxakanbhagj7k?source=SEARCH",
+    "kuaishou_id_displayed_on_profile": "4179572313",
+    "search_profile_slug": "3xsxakanbhagj7k",
+    "following": "27",
+    "followers": "22",
+    "total_likes_displayed": "391"
+  },
+  "brand": {
+    "avatar_image_url": "http://p1.a.yximgs.com/s1/i/def/head_m.png",
+    "avatar_note": "Default placeholder avatar, not a custom avatar",
+    "profile_cover_background_image_url": null,
+    "channel_description": null,
+    "channel_description_note": "No description text was displayed on the public profile page"
+  },
+  "videos": [],
+  "videos_note": "Pinned videos (max 3) and latest 5 non-pinned videos (total max 8) could not be collected because the works list is withheld until login; no titles, URLs, covers, view counts, like counts, published times, or pinned flags were visible, and none were invented (all null/empty).",
+  "comments": [],
+  "comments_note": "Up to 8 latest comments from the newest 1-2 videos could not be collected because no video could be opened from the login-gated works list."
+}
+
+Evidence: Creator center at https://cp.kuaishou.com/profile offered only login; public search for 'CGB2024' found the exact user (Users tab), and its homepage at https://www.kuaishou.com/profile/3xsxakanbhagj7k displayed the name, Kuaishou ID 4179572313, 27 following, 22 followers, and 391 likes, but no works. No risk-control/CAPTCHA challenge was encountered; the blocker is the login gate itself.
