@@ -600,6 +600,64 @@ def _maybe_auto_clear_stale_qid(item, topic):
     return True
 
 
+def _guard_stale_qid_rewrite_boundary(item, topic):
+    """Batch B（2026-10-29）：rewrite/boundary 项 stale-qid 的守卫变体。
+
+    为什么不能直接复用 _maybe_auto_clear_stale_qid（已证伪，见实施记录）：
+    - rewrite_round1/2 的 qid 由重审循环以 force=True 新建，父 qid/父分
+      记在 review_parent_qid/review_parent_score，旧分已清零；清掉该 qid
+      后下一轮不走重审循环，而走 review_pending 送审分支，且 stale-force
+      仅限 selected（force=False），topic 幂等可能返回同一旧 qid，SUSPECT
+      循环不破，还丢了“该 qid 属第 N 轮重审”这一不变式，回归检查
+      （新分 < 父分 → 归档）会被套到非重审提交上。
+    - boundary_hold 的 qid 是首审（78-78.9 分）的提交；独立复核只在
+      review_qid 为空时才打 second_review=True，且看门狗
+      check_boundary_hold 的 24h 钟从 boundary_hold_at 起算；清 qid
+      会让两口钟错位，且一次普通送审可能被 second_review 计分路径
+      （<79 → 归档）误杀。
+    因此本函数绝不碰 qid/status/review_triggered_at/review_parent_* /
+    rewrite_rounds/boundary_hold_at，只在首次命中时写两个守卫标记并
+    走一次 _suspect_review 升级（ga 为空时该函数自行返回，只记 log），
+    之后各轮因标记已在而返回 False，落回原 SUSPECT 升级，不重复刷屏。
+    返回 True=本轮已守卫处理（调用方应 continue）；False=不适用，
+    调用方走原 SUSPECT 路径。
+    """
+    if item.get("status") not in ("rewrite_round1", "rewrite_round2",
+                                  "boundary_hold"):
+        return False
+    if not item.get("review_qid"):
+        return False
+    if item.get("review_stale_qid_guarded_at"):
+        return False
+    trig = item.get("review_triggered_at")
+    try:
+        trig_dt = datetime.fromisoformat(str(trig))
+        if trig_dt.tzinfo is None:
+            trig_dt = trig_dt.replace(tzinfo=timezone.utc)
+        age_h = (datetime.now(timezone.utc) - trig_dt).total_seconds() / 3600
+    except Exception:
+        return False
+    if age_h < 3:
+        return False
+    clears = int(item.get("review_qid_auto_clears", 0) or 0)
+    if clears >= 2:
+        return False
+    qid = item.get("review_qid")
+    item["review_stale_qid_guarded_at"] = now_iso()
+    item["review_stale_qid_guarded_reason"] = \
+        "stale_qid_rewrite_boundary_withheld"
+    try:
+        _suspect_review(topic, qid, "stale_qid_rewrite_boundary_guarded",
+                        f"rewrite/boundary 项 qid {qid} 已 {age_h:.1f}h 无新鲜答案，"
+                        f"直接清 qid 不安全（重审父子不变式/边界复核钟），"
+                        f"本次只标记守卫、不清 qid、不改状态，待 force 路径另案处理")
+    except Exception:
+        pass
+    pipeline_log("select", "ok",
+                 f"rewrite/boundary stale-qid 已守卫标记（不清 qid）: {topic}", 0)
+    return True
+
+
 def _gen_poll_tick(item, backend):
     """2026-10-16 P1-3（四脑议会 anti-idle）：生成轮询计数。
 
@@ -1298,6 +1356,15 @@ def review_pending(max_wait_minutes=30, instant_timeout_minutes=5):
                 # stale-qid 清理（备份→清空，2 次上限），下轮重新送审；未达
                 # 清理条件（触发 <3h 或已达上限）时仍走原 SUSPECT 升级。
                 # rewrite/boundary 项不在此清理（其 qid 属重审轮次，另案处理）。
+                # Batch B（2026-10-29）：rewrite/boundary 项先走守卫变体，
+                # 绝不直接清 qid（理由见 _guard_stale_qid_rewrite_boundary
+                # 的 docstring；直接清已被证伪为不安全）。
+                if (_pickup_only
+                        and _st in ("rewrite_round1", "rewrite_round2",
+                                    "boundary_hold")
+                        and _guard_stale_qid_rewrite_boundary(item, topic)):
+                    changed = True
+                    continue
                 if (_pickup_only and _st == "selected"
                         and _maybe_auto_clear_stale_qid(item, topic)):
                     changed = True

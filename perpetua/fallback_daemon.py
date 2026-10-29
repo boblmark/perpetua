@@ -14,6 +14,16 @@
 2026-10-28 之前本文件跑的是已下掉的 nano 桥，本轮已删除该调用。
 SHADOW_MODE=true 时只 dry-run；默认（无环境变量）为真实切换，
 因用户 2026-10-28 22:16 已拍板“不健康即告警并自动切 QQ box”。
+
+S4（2026-10-29 batch A）：影子模式连续 3 轮“本应切换”（不健康且 stale
+非空）时强制真实升级，不再无限影子。计数落盘
+fallback_shadow_streak.json（独立于切换状态文件，避免改动状态语义）：
+健康轮次清零；健康检查 UNKNOWN 时既不计数也不清零（检查本身不可信，
+见 Rule 14，既不因抖动逃过强制、也不因不可靠检查误强制）；影子轮次
+计数+1，满 3 轮改走真实桥接并另发一次强制升级告警；真实桥接成功后
+清零，失败则保持 3 不清零（下一影子轮次再强制，不静默回影子）。
+注意：本文件的影子从来不是全 dry-run——切换状态与切换告警在桥接前
+就已写出，影子只影响桥接交付本身；S4 强制的正是交付这一步。
 """
 import json
 import os
@@ -27,6 +37,33 @@ CONFIG_PATH = BASE / "backend_config.json"
 LOG_PATH = BASE / "fallback_daemon.log"
 STATE_PATH = BASE / "backend_fallback_state.json"
 SHADOW_MODE = os.environ.get("FALLBACK_SHADOW", "false").lower() == "true"
+STREAK_PATH = BASE / "fallback_shadow_streak.json"
+SHADOW_FORCE_AFTER = 3
+
+
+def _read_shadow_streak() -> int:
+    """读影子连续轮次；文件缺失/损坏按 0 计（fail-open，不阻塞降级）。"""
+    try:
+        d = json.loads(STREAK_PATH.read_text())
+        n = int(d.get("count", 0))
+        return n if n > 0 else 0
+    except Exception:
+        return 0
+
+
+def _write_shadow_streak(count: int):
+    try:
+        STREAK_PATH.write_text(json.dumps(
+            {"count": int(count),
+             "updated_at": datetime.now(timezone.utc).isoformat()},
+            ensure_ascii=False))
+    except Exception as e:
+        log(f"写影子计数失败（不阻塞降级）: {e}")
+
+
+def _reset_shadow_streak():
+    if _read_shadow_streak() != 0:
+        _write_shadow_streak(0)
 
 
 def _read_state() -> dict:
@@ -138,6 +175,8 @@ def main() -> int:
         return 2
 
     if health.get("healthy", False):
+        # S4：健康轮次清零影子连续计数（链断了，下次影子从 1 重新计）。
+        _reset_shadow_streak()
         log(f"主 Muse 健康 ({health.get('pending_count', 0)} pending)，无需降级")
         # 回切：此前已切 QQ box 且现在健康 → 写回 muse-main（仅状态跃迁时告警一次）
         state = _read_state()
@@ -189,16 +228,41 @@ def main() -> int:
     else:
         log("已处于 QQ box 切换态且 stale 集合未变，跳过重复告警")
 
-    # 3. QQ box 桥接（shadow 模式只 dry-run）
+    # 3. QQ box 桥接（shadow 模式只 dry-run；S4：连续满 3 轮强制真实桥接）
     cmd = [sys.executable, str(BASE / "qqbox_fallback.py"),
            "--mode", "both", "--timeout-min", str(threshold)]
+    forced = False
     if SHADOW_MODE:
-        cmd.append("--dry-run")
-        log("SHADOW 模式：dry-run，只列出不处理")
+        streak = _read_shadow_streak() + 1
+        _write_shadow_streak(streak)
+        if streak >= SHADOW_FORCE_AFTER:
+            forced = True
+            _alert("warning", "fallback_daemon:shadow_forced_upgrade",
+                   "影子降级连续 3 轮，强制真实升级",
+                   f"影子模式下连续 {streak} 轮本应切换到 QQ box（stale "
+                   f"{len(stale_ids)} 个），按 S4 规则本轮不再 dry-run，"
+                   "改走真实 QQ box 桥接；成功后影子计数清零，失败则"
+                   "下一影子轮次再强制。")
+            log(f"SHADOW 强制升级：第 {streak} 轮连续影子，改走真实桥接")
+        else:
+            cmd.append("--dry-run")
+            log(f"SHADOW 模式：dry-run，只列出不处理"
+                f"（连续第 {streak}/{SHADOW_FORCE_AFTER} 轮，"
+                f"满 {SHADOW_FORCE_AFTER} 轮强制真实升级）")
+    else:
+        # 真实模式下影子链已断，清零以免下次进影子时带旧计数。
+        _reset_shadow_streak()
     r2 = subprocess.run(cmd, capture_output=True, text=True, timeout=1500)
-    log(f"QQ box 桥接完成 (shadow={SHADOW_MODE}): {r2.stdout[-500:]}")
+    log(f"QQ box 桥接完成 (shadow={SHADOW_MODE} forced={forced}): {r2.stdout[-500:]}")
     if r2.returncode != 0:
         log(f"QQ box 桥接 stderr: {r2.stderr[-300:]}")
+    if forced:
+        if r2.returncode == 0:
+            _write_shadow_streak(0)
+            log("SHADOW 强制升级成功，影子计数清零")
+        else:
+            _write_shadow_streak(SHADOW_FORCE_AFTER)
+            log("SHADOW 强制升级失败，计数保持满格，下一影子轮次再强制")
     return 0
 
 

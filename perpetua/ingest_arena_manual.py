@@ -84,7 +84,8 @@ def promote(item_id):
 
     前置校验任一不满足即拒绝、不改状态：status==arena_manual；
     Stage 1 通过的 qc_report（passed 且 qc_passed_at 在）；
-    video_file 存在；无 youtube_video_id / video_id。
+    video_file 存在；无 youtube_video_id / video_id；
+    标题以 emoji 开头（Batch B 补查，拒绝时不自动改标题）。
     效果：fallback_approved=True + 批准记录 + status=ready_to_upload；
     上传发生在下一轮 collect 的 ready_to_upload 循环（现有链路），
     本命令本身不调上传、不进 private 队列。
@@ -140,6 +141,22 @@ def promote(item_id):
         return 2
     if target.get("youtube_video_id") or target.get("video_id"):
         print(f"拒绝：id={item_id} 已有 video_id，禁止重复上传")
+        return 2
+    # Batch B（2026-10-29）：Stage 2 标题 emoji 前置检查。
+    # 2026-10-28 19:52 3574 在 collect 上传时被网关 title_emoji 拒
+    # （标题不是 emoji 开头），当时 Stage 2 前置校验没查这一门，
+    # 放行后才在上传链被拒、白白耗一次重试。补查与 server 上传网关
+    # 同口径的 emoji 开头正则；拒绝时不改状态、不自动改标题
+    # （改标题须另行批准，见 2026-10-28 21:36 🎫 标题拍板先例）。
+    import re as _re
+    _emoji_re = _re.compile(
+        r"^[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D"
+        r"\U0001F1E6-\U0001F1FF]+", _re.UNICODE)
+    _title = target.get("title") or ""
+    if not _emoji_re.match(_title):
+        print(f"拒绝：id={item_id} [stage2:title_emoji] 标题不是 emoji 开头："
+              f"{_title[:50]}。标题必须以 emoji 开头（频道爆款公式），"
+              f"请先改标题再提单，本次不改状态、不自动改标题")
         return 2
     target["fallback_approved"] = True
     target["fallback_approved_at"] = now_iso()

@@ -210,6 +210,15 @@ def main():
         d = load()
         for k, p in d["platforms"].items():
             print(f"{k:12s} {p['status']:7s} {len(p['videos'])}视频 {len(p['comments'])}评论 {p.get('synced_at') or '-'}")
+        # C20 batch A：--show 是每小时矩阵轮的收尾步（任务体步骤 4，
+        # 无论全量/部分都必跑），轮末写 beat 即“本轮已完成”。
+        # 不在 --youtube/--merge 写 beat：那两步只是轮次中段，写了会
+        # 把半轮冒充整轮健康。写失败 best-effort，绝不拖垮 --show。
+        try:
+            from watchdog_watchdog import write_heartbeat as _ww_beat
+            _ww_beat("platform-matrix-sync", 60)
+        except Exception:
+            pass
     else:
         print(__doc__)
 

@@ -93,11 +93,22 @@ def alert(msg):
     不再出现“12h 一次、inbox 满 100 条截断、无人 ack 也不升级”。
     escalate 异常时 fail-open 回落旧 inbox 写法，告警绝不静默丢失。
     旧 12h 去重文件（ALERT_DEDUP_PATH）不再由本通道写入，留盘作废，不删。
+
+    C18（2026-10-29 batch A）：本通道是唯一传 new_episode=True 的调用方。
+    选择理由：死状态看门狗是主复发源——全部死状态检查都汇到本 alert()，
+    且只在当轮扫描确实发现条件时才调用、condition 经 _dedup_key 剥离年龄
+    后稳定；escalate 自身设门（24h 窗口内记录全已 ack 才建新单并附
+    recurrence_of，窗口内有未 ack 记录则合并进最新未 ack 记录，无窗口则
+    正常建单），故每轮上报不会刷屏——新单建出后即为未 ack 存量，下轮
+    只合并，直到再次全 ack 才可能再建新单。语义限定：本通道把“已 ack
+    但当轮仍在”视作复发（死状态一次 ack 不应永久静默未解决的死状态）；
+    dispatch_health / anomaly 等持久检查器健康上报不走本通道，不套用。
     """
     try:
         from graded_assertions import escalate as _ga_escalate
         rec = _ga_escalate("dead_state_watchdog", "dead_state",
-                           _dedup_key(msg), severity="P2", detail=msg)
+                           _dedup_key(msg), severity="P2", detail=msg,
+                           new_episode=True)
         print(f"ALERT: {msg}")
         return rec
     except Exception as ex:
@@ -1276,11 +1287,15 @@ def check_vps_orphans():
 # watchdog_watchdog.py）中，本批因“不新建/不改动任何定时任务”
 # 约束，取第三条路：元检查内嵌进本看门狗已有的 30 分钟轮次，
 # watchdog_watchdog.py 保留作检查库 + 手动 CLI，不删除。
-# 本地可接线子集（LOCAL_WATCHERS）：5 个本地有 main() 入口的看门狗。
-# 未纳入的 2 个及原因：
-# - mcp-b-queue-consumer：运行入口是 cron 任务体里的 SSH 命令，无本地
-#   main() 可挂 beat，接线须改任务体，本批禁改，故不纳入；
-# - platform-matrix-sync：本机未找到其运行入口，纳入前须先定位入口。
+# 本地可接线子集（LOCAL_WATCHERS）：原 5 个本地有 main() 入口的看门狗。
+# C20 batch A 补齐剩余 2 个（见 META_LOCAL_WATCHERS）：
+# - platform-matrix-sync：入口已定位——distributor/platform_matrix_sync.py
+#   的 --show 是每小时轮的收尾步（任务体步骤 4，每轮必跑），beat 接在
+#   --show 轮末，不在 --youtube/--merge（轮次未完成，提前写 beat 会
+#   把半轮冒充整轮健康）；
+# - mcp-b-queue-consumer：仍无本地代码入口（cron 任务体本身就是消费者，
+#   无脚本可挂 beat），beat 只能改任务体（待批提案，见实施记录）；
+#   本批先纳入元检查名单，宽限后无 beat 即告警（真实缺口信号）。
 # 缺失文件宽限：首见缺失只记 first_missing_at 不告警（部署后各看门狗
 # 需一轮时间写出首个 beat）；宽限（2×interval）后仍无文件才告警。
 # 告警文本刻意不含实时年龄：alert() 的 _dedup_key 只剥离“小时/h”
@@ -1292,6 +1307,15 @@ META_LOCAL_WATCHERS = {
     "dispatch-lifeline-watch": 10,
     "private-flip-scheduler": 10,
     "perpetua-pipeline-collect": 20,
+    # C20 batch A：补齐 watchdog_watchdog.WATCHERS 的剩余两项。
+    # platform-matrix-sync 的 beat 由 platform_matrix_sync.py --show
+    # 轮末写入（本批已接线，下一小时轮在 120 分钟宽限内落位）。
+    # mcp-b-queue-consumer 暂无本地代码入口，beat 须改 cron 任务体
+    # （见实施记录中的待批提案）；本批先将其纳入元检查，下一轮
+    # 死状态检查起记 first_missing_at，宽限（2×5=10 分钟）后仍无
+    # beat 即告警——该告警是真实缺口信号，提案获批落地后消除。
+    "mcp-b-queue-consumer": 5,
+    "platform-matrix-sync": 60,
 }
 
 
