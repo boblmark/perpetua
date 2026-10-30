@@ -18,6 +18,12 @@ if curl -s -m 5 -o /dev/null -w "%{http_code}" http://127.0.0.1:18737/ 2>/dev/nu
 fi
 
 echo "$TS 18737 Web UI 不健康，重启" >> "$LOG"
+# 失败路径诊断（2026-10-30 18737 hunt：下次再翻时要分清“进程真死”还是“探针看不见”；
+# 只记代理是否设置、不记代理 URL 本身，URL 里可能含凭据）
+{
+echo "$TS 18737 诊断: ss=$(ss -ltn 2>/dev/null | grep 18737 || echo none) pids=$(pgrep -f 'http\.server 18737' 2>/dev/null | tr '\n' ' ') no_proxy=${no_proxy:-unset} http_proxy_set=$([ -n "$http_proxy" ] && echo yes || echo no)"
+curl -sv -m 5 http://127.0.0.1:18737/ 2>&1 | grep -E "Connected|HTTP/|Failed|refused" | head -5 | sed "s/^/$TS 18737 curl: /"
+} >> "$LOG" 2>&1
 for pid in $(pgrep -f "http\.server 18737" 2>/dev/null); do
     kill "$pid" 2>/dev/null
 done
