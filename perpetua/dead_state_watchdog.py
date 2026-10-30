@@ -390,7 +390,8 @@ def check_pipeline_stuck():
     # transient 失败：review_timeout, review_error, generate_failed, qc_failed, qc_error
     #   → 超 2 小时未动 → review_timeout 自动重送，其他告警
     TRANSIENT = {"review_timeout", "review_error", "generate_failed",
-                 "qc_failed", "qc_error", "selected", "job_submitted"}
+                 "qc_failed", "qc_error", "selected", "job_submitted",
+                 "teaser_generating"}
     # 注："generating" 已移除——全库无任何写入点（2026-10-16 P1-3），列入 TRANSIENT
     # 只是死条目；"job_submitted" 新增——dispatcher 在途任务无看门狗覆盖。
     issues = []
@@ -530,9 +531,10 @@ def check_pipeline_stuck():
             if not updated:
                 continue
             age_h = (now() - updated).total_seconds() / 3600
-        # 2026-10-16 P1-3：job_submitted 用 6h 门限（dispatcher 任务正常数分钟~数小时；
-        # 2h 对它太激进），其他 TRANSIENT 保持 2h
-        _min_age = 6 if st == "job_submitted" else 2
+        # 2026-10-30 P2（空转审计）：job_submitted / teaser_generating 用 4h
+        # 门限，到点转 generate_failed 终局（此前 job_submitted 6h 只告警、
+        # teaser_generating 只走 C4 的 7 天告警，均不终局）；其他 TRANSIENT 保持 2h
+        _min_age = 4 if st in ("job_submitted", "teaser_generating") else 2
         if age_h < _min_age:
             continue
         topic = it.get("topic", "?")
@@ -625,6 +627,24 @@ def check_pipeline_stuck():
                 auto_fixed.append(
                     f"{topic}（review_error {age_h:.1f}h → 已自动回 selected "
                     f"重审，第 {_resub + 1} 次）")
+        elif st == "job_submitted":
+            # P2（2026-10-30 空转审计）：超 4h 无结果 → generate_failed 终局，
+            # 不再只告警（此前 6h 门限仅 issues 告警，条目永久滞留）
+            it["status"] = "generate_failed"
+            it["generate_error"] = f"job_timeout_{age_h:.1f}h"
+            it["updated_at"] = now().isoformat()
+            changed = True
+            auto_fixed.append(
+                f"{topic}（job_submitted {age_h:.1f}h 无结果 → generate_failed）")
+        elif st == "teaser_generating":
+            # P2 同款：teaser 生成超 4h 无结果 → generate_failed 终局
+            # （此前只走 C4 的 >7 天告警）
+            it["status"] = "generate_failed"
+            it["generate_error"] = f"teaser_job_timeout_{age_h:.1f}h"
+            it["updated_at"] = now().isoformat()
+            changed = True
+            auto_fixed.append(
+                f"{topic}（teaser_generating {age_h:.1f}h 无结果 → generate_failed）")
         else:
             issues.append(f"pipeline_queue 卡死：{topic} status={st} 已 {age_h:.1f}h{_age_note}")
     if changed:
