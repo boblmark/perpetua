@@ -2411,7 +2411,22 @@ def collect_results():
             continue
         res = _load(rp, {})
         if res.get("status") != "done":
-            # 失败重试机制：最多重试 2 次，换不同的 karma 动词
+            # L0（2026-10-30 用户批准播放量方案 L0-4）：模型侧 integrity/
+            # sealed 拒答是内容性拒答；review_passed 重提走 stored prompt
+            # （不换动词），原样重提必再拒、纯烧配额，故直接走耗尽终局
+            # （arena 手工兜底 + P2，不静默丢弃）。改版需新动词重建
+            # prompt 并重新评审后以新条目进管线，不在本分支复活。
+            _err = str(res.get("error", "")).lower()
+            if "integrity" in _err or "sealed" in _err:
+                item["retry_count"] = 2
+                item["generate_error"] = str(res.get("error", ""))[:200]
+                _handle_done_error_exhausted(item, jid)
+                pipeline_log("generate", "error",
+                             f"integrity/sealed 拒答直接终局，不原样重提 {item['topic']}", 0)
+                changed = True
+                continue
+            # 失败重试机制：最多重试 2 次（仅无 score 项打回 selected 才
+            # 换动词重建；review_passed 项重提走 stored prompt 原样）
             retry = item.get("retry_count", 0)
             if retry < 2:
                 item["retry_count"] = retry + 1
