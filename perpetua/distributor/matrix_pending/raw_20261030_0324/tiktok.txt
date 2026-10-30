@@ -1,0 +1,164 @@
+task=browser-task:3c3b8de1-d67a-50ec-ac84-042dc806f91d
+outcome=completed
+
+=== REPORT SUMMARY ===
+Verdict: OK — The TikTok profile loaded fully without a slider verification or other block. No login, like, comment, follow, or post action was taken.
+
+Structured data:
+
+{
+  "verdict": "OK",
+  "verdict_reason": "Profile and the latest videos loaded and were readable; no slider verification appeared or blocked content.",
+  "channel": {
+    "channel_name": "cgb20250",
+    "handle": "@cgb20250",
+    "profile_url": "https://www.tiktok.com/@cgb20250",
+    "avatar_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-avt-0068-tx/cf1029a64b67e0d5705566b5e60b0e06~tplv-tiktokx-cropcenter:100:100.jpeg?dr=9640&refresh_token=4987f0ca&x-expires=1793473200&x-signature=5eVxWwtcxdX9Q9qXM6UcUofJ0q8%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast5",
+    "cover_background_url": null,
+    "bio": "Here, I’ll use AI to bring all kinds of wild concepts to life.",
+    "profile_counts_as_shown": {
+      "following": 1,
+      "followers": 5,
+      "likes": 65
+    }
+  },
+  "pinned_videos": [],
+  "pinned_note": "No pinned badge or pinned section was shown on the profile grid; therefore no video was marked pinned=true.",
+  "videos": [
+    {
+      "order": 1,
+      "pinned": false,
+      "title_caption_first_80_chars": "She tried to fine me for my lawn, but the universe hit her back in 4K. 🤣 The ending",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570986712361356558",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/ogAAjFaxvElfDFvAVfCCYEC3gSE6DAAQWpzKIA~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=MZ79Sq5GPudybGzSJ9ehFETguZY%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 616,
+      "like_count": 9,
+      "publish_time": "2025-11-10"
+    },
+    {
+      "order": 2,
+      "pinned": false,
+      "title_caption_first_80_chars": "STOP SCROLLING ⚠️ Protocol Breach Detected. This is not a glitch. Watch closely.",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570389537172573454",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/oMfjAQSA2pdbEgEMbe9FQC9DCaAzDIVP05SAAD~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=dNpxPgl7GpWulJMvNCXoYjBDyvs%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 108,
+      "like_count": 0,
+      "publish_time": "2025-11-9"
+    },
+    {
+      "order": 3,
+      "pinned": false,
+      "title_caption_first_80_chars": "Caught This VR Entity Looping?! 🔁 What's Your Theory? #ProtocolGuardian #092",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570376486872419597",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/o0qIPAGi2SAjxEIpADFfDCgaeYUACREkVADkCI~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=Bz3tRUS0LX02gBdLbn5JE2QoW%2Fw%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 102,
+      "like_count": 0,
+      "publish_time": "2025-11-8"
+    },
+    {
+      "order": 4,
+      "pinned": false,
+      "title_caption_first_80_chars": "VR Glitch Captures a SENTIENT Entity?! | Protocol Guardian #091",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570364033862274317",
+      "cover_image_url": "https://p16-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/o80QeMuTHGqHjkseVsLAAvgIrAujAwReEAESAq~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=M%2FwtXQC2V9DLAcKYCIYL5%2BKWePk%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 96,
+      "like_count": 0,
+      "publish_time": "2025-11-8"
+    },
+    {
+      "order": 5,
+      "pinned": false,
+      "title_caption_first_80_chars": "Full Forensic Breakdown ➡️ [https://youtube.com/shorts/buRuDTT-1Bg] We caught her",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570357005639060749",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/osEdVAVCEDAfiIAPApAgCEfaSCF4FTDD0Xwngn~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=WUNglHNK2l4EIJNZJpZsgQyVKPw%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 34,
+      "like_count": 0,
+      "publish_time": "2025-11-8"
+    }
+  ],
+  "comments": [],
+  "comments_note": "The latest 2 videos were opened and their comment panels checked. Both showed 0 comments and 'Start the conversation', so there were no comments to collect. No comment was posted."
+}
+
+Notes on evidence: View counts are from the profile grid; like counts and publish dates are from the individual video pages (and the related-videos list for videos 3-5, which showed 0 likes). Publish times are shown as displayed dates only; no time of day was shown, so no ISO timestamp was invented. The profile page showed no cover/background image, so that field is null.
+
+=== FULL CONTEXT ===
+Verdict: OK — The TikTok profile loaded fully without a slider verification or other block. No login, like, comment, follow, or post action was taken.
+
+Structured data:
+
+{
+  "verdict": "OK",
+  "verdict_reason": "Profile and the latest videos loaded and were readable; no slider verification appeared or blocked content.",
+  "channel": {
+    "channel_name": "cgb20250",
+    "handle": "@cgb20250",
+    "profile_url": "https://www.tiktok.com/@cgb20250",
+    "avatar_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-avt-0068-tx/cf1029a64b67e0d5705566b5e60b0e06~tplv-tiktokx-cropcenter:100:100.jpeg?dr=9640&refresh_token=4987f0ca&x-expires=1793473200&x-signature=5eVxWwtcxdX9Q9qXM6UcUofJ0q8%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast5",
+    "cover_background_url": null,
+    "bio": "Here, I’ll use AI to bring all kinds of wild concepts to life.",
+    "profile_counts_as_shown": {
+      "following": 1,
+      "followers": 5,
+      "likes": 65
+    }
+  },
+  "pinned_videos": [],
+  "pinned_note": "No pinned badge or pinned section was shown on the profile grid; therefore no video was marked pinned=true.",
+  "videos": [
+    {
+      "order": 1,
+      "pinned": false,
+      "title_caption_first_80_chars": "She tried to fine me for my lawn, but the universe hit her back in 4K. 🤣 The ending",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570986712361356558",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/ogAAjFaxvElfDFvAVfCCYEC3gSE6DAAQWpzKIA~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=MZ79Sq5GPudybGzSJ9ehFETguZY%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 616,
+      "like_count": 9,
+      "publish_time": "2025-11-10"
+    },
+    {
+      "order": 2,
+      "pinned": false,
+      "title_caption_first_80_chars": "STOP SCROLLING ⚠️ Protocol Breach Detected. This is not a glitch. Watch closely.",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570389537172573454",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/oMfjAQSA2pdbEgEMbe9FQC9DCaAzDIVP05SAAD~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=dNpxPgl7GpWulJMvNCXoYjBDyvs%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 108,
+      "like_count": 0,
+      "publish_time": "2025-11-9"
+    },
+    {
+      "order": 3,
+      "pinned": false,
+      "title_caption_first_80_chars": "Caught This VR Entity Looping?! 🔁 What's Your Theory? #ProtocolGuardian #092",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570376486872419597",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/o0qIPAGi2SAjxEIpADFfDCgaeYUACREkVADkCI~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=Bz3tRUS0LX02gBdLbn5JE2QoW%2Fw%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 102,
+      "like_count": 0,
+      "publish_time": "2025-11-8"
+    },
+    {
+      "order": 4,
+      "pinned": false,
+      "title_caption_first_80_chars": "VR Glitch Captures a SENTIENT Entity?! | Protocol Guardian #091",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570364033862274317",
+      "cover_image_url": "https://p16-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/o80QeMuTHGqHjkseVsLAAvgIrAujAwReEAESAq~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=M%2FwtXQC2V9DLAcKYCIYL5%2BKWePk%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 96,
+      "like_count": 0,
+      "publish_time": "2025-11-8"
+    },
+    {
+      "order": 5,
+      "pinned": false,
+      "title_caption_first_80_chars": "Full Forensic Breakdown ➡️ [https://youtube.com/shorts/buRuDTT-1Bg] We caught her",
+      "video_url": "https://www.tiktok.com/@cgb20250/video/7570357005639060749",
+      "cover_image_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/osEdVAVCEDAfiIAPApAgCEfaSCF4FTDD0Xwngn~tplv-tiktokx-origin.image?dr=9636&x-expires=1793473200&x-signature=WUNglHNK2l4EIJNZJpZsgQyVKPw%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+      "view_count": 34,
+      "like_count": 0,
+      "publish_time": "2025-11-8"
+    }
+  ],
+  "comments": [],
+  "comments_note": "The latest 2 videos were opened and their comment panels checked. Both showed 0 comments and 'Start the conversation', so there were no comments to collect. No comment was posted."
+}
+
+Notes on evidence: View counts are from the profile grid; like counts and publish dates are from the individual video pages (and the related-videos list for videos 3-5, which showed 0 likes). Publish times are shown as displayed dates only; no time of day was shown, so no ISO timestamp was invented. The profile page showed no cover/background image, so that field is null.

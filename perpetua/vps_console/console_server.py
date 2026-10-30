@@ -18,6 +18,9 @@ import sys as _sys
 if "/home/hatch/data/perpetua" not in _sys.path:
     _sys.path.insert(0, "/home/hatch/data/perpetua")
 import queue_db
+# 蜂群 Pages（2026-10-30）：自定义仪表盘模块，与控制台同进程、同权限。
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pages as pages_mod
 # 360° v2：发布真相源 YouTube API 结果内存缓存（10min TTL；前端每 5s 轮询，不缓存会烧光 API 配额）
 import threading as _threading
 _PUBTRUTH_CACHE = {"at": 0.0, "data": {}, "err": ""}
@@ -618,6 +621,22 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/oa":
             self.serve_file("oa.html", "text/html; charset=utf-8")
             return
+        if path == "/pages":
+            self.serve_file("pages.html", "text/html; charset=utf-8")
+            return
+        if path == "/api/pages.css":
+            self.serve_file("pages.css", "text/css; charset=utf-8")
+            return
+        if path == "/api/pages.js":
+            self.serve_file("pages.js", "application/javascript; charset=utf-8")
+            return
+        if path.startswith("/api/pages"):
+            _res = pages_mod.handle_get(path, parse_qs(parsed.query))
+            if _res is None:
+                json_resp(self, {"error": "not found"}, 404)
+            else:
+                json_resp(self, _res[1], _res[0])
+            return
         if path == "/command":
             # 2026-10-16 退役：360° 已并入 Battle 标签页，/command 永久跳转到 /
             self.send_response(301)
@@ -803,6 +822,13 @@ class Handler(BaseHTTPRequestHandler):
             payload = {}
         if parsed.path.startswith("/sleep-hook/"):
             self.api_sleep_hook(parsed.path, payload)
+            return
+        if parsed.path.startswith("/api/pages"):
+            _res = pages_mod.handle_post(parsed.path, payload)
+            if _res is None:
+                json_resp(self, {"error": "not found"}, 404)
+            else:
+                json_resp(self, _res[1], _res[0])
             return
         if parsed.path == "/api/exec":
             self.api_exec(payload.get("command", ""))

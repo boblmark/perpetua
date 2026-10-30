@@ -1,0 +1,98 @@
+task=browser-task:a681221b-eed2-5c77-8a43-eccd18412306
+outcome=completed
+
+=== REPORT SUMMARY ===
+Verdict: STALE — Reason: The Page loaded fully and was readable (no login wall, and no login, like, comment, follow, or post was performed), but its latest post was displayed as 10月10日21:02 and the check was on 2026-10-30, so no new post was shown in the approximately 20 days before the check. The latest two posts also showed no comments.
+
+Structured data:
+
+Page:
+- page_name: "Mark Bobl - Karen vs AI"
+- profile_url: "https://www.facebook.com/61594841955473" (redirected in the browser to https://www.facebook.com/profile.php?id=61594841955473)
+- avatar_image_url: "https://scontent-lax7-1.xx.fbcdn.net/v/t39.30808-6/825351796_122106886461494731_8569311738010291854_n.webp?stp=dst-webp&cstp=mx1600x1600&ctp=s1600x1600&_nc_cat=105&ccb=1-7&_nc_sid=6ee11a&_nc_ohc=QUW00TzMXu8Q7kNvwFylUfz&_nc_oc=AdqO4zdGs-lpXwTwRVydi-ovXyyce4CGa1W5DLUS0kyDmOfw36K9Yl_THHzcGzbxW_I&_nc_zt=23&_nc_ht=scontent-lax7-1.xx&_nc_gid=tETcxweyKnFPZVfOz2m7dA&_nc_ss=792a8&oh=00_AQSao45Rfra3pUCOAmaSuY8u0UxoY-9rHyuupZPUVWX8TA&oe=6AE9878E"
+- cover_image_url: "https://scontent-lax3-2.xx.fbcdn.net/v/t39.30808-6/838614781_122106886833494731_1208334038598042794_n.jpg?stp=dst-jpg_tt6&cstp=mx2352x896&ctp=s2352x896&_nc_cat=103&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=eOtArC_sy4cQ7kNvwHZcZ9_&_nc_oc=Adp8lJGmmtE4pASG20WRfIf5hkNyvr6LMF32UXup10mtB-inwRbcr3kN62uz9nVmxEw&_nc_zt=23&_nc_ht=scontent-lax3-2.xx&_nc_gid=BqYsVLWDk5IQrTuOg_1nuA&_nc_ss=792a8&oh=00_AQTv8Suo3MsHjvreRIRAP-JeSUbCqw6SOKfn8FheuCp0dg&oe=6AE9812D"
+- bio_about: "🤖 Karen vs AI | Daily comedy shorts. She demands, AI delivers... karma. Follow for your daily dose of instant karma!"
+- followers_shown: 0, following_shown: 0, category_shown: "数字内容创作者" (Digital content creator)
+
+Pinned posts: [] — No post carried a pinned label in the feed. The "Featured" (精选) section is a collection, not a pinned post; it contains the older Smart Meter Reel from 10月8日02:42, which also appears as a regular timeline post.
+
+Latest 5 non-pinned posts (pinned=false for all):
+1. text_first_80: "🍭 Karen Doubled My Swirl: Neon-Blue Cotton Candy Beehive Wig: Karen Bangs On The"
+   post_url: "https://www.facebook.com/reel/851162221387331/"
+   cover_thumbnail_image_url: null (Reel frame was visible, but no direct thumbnail URL was exposed)
+   view_count: null, like_reaction_count: null (no count shown in the feed or in the Reel's own controls)
+   publish_time_displayed: "10月10日21:02", publish_time_iso: null
+2. text_first_80: "🅿️ Karen Shook The Parking Meter… It SOAKED Her Instantly 😭"
+   post_url: "https://www.facebook.com/reel/1469467041729733/"
+   cover_thumbnail_image_url: null
+   view_count: null, like_reaction_count: null (no count shown for this Reel's own controls; a large count appearing in a duplicated Reel-player element in the page was not used because it contradicted the Reel's own "no comments" pane)
+   publish_time_displayed: "10月9日20:42", publish_time_iso: null
+3. text_first_80: "🤖 Karen vs AI: Veo v5.1 Test"
+   post_url: "https://www.facebook.com/permalink.php?story_fbid=pfbid033AMpVs76yuMZWGTU1xxDWvJyYvSQ8LqarAubqmUWDj7ngPvtgBmXuBD8P7C7nFZYl&id=61594841955473"
+   cover_thumbnail_image_url: null (text-only post as shown)
+   view_count: null, like_reaction_count: null
+   publish_time_displayed: "10月8日20:12", publish_time_iso: null
+4. text_first_80: null, type: "cover_photo_change" (no caption shown)
+   post_url: "https://www.facebook.com/permalink.php?story_fbid=4510962555848930&id=61594841955473"
+   cover_thumbnail_image_url: same as the Page cover_image_url above
+   view_count: null, like_reaction_count: null
+   publish_time_displayed: "10月8日02:50", publish_time_iso: null
+5. text_first_80: null, type: "profile_picture_change" (no caption shown)
+   post_url: "https://www.facebook.com/permalink.php?story_fbid=122106886581494731&id=61594841955473"
+   cover_thumbnail_image_url: same as the Page avatar_image_url above
+   view_count: null, like_reaction_count: null
+   publish_time_displayed: "10月8日02:49", publish_time_iso: null
+
+Comments (latest 1-2 posts opened; up to 8 newest total): []
+- The latest Reel (10月10日21:02), the second-latest Reel (10月9日20:42), and the Veo v5.1 Test post (10月8日20:12) all explicitly showed "还没有任何评论哦" / "No comments yet". The cover-photo and avatar-change photo pages also showed no comments. No comment author, text, like count, or time could therefore be collected, and no numbers were invented.
+- Note for context only, outside the 5-post list: the next older timeline post, "🅿️ Karen Fought A Smart Meter… And Lost Instantly 😂" (10月8日02:42, https://www.facebook.com/reel/1661639808947527/), showed 2 likes in the feed.
+
+Limitations: Publish times are given exactly as displayed because Facebook did not show a year or ISO timestamp. View and like counts are null where Facebook did not display a count for that item, rather than 0.
+
+=== FULL CONTEXT ===
+Verdict: STALE — Reason: The Page loaded fully and was readable (no login wall, and no login, like, comment, follow, or post was performed), but its latest post was displayed as 10月10日21:02 and the check was on 2026-10-30, so no new post was shown in the approximately 20 days before the check. The latest two posts also showed no comments.
+
+Structured data:
+
+Page:
+- page_name: "Mark Bobl - Karen vs AI"
+- profile_url: "https://www.facebook.com/61594841955473" (redirected in the browser to https://www.facebook.com/profile.php?id=61594841955473)
+- avatar_image_url: "https://scontent-lax7-1.xx.fbcdn.net/v/t39.30808-6/825351796_122106886461494731_8569311738010291854_n.webp?stp=dst-webp&cstp=mx1600x1600&ctp=s1600x1600&_nc_cat=105&ccb=1-7&_nc_sid=6ee11a&_nc_ohc=QUW00TzMXu8Q7kNvwFylUfz&_nc_oc=AdqO4zdGs-lpXwTwRVydi-ovXyyce4CGa1W5DLUS0kyDmOfw36K9Yl_THHzcGzbxW_I&_nc_zt=23&_nc_ht=scontent-lax7-1.xx&_nc_gid=tETcxweyKnFPZVfOz2m7dA&_nc_ss=792a8&oh=00_AQSao45Rfra3pUCOAmaSuY8u0UxoY-9rHyuupZPUVWX8TA&oe=6AE9878E"
+- cover_image_url: "https://scontent-lax3-2.xx.fbcdn.net/v/t39.30808-6/838614781_122106886833494731_1208334038598042794_n.jpg?stp=dst-jpg_tt6&cstp=mx2352x896&ctp=s2352x896&_nc_cat=103&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=eOtArC_sy4cQ7kNvwHZcZ9_&_nc_oc=Adp8lJGmmtE4pASG20WRfIf5hkNyvr6LMF32UXup10mtB-inwRbcr3kN62uz9nVmxEw&_nc_zt=23&_nc_ht=scontent-lax3-2.xx&_nc_gid=BqYsVLWDk5IQrTuOg_1nuA&_nc_ss=792a8&oh=00_AQTv8Suo3MsHjvreRIRAP-JeSUbCqw6SOKfn8FheuCp0dg&oe=6AE9812D"
+- bio_about: "🤖 Karen vs AI | Daily comedy shorts. She demands, AI delivers... karma. Follow for your daily dose of instant karma!"
+- followers_shown: 0, following_shown: 0, category_shown: "数字内容创作者" (Digital content creator)
+
+Pinned posts: [] — No post carried a pinned label in the feed. The "Featured" (精选) section is a collection, not a pinned post; it contains the older Smart Meter Reel from 10月8日02:42, which also appears as a regular timeline post.
+
+Latest 5 non-pinned posts (pinned=false for all):
+1. text_first_80: "🍭 Karen Doubled My Swirl: Neon-Blue Cotton Candy Beehive Wig: Karen Bangs On The"
+   post_url: "https://www.facebook.com/reel/851162221387331/"
+   cover_thumbnail_image_url: null (Reel frame was visible, but no direct thumbnail URL was exposed)
+   view_count: null, like_reaction_count: null (no count shown in the feed or in the Reel's own controls)
+   publish_time_displayed: "10月10日21:02", publish_time_iso: null
+2. text_first_80: "🅿️ Karen Shook The Parking Meter… It SOAKED Her Instantly 😭"
+   post_url: "https://www.facebook.com/reel/1469467041729733/"
+   cover_thumbnail_image_url: null
+   view_count: null, like_reaction_count: null (no count shown for this Reel's own controls; a large count appearing in a duplicated Reel-player element in the page was not used because it contradicted the Reel's own "no comments" pane)
+   publish_time_displayed: "10月9日20:42", publish_time_iso: null
+3. text_first_80: "🤖 Karen vs AI: Veo v5.1 Test"
+   post_url: "https://www.facebook.com/permalink.php?story_fbid=pfbid033AMpVs76yuMZWGTU1xxDWvJyYvSQ8LqarAubqmUWDj7ngPvtgBmXuBD8P7C7nFZYl&id=61594841955473"
+   cover_thumbnail_image_url: null (text-only post as shown)
+   view_count: null, like_reaction_count: null
+   publish_time_displayed: "10月8日20:12", publish_time_iso: null
+4. text_first_80: null, type: "cover_photo_change" (no caption shown)
+   post_url: "https://www.facebook.com/permalink.php?story_fbid=4510962555848930&id=61594841955473"
+   cover_thumbnail_image_url: same as the Page cover_image_url above
+   view_count: null, like_reaction_count: null
+   publish_time_displayed: "10月8日02:50", publish_time_iso: null
+5. text_first_80: null, type: "profile_picture_change" (no caption shown)
+   post_url: "https://www.facebook.com/permalink.php?story_fbid=122106886581494731&id=61594841955473"
+   cover_thumbnail_image_url: same as the Page avatar_image_url above
+   view_count: null, like_reaction_count: null
+   publish_time_displayed: "10月8日02:49", publish_time_iso: null
+
+Comments (latest 1-2 posts opened; up to 8 newest total): []
+- The latest Reel (10月10日21:02), the second-latest Reel (10月9日20:42), and the Veo v5.1 Test post (10月8日20:12) all explicitly showed "还没有任何评论哦" / "No comments yet". The cover-photo and avatar-change photo pages also showed no comments. No comment author, text, like count, or time could therefore be collected, and no numbers were invented.
+- Note for context only, outside the 5-post list: the next older timeline post, "🅿️ Karen Fought A Smart Meter… And Lost Instantly 😂" (10月8日02:42, https://www.facebook.com/reel/1661639808947527/), showed 2 likes in the feed.
+
+Limitations: Publish times are given exactly as displayed because Facebook did not show a year or ISO timestamp. View and like counts are null where Facebook did not display a count for that item, rather than 0.

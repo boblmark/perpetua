@@ -1,0 +1,62 @@
+task=browser-task:d354678d-3b13-5fcd-9ef8-dddc0c8ea0a9
+outcome=completed
+
+=== REPORT SUMMARY ===
+Verdict: OK — Homepage verified by Douyin ID, not nickname.
+
+Search method: Searched Douyin directly for "43833679345". The search result and the opened homepage both showed Douyin ID 43833679345 for 档案管理员, so this is NOT the wrong driving-school account warned about in the task. No login, like, comment, follow, or post was performed; all content was read as a logged-out visitor and no login wall blocked the profile, videos, or comment sections.
+
+Profile:
+- Channel name: 档案管理员
+- Douyin ID: 43833679345
+- Profile URL: https://www.douyin.com/user/MS4wLjABAAAARXwsWSFJMn7EFuhevASo_FbS_9V4wm8v4S_NA4t9K5k
+- Avatar image URL: https://p3-pc-sign.douyinpic.com/aweme-avatar/tos-cn-i-0813c001_o0WPgDwFDAYsKiQRiIIAO6aUBPEAwgVrjiAAp~tplv-8yspqt5zfm-300x300.webp?lk3s=93de098e&x-expires=1793473200&x-signature=fxdxABOOGoQ%2Fa5LmhZycAROimp0%3D&from=2480802190&s=profile&se=false&sc=avatar&l=202610300330334D7EA249EB6BAB9E93F9
+- Cover/background URL: null — no separate cover/background image URL was exposed on the profile page.
+- Profile bio (full, revealed on hover): "AI历史视觉还原实验室｜每日调阅一份硬核档案 正在解密：《明朝覆灭的最后72小时》 下集移步置顶合集｜上/中/下三集连载更新中"
+- Additional profile stats shown: following 394, followers 216, total likes 2122, works 522.
+
+Videos (total 7: 2 pinned + 5 non-pinned; only 2 pinned videos were shown on the homepage, so the pinned total is 2, not 3. View counts are the play counts shown with the play icon on the profile grid; like counts and publish times are from each video page. Unseen numbers are not invented.)
+
+Pinned:
+1. pinned=true, title/caption (first 80 chars): "明亡之谜·上集｜消失的1644 AI视觉档案解密第一集。档案管理员带你翻开明亡之谜的第一份卷宗。#明朝 #历史解密 #档案", video URL: https://www.douyin.com/video/7695014941597699382, cover: https://p3-pc-sign.douyinpic.com/tos-cn-i-dy/81d43d3ebfc0430b85abc5830386ccb3~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=T8H8sogiBAX5NDjy1%2FGbi9hLX7E%3D, view count: 181, like count: 5, publish time: 2026-10-10 20:28
+2. pinned=true, title/caption (first 80 chars): "世界那么大，我想去看看 (一只猪的视角) 全网首发！AI生成跑酷猪，第一视角带你飞！你猜它最后跑去了哪里？结局绝对想不到！ #AI #跑酷 #万万没想到 #萌宠", video URL: https://www.douyin.com/video/7538657236822789391, cover: https://p3-pc-sign.douyinpic.com/tos-cn-i-dy/457fcf6c35a2457e80b07be963066953~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=yjld5ST3TNZU3P%2BX5uZN6Fqsp4w%3D, view count: 2268, like count: 13, publish time: 2025-08-15 12:00
+
+Latest 5 non-pinned, in profile order:
+3. pinned=false, title: "Smart Parking Meter vs Karen", video URL: https://www.douyin.com/video/7695358683479362842, cover: https://p3-pc-sign.douyinpic.com/tos-cn-i-dy/c1bb0a59599a42a39b914e630827d233~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=WpY%2FESewKT3G1inZokSE8HsR5zE%3D, view count: 99, like count: 3, publish time: 2026-10-11 18:42
+4. pinned=false, title/caption (first 80 chars): "众策通｜政策匹配一键出清单 还在靠人翻政策、靠人估够不够格？ 众策通·科创政策智能管家｜本地部署·数据不出域 ✅ 7个监测栏目·每24小时同步｜政策库156条（69条系", video URL: https://www.douyin.com/video/7690550472965911962, cover: https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/oA4UuB7MqeArZhp6B2FEgLDkAuA9OdqQIpfdCl~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=wZhmV2XTWi9uvmAwNwpNdMXZD7M%3D, view count: 73, like count: 3, publish time: 2026-09-28 19:43
+5. pinned=false, title: "#小云雀AI #年画 #马 #瑞兽献宝 #八骏图", video URL: https://www.douyin.com/video/7607489381788988827, cover: https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/oMKPBrTE7ERfWY6zOAAnpINJEARTOeDvMf0BFC~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=AYnW3wS89rxTzmV0Z6Zf9UVKLug%3D, view count: 127, like count: 5, publish time: 2026-02-16 23:44
+6. pinned=false, title/caption (first 80 chars): "暗夜遗迹里的低语：考古队的100秒惊心时刻 他们点亮了油灯，却点燃了不该出现的光。 一声低沉的回响，让所有人都停住呼吸。 看完你会明白，有些秘密不该被触碰。 #", video URL: https://www.douyin.com/video/7559960420740615476, cover: https://p3-pc-sign.douyinpic.com/tos-cn-i-dy/06df7831c2244e1682771a9099cc753c~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=TgFeRgWZyYwm%2B2AiwH55sVjqa50%3D, view count: 104, like count: 3, publish time: 2025-10-11 21:47
+7. pinned=false, title/caption (first 80 chars): "《扫地僧》的逆袭：一杯咖啡泼出的“惊天”秘密，清洁工竟是匿名 30分钟，决定他一生的作品！😨 博物馆清洁工阿C，正小心翼翼地展开心血之作，不料一杯咖啡从天而降，", video URL: https://www.douyin.com/video/7557738958856178987, cover: https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/o0ZgAfxgem39BERc4XPBB0QwEM6r8HAy7FCafG~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=acD2W%2BCdPJ1IjnUlr6hg1tI%2FVUk%3D, view count: 104, like count: 2, publish time: 2025-10-05 22:07
+
+Comments (latest 1-2 videos, up to 8 total):
+- Comments: [] — empty. The latest video "Smart Parking Meter vs Karen" (https://www.douyin.com/video/7695358683479362842) showed "暂无评论" (no comments) and "抢首评", and the second-latest video "众策通｜政策匹配一键出清单…" (https://www.douyin.com/video/7690550472965911962) also showed "暂无评论" and "抢首评". Therefore no author, text, likes, or comment publish time could be collected from those two videos, and none were invented.
+
+=== FULL CONTEXT ===
+Verdict: OK — Homepage verified by Douyin ID, not nickname.
+
+Search method: Searched Douyin directly for "43833679345". The search result and the opened homepage both showed Douyin ID 43833679345 for 档案管理员, so this is NOT the wrong driving-school account warned about in the task. No login, like, comment, follow, or post was performed; all content was read as a logged-out visitor and no login wall blocked the profile, videos, or comment sections.
+
+Profile:
+- Channel name: 档案管理员
+- Douyin ID: 43833679345
+- Profile URL: https://www.douyin.com/user/MS4wLjABAAAARXwsWSFJMn7EFuhevASo_FbS_9V4wm8v4S_NA4t9K5k
+- Avatar image URL: https://p3-pc-sign.douyinpic.com/aweme-avatar/tos-cn-i-0813c001_o0WPgDwFDAYsKiQRiIIAO6aUBPEAwgVrjiAAp~tplv-8yspqt5zfm-300x300.webp?lk3s=93de098e&x-expires=1793473200&x-signature=fxdxABOOGoQ%2Fa5LmhZycAROimp0%3D&from=2480802190&s=profile&se=false&sc=avatar&l=202610300330334D7EA249EB6BAB9E93F9
+- Cover/background URL: null — no separate cover/background image URL was exposed on the profile page.
+- Profile bio (full, revealed on hover): "AI历史视觉还原实验室｜每日调阅一份硬核档案 正在解密：《明朝覆灭的最后72小时》 下集移步置顶合集｜上/中/下三集连载更新中"
+- Additional profile stats shown: following 394, followers 216, total likes 2122, works 522.
+
+Videos (total 7: 2 pinned + 5 non-pinned; only 2 pinned videos were shown on the homepage, so the pinned total is 2, not 3. View counts are the play counts shown with the play icon on the profile grid; like counts and publish times are from each video page. Unseen numbers are not invented.)
+
+Pinned:
+1. pinned=true, title/caption (first 80 chars): "明亡之谜·上集｜消失的1644 AI视觉档案解密第一集。档案管理员带你翻开明亡之谜的第一份卷宗。#明朝 #历史解密 #档案", video URL: https://www.douyin.com/video/7695014941597699382, cover: https://p3-pc-sign.douyinpic.com/tos-cn-i-dy/81d43d3ebfc0430b85abc5830386ccb3~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=T8H8sogiBAX5NDjy1%2FGbi9hLX7E%3D, view count: 181, like count: 5, publish time: 2026-10-10 20:28
+2. pinned=true, title/caption (first 80 chars): "世界那么大，我想去看看 (一只猪的视角) 全网首发！AI生成跑酷猪，第一视角带你飞！你猜它最后跑去了哪里？结局绝对想不到！ #AI #跑酷 #万万没想到 #萌宠", video URL: https://www.douyin.com/video/7538657236822789391, cover: https://p3-pc-sign.douyinpic.com/tos-cn-i-dy/457fcf6c35a2457e80b07be963066953~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=yjld5ST3TNZU3P%2BX5uZN6Fqsp4w%3D, view count: 2268, like count: 13, publish time: 2025-08-15 12:00
+
+Latest 5 non-pinned, in profile order:
+3. pinned=false, title: "Smart Parking Meter vs Karen", video URL: https://www.douyin.com/video/7695358683479362842, cover: https://p3-pc-sign.douyinpic.com/tos-cn-i-dy/c1bb0a59599a42a39b914e630827d233~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=WpY%2FESewKT3G1inZokSE8HsR5zE%3D, view count: 99, like count: 3, publish time: 2026-10-11 18:42
+4. pinned=false, title/caption (first 80 chars): "众策通｜政策匹配一键出清单 还在靠人翻政策、靠人估够不够格？ 众策通·科创政策智能管家｜本地部署·数据不出域 ✅ 7个监测栏目·每24小时同步｜政策库156条（69条系", video URL: https://www.douyin.com/video/7690550472965911962, cover: https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/oA4UuB7MqeArZhp6B2FEgLDkAuA9OdqQIpfdCl~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=wZhmV2XTWi9uvmAwNwpNdMXZD7M%3D, view count: 73, like count: 3, publish time: 2026-09-28 19:43
+5. pinned=false, title: "#小云雀AI #年画 #马 #瑞兽献宝 #八骏图", video URL: https://www.douyin.com/video/7607489381788988827, cover: https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/oMKPBrTE7ERfWY6zOAAnpINJEARTOeDvMf0BFC~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=AYnW3wS89rxTzmV0Z6Zf9UVKLug%3D, view count: 127, like count: 5, publish time: 2026-02-16 23:44
+6. pinned=false, title/caption (first 80 chars): "暗夜遗迹里的低语：考古队的100秒惊心时刻 他们点亮了油灯，却点燃了不该出现的光。 一声低沉的回响，让所有人都停住呼吸。 看完你会明白，有些秘密不该被触碰。 #", video URL: https://www.douyin.com/video/7559960420740615476, cover: https://p3-pc-sign.douyinpic.com/tos-cn-i-dy/06df7831c2244e1682771a9099cc753c~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=TgFeRgWZyYwm%2B2AiwH55sVjqa50%3D, view count: 104, like count: 3, publish time: 2025-10-11 21:47
+7. pinned=false, title/caption (first 80 chars): "《扫地僧》的逆袭：一杯咖啡泼出的“惊天”秘密，清洁工竟是匿名 30分钟，决定他一生的作品！😨 博物馆清洁工阿C，正小心翼翼地展开心血之作，不料一杯咖啡从天而降，", video URL: https://www.douyin.com/video/7557738958856178987, cover: https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/o0ZgAfxgem39BERc4XPBB0QwEM6r8HAy7FCafG~tplv-dy-cropcenter:323:430.jpeg?biz_tag=pcweb_cover&from=327834062&lk3s=138a59ce&s=PackSourceEnum_PUBLISH&sc=cover&se=true&sh=323_430&x-expires=2108660400&x-signature=acD2W%2BCdPJ1IjnUlr6hg1tI%2FVUk%3D, view count: 104, like count: 2, publish time: 2025-10-05 22:07
+
+Comments (latest 1-2 videos, up to 8 total):
+- Comments: [] — empty. The latest video "Smart Parking Meter vs Karen" (https://www.douyin.com/video/7695358683479362842) showed "暂无评论" (no comments) and "抢首评", and the second-latest video "众策通｜政策匹配一键出清单…" (https://www.douyin.com/video/7690550472965911962) also showed "暂无评论" and "抢首评". Therefore no author, text, likes, or comment publish time could be collected from those two videos, and none were invented.

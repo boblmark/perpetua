@@ -1,0 +1,52 @@
+task=browser-task:22a42ff6-ee9c-5cf0-8ae1-1481cae6b9aa
+outcome=failed
+
+=== REPORT SUMMARY ===
+Verdict: STALE — the account could not be read in this session, so no fresh profile, video, or comment data was verified.
+
+What was tried, read-only, with no login, like, comment, follow, post, or bypass attempt:
+- Creator center https://cp.kuaishou.com/ redirected to https://cp.kuaishou.com/profile and showed only the public creator-platform introduction with a “立即登录” (Log in now) button. No work data or view counts were available without signing in.
+- Kuaishou public search for “CGB2024” was tried in several ways: https://www.kuaishou.com/search/video?searchKey=CGB2024, https://www.kuaishou.com/search/CGB2024, the homepage search box, and both the “视频” (Videos) and “用户” (Users) tabs. Every attempt ended with the same message: “服务器出错，请刷新重试” (Server error, please refresh and retry), even after reloading and using the on-page refresh button.
+- A control search for “test” produced the same server error, showing the failure was not specific to “CGB2024”; Kuaishou search was unavailable in this unauthenticated browser session. The public homepage also loaded without content, and the sidebar showed a login prompt.
+- An external search produced no usable Kuaishou profile link for “CGB2024”, so no public homepage could be identified or verified. The search term itself was not treated as a confirmed channel name.
+
+Structured result (all fields unverified, not invented):
+{
+  "verdict": "STALE",
+  "verdict_reason": "Unreadable: creator center requires login and Kuaishou search returned a persistent server error in this unauthenticated session; no public homepage was resolved.",
+  "search_term": "CGB2024",
+  "channel_name": null,
+  "profile_url": null,
+  "avatar_image_url": null,
+  "cover_background_url": null,
+  "profile_bio": null,
+  "videos": [],
+  "comments": []
+}
+
+No videos or comments were collected because no creator homepage was reached, and no view, like, or comment numbers are reported. Any previously held data for this account should be treated as stale until the account can be read from a logged-in or otherwise accessible Kuaishou session. Next step that would allow completion, if authorized separately: sign in to Kuaishou and retry the “CGB2024” search, which this task expressly did not authorize.
+
+=== FULL CONTEXT ===
+Verdict: STALE — the account could not be read in this session, so no fresh profile, video, or comment data was verified.
+
+What was tried, read-only, with no login, like, comment, follow, post, or bypass attempt:
+- Creator center https://cp.kuaishou.com/ redirected to https://cp.kuaishou.com/profile and showed only the public creator-platform introduction with a “立即登录” (Log in now) button. No work data or view counts were available without signing in.
+- Kuaishou public search for “CGB2024” was tried in several ways: https://www.kuaishou.com/search/video?searchKey=CGB2024, https://www.kuaishou.com/search/CGB2024, the homepage search box, and both the “视频” (Videos) and “用户” (Users) tabs. Every attempt ended with the same message: “服务器出错，请刷新重试” (Server error, please refresh and retry), even after reloading and using the on-page refresh button.
+- A control search for “test” produced the same server error, showing the failure was not specific to “CGB2024”; Kuaishou search was unavailable in this unauthenticated browser session. The public homepage also loaded without content, and the sidebar showed a login prompt.
+- An external search produced no usable Kuaishou profile link for “CGB2024”, so no public homepage could be identified or verified. The search term itself was not treated as a confirmed channel name.
+
+Structured result (all fields unverified, not invented):
+{
+  "verdict": "STALE",
+  "verdict_reason": "Unreadable: creator center requires login and Kuaishou search returned a persistent server error in this unauthenticated session; no public homepage was resolved.",
+  "search_term": "CGB2024",
+  "channel_name": null,
+  "profile_url": null,
+  "avatar_image_url": null,
+  "cover_background_url": null,
+  "profile_bio": null,
+  "videos": [],
+  "comments": []
+}
+
+No videos or comments were collected because no creator homepage was reached, and no view, like, or comment numbers are reported. Any previously held data for this account should be treated as stale until the account can be read from a logged-in or otherwise accessible Kuaishou session. Next step that would allow completion, if authorized separately: sign in to Kuaishou and retry the “CGB2024” search, which this task expressly did not authorize.

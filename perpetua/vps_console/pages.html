@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>蜂群 Pages · 自定义仪表盘</title>
+<link rel="stylesheet" href="/api/pages.css"></head>
+<body>
+<header>
+  <h1>蜂群 Pages</h1>
+  <p>自定义仪表盘 · 数据只读，来自控制台本机真相源，读不到就写 unknown，不编数。</p>
+  <nav><a href="/">← 回控制台</a> <span id="shareHint"></span></nav>
+</header>
+<main>
+  <section class="bar">
+    <label>页面 <select id="pageSel"></select></label>
+    <input id="newTitle" placeholder="新页面名，例如：发布夜班">
+    <button id="btnCreate">新建页面</button>
+    <button id="btnDelete">删除当前页</button>
+    <button id="btnRefresh">刷新数据</button>
+  </section>
+  <section class="bar">
+    <label>加卡片 <select id="wType"></select></label>
+    <label>放哪栏 <select id="wCol">
+      <option value="top">顶部数据</option>
+      <option value="left">左栏·待拍板</option>
+      <option value="center" selected>中栏·在途</option>
+      <option value="right">右栏·例行任务</option>
+    </select></label>
+    <input id="wText" placeholder="文字卡片内容（仅 note 类型用）">
+    <button id="btnAdd">添加卡片</button>
+  </section>
+  <div id="top" class="row top"></div>
+  <div class="cols">
+    <div><h2>左栏 · 待拍板</h2><div id="left" class="col"></div></div>
+    <div><h2>中栏 · 在途</h2><div id="center" class="col"></div></div>
+    <div><h2>右栏 · 例行任务</h2><div id="right" class="col"></div></div>
+  </div>
+  <p class="foot">共享方式：把本页地址 /pages?id=页面ID 发给团队成员即可，权限与控制台本身一致，不另外开公开链接。YPP 卡片显示的是诊断值，不是官方 qualified 小时。</p>
+</main>
+<script src="/api/pages.js"></script>
+</body></html>

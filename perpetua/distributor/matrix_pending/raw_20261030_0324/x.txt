@@ -1,0 +1,56 @@
+task=browser-task:85e570e2-bf85-57dc-8f17-22200c5e8639
+outcome=completed
+
+=== REPORT SUMMARY ===
+Verdict: STALE — The profile was fully readable with no login wall, but the latest non-pinned post is from Sep 28, 2026, which is 32 days before the Oct 30, 2026 check, and no newer post was found in the 78-post profile. September posts had previously appeared days apart, so the account shows no activity in the month before the check.
+
+Read-only check only: no login attempt, like, comment, follow, repost, or post was made.
+
+PROFILE (confirmed)
+- Channel name: Cyber Detective 2026
+- Handle / profile URL: @cgb2025194995 — https://x.com/cgb2025194995
+- Avatar image URL: https://pbs.twimg.com/profile_images/1983903087715872768/_zSd5OPB_200x200.jpg
+- Cover/background URL: https://pbs.twimg.com/profile_banners/1980131464273600512/1762223106/1500x500
+- Bio (as displayed): "📂 Digital Forensics from the Future / 📍 Neo-Tokyo / Silicon Valley / youtube.com/@CGB2025-boblm… / Joined October 2025"
+- Profile counts shown: 78 posts, 46 Following, 1 Follower
+
+POSTS — 1 pinned + 5 latest non-pinned, in profile order
+1. PINNED=true — Text (first 80 chars): "🤯 ALGORITHM BROKEN! 11s video → 1:00 AVG DURATION! IMPOSSIBLE. Digital Empathy?" — URL: https://x.com/cgb2025194995/status/1988270046788120894 — Media image URL: null (external YouTube link only) — Views: 382 — Likes: 1 — Publish time: Nov 11, 2025
+2. PINNED=false — Text: "The hard part of an HNTE certification practice isn't finding policies. It's that" — URL: https://x.com/cgb2025194995/status/2104511624120004938 — Media: embedded video present, no stable pbs.twimg.com image URL exposed (only a temporary blob URL), so media image URL: null — Views: 536 on the post detail page (535 on the profile list before opening it) — Likes: 0 — Publish time: 6:00 PM, Sep 28, 2026
+3. PINNED=false — Text: "We run a 40-person manufacturer and our HNTE application got rejected last year. Does" — URL: https://x.com/cgb2025194995/status/2104556455248748825 — Media image URL: null — Views: 264 — Likes: 0 — Publish time: 8:58 PM, Sep 28, 2026. Note: this post is also the reply in the thread for post 2 above, which explains why it appears after post 2 in the profile list despite being later in time.
+4. PINNED=false — Text: "Enterprise AI compute freedom: one machine, no API bills. AMD Ryzen AI MAX+ 395, 128" — URL: https://x.com/cgb2025194995/status/2100845971521601645 — Media image URL: null — Views: 161 — Likes: 0 — Publish time: Sep 18 (as displayed; year not shown on the profile list)
+5. PINNED=false — Text: "Quick notes from real usage: per-user RPM/TPM/RPD quotas make multi-tenant sharing sane" — URL: https://x.com/cgb2025194995/status/2101527174629232948 — Media image URL: null — Views: 218 — Likes: 0 — Publish time: Sep 20 (as displayed; year not shown on the profile list)
+6. PINNED=false — Text: "OpenAI 改了 system prompt：Add ChatGPT Work Codex Local variant 【这次变了什么】 OpenAI：" — URL: https://x.com/cgb2025194995/status/2099671818118508964 — Media image URL: null — Views: 114 — Likes: 0 — Publish time: Sep 15 (as displayed; year not shown on the profile list)
+
+COMMENTS — latest 1-2 posts opened; 2 distinct comments found, both from the same account, no third-party comments were shown
+1. Author: Cyber Detective 2026 (@cgb2025194995) — Text (first 120 chars): "We run a 40-person manufacturer and our HNTE application got rejected last year. Does this actually help us figure out what we were missing?" — Likes: 0 — Publish time: 8:58 PM, Sep 28, 2026 — Belongs to post: "The hard part of an HNTE certification practice isn't finding policies…" — https://x.com/cgb2025194995/status/2104511624120004938
+2. Author: Cyber Detective 2026 (@cgb2025194995) — Text (first 120 chars): "Sorry for the rejection. We can provide guidance on common issues in HNTE applications. Please leave your needs or visit our website for detailed support." — Likes: 0 — Publish time: Sep 28 (as displayed) — Belongs to post: "We run a 40-person manufacturer and our HNTE application got rejected last year…" — https://x.com/cgb2025194995/status/2104556455248748825, and also shown as the reply in the thread for post 2 above.
+
+Unseen numbers were left as null where applicable; no counts were invented. The pinned post showed 0 replies.
+
+=== FULL CONTEXT ===
+Verdict: STALE — The profile was fully readable with no login wall, but the latest non-pinned post is from Sep 28, 2026, which is 32 days before the Oct 30, 2026 check, and no newer post was found in the 78-post profile. September posts had previously appeared days apart, so the account shows no activity in the month before the check.
+
+Read-only check only: no login attempt, like, comment, follow, repost, or post was made.
+
+PROFILE (confirmed)
+- Channel name: Cyber Detective 2026
+- Handle / profile URL: @cgb2025194995 — https://x.com/cgb2025194995
+- Avatar image URL: https://pbs.twimg.com/profile_images/1983903087715872768/_zSd5OPB_200x200.jpg
+- Cover/background URL: https://pbs.twimg.com/profile_banners/1980131464273600512/1762223106/1500x500
+- Bio (as displayed): "📂 Digital Forensics from the Future / 📍 Neo-Tokyo / Silicon Valley / youtube.com/@CGB2025-boblm… / Joined October 2025"
+- Profile counts shown: 78 posts, 46 Following, 1 Follower
+
+POSTS — 1 pinned + 5 latest non-pinned, in profile order
+1. PINNED=true — Text (first 80 chars): "🤯 ALGORITHM BROKEN! 11s video → 1:00 AVG DURATION! IMPOSSIBLE. Digital Empathy?" — URL: https://x.com/cgb2025194995/status/1988270046788120894 — Media image URL: null (external YouTube link only) — Views: 382 — Likes: 1 — Publish time: Nov 11, 2025
+2. PINNED=false — Text: "The hard part of an HNTE certification practice isn't finding policies. It's that" — URL: https://x.com/cgb2025194995/status/2104511624120004938 — Media: embedded video present, no stable pbs.twimg.com image URL exposed (only a temporary blob URL), so media image URL: null — Views: 536 on the post detail page (535 on the profile list before opening it) — Likes: 0 — Publish time: 6:00 PM, Sep 28, 2026
+3. PINNED=false — Text: "We run a 40-person manufacturer and our HNTE application got rejected last year. Does" — URL: https://x.com/cgb2025194995/status/2104556455248748825 — Media image URL: null — Views: 264 — Likes: 0 — Publish time: 8:58 PM, Sep 28, 2026. Note: this post is also the reply in the thread for post 2 above, which explains why it appears after post 2 in the profile list despite being later in time.
+4. PINNED=false — Text: "Enterprise AI compute freedom: one machine, no API bills. AMD Ryzen AI MAX+ 395, 128" — URL: https://x.com/cgb2025194995/status/2100845971521601645 — Media image URL: null — Views: 161 — Likes: 0 — Publish time: Sep 18 (as displayed; year not shown on the profile list)
+5. PINNED=false — Text: "Quick notes from real usage: per-user RPM/TPM/RPD quotas make multi-tenant sharing sane" — URL: https://x.com/cgb2025194995/status/2101527174629232948 — Media image URL: null — Views: 218 — Likes: 0 — Publish time: Sep 20 (as displayed; year not shown on the profile list)
+6. PINNED=false — Text: "OpenAI 改了 system prompt：Add ChatGPT Work Codex Local variant 【这次变了什么】 OpenAI：" — URL: https://x.com/cgb2025194995/status/2099671818118508964 — Media image URL: null — Views: 114 — Likes: 0 — Publish time: Sep 15 (as displayed; year not shown on the profile list)
+
+COMMENTS — latest 1-2 posts opened; 2 distinct comments found, both from the same account, no third-party comments were shown
+1. Author: Cyber Detective 2026 (@cgb2025194995) — Text (first 120 chars): "We run a 40-person manufacturer and our HNTE application got rejected last year. Does this actually help us figure out what we were missing?" — Likes: 0 — Publish time: 8:58 PM, Sep 28, 2026 — Belongs to post: "The hard part of an HNTE certification practice isn't finding policies…" — https://x.com/cgb2025194995/status/2104511624120004938
+2. Author: Cyber Detective 2026 (@cgb2025194995) — Text (first 120 chars): "Sorry for the rejection. We can provide guidance on common issues in HNTE applications. Please leave your needs or visit our website for detailed support." — Likes: 0 — Publish time: Sep 28 (as displayed) — Belongs to post: "We run a 40-person manufacturer and our HNTE application got rejected last year…" — https://x.com/cgb2025194995/status/2104556455248748825, and also shown as the reply in the thread for post 2 above.
+
+Unseen numbers were left as null where applicable; no counts were invented. The pinned post showed 0 replies.
