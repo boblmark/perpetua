@@ -1,0 +1,206 @@
+--- a/perpetua/auto_pipeline.py
++++ b/perpetua/auto_pipeline.py
+@@ -2373,29 +2373,7 @@
+     # 绝不回 ready_to_upload 重传（无 video_id 重传是 U5 原 bug）。
+     for item in queue:
+         if item.get("status") == "uploaded_no_queue" and item.get("video_id"):
+-            try:
+-                entry = _enqueue_private_flip(item["video_id"], item["title"],
+-                                              review_score=item.get("review_score"),
+-                                              video_file=item.get("video_file"))
+-                if entry.get("status") == "throttle_deferred":
+-                    # P5：节流拦截 → 保持 uploaded_no_queue 下轮重试，
+-                    # 不误置 uploaded_private（旧代码无条件置位会谎报入队成功）。
+-                    item["throttle_deferred_at"] = now_iso()
+-                    item["throttle_defer_count"] = int(item.get("throttle_defer_count", 0) or 0) + 1
+-                    pipeline_log("publish", "error",
+-                                 f"B' 节流拦截补入队，保留待下轮重试 {item['topic']}: "
+-                                 f"{entry.get('throttle_reason', '')}", 0)
+-                else:
+-                    item["status"] = "uploaded_private"
+-                    item.pop("throttle_deferred_at", None)
+-                    item.pop("throttle_defer_count", None)
+-                    pipeline_log("publish", "ok",
+-                                 f"补入 privateq 成功: {item['topic']} → "
+-                                 f"{item['video_id']}，排期 {entry.get('slot', '?')}", 1)
+-            except Exception as _eqe:
+-                pipeline_log("publish", "error",
+-                             f"补入 privateq 仍失败，保留 video_id 下轮再试 "
+-                             f"{item['topic']}: {_eqe}", 0)
++            _retry_enqueue_privateq(item)
+             changed = True
+     # 2026-10-09 新政：上一轮被间隔门禁拦下的 ready_to_upload，本轮重试
+     for item in queue:
+@@ -2835,6 +2813,99 @@
+ )
+ 
+ 
++# ===== 2026-10-31 F3/F4/F5（空转审计 af3ae58）：上传侧重试必须有上限 =====
++# 现状：间隔门禁（gateway:spacing / [gate1:错峰]）、节流（throttle_deferred）、
++# 入队异常三条路径都只打日志、不计数，条目每 20 分钟重试一次，永不进终态
++# （C4 兜底只在 7 天后告警，不改状态）。
++#
++# ⚠️ spacing 是"时间型临时拒绝"，不是故障：teaser_validate._TRANSIENT_REJECT_MARKERS
++# 注明 [gate1:错峰] 是 4 小时/120 分钟发布间隔门，到点自然解除。放弃阈值必须
++# 大于合法等待窗口，否则会把正常等待误判为卡死。故按"时长"判定（4h + 2h 缓冲），
++# 次数上限只作时钟异常时的兜底。
++MAX_UPLOAD_SPACING_HOURS = 6.0     # 4h 间隔门 + 2h 缓冲
++MAX_UPLOAD_SPACING_RETRIES = 40    # 兜底：20min 一轮时 40 轮 = 13h，正常不会先到
++MAX_THROTTLE_DEFERS = 8            # ≈2.7h
++MAX_ENQUEUE_FAILS = 6              # ≈2h
++
++
++def _fail_upload_permanent(item, reason):
++    """上传侧不可恢复失败的统一终局：转 upload_permanently_failed + 通知。
++
++    只用于"视频已上传成功、但排期链路失败"的情形——video_id 必须保留在
++    条目里，人工据此排期，不得当作未上传重传。
++    """
++    item["status"] = "upload_permanently_failed"
++    item["failure_reason"] = str(reason)[:300]
++    item["upload_permanently_failed_at"] = now_iso()
++    vid = item.get("video_id") or ""
++    pipeline_log("publish", "error",
++                 f"上传侧永久失败，转人工: {item.get('topic')} "
++                 f"(video_id={vid or '无'}): {str(reason)[:120]}", 0)
++    try:
++        notify_inbox(
++            "auto_upload_permanently_failed",
++            f"【发布链路永久失败·需人工排期】\n"
++            f"标题：{item.get('title', '')}\n"
++            f"video_id：{vid or '无（未上传）'}\n"
++            f"原因：{str(reason)[:200]}\n"
++            f"处理：到 YouTube 后台手动排期，或修好 privateq 后把状态改回 "
++            f"uploaded_no_queue 重跑 collect",
++            {"topic": item.get("topic"), "video_id": vid,
++             "reason": str(reason)[:200]})
++    except Exception:
++        pass
++    return True
++
++
++def _retry_enqueue_privateq(item):
++    """uploaded_no_queue 的补入队消费者（F4/F5，2026-10-31）。
++
++    2026-10-28 版把这段逻辑内联在 collect_results 里：节流与异常两条分支
++    只打日志、不计数，节流持续命中即无限重试（throttle_defer_count 只加
++    不减、也从不比较）。抽成函数后两条分支各自有上限，达上限转终局。
++
++    返回 True=状态已变更。
++    """
++    if item.get("status") != "uploaded_no_queue" or not item.get("video_id"):
++        return False
++    try:
++        entry = _enqueue_private_flip(item["video_id"], item["title"],
++                                      review_score=item.get("review_score"),
++                                      video_file=item.get("video_file"))
++    except Exception as _eqe:
++        _ef = int(item.get("enqueue_fail_count", 0) or 0) + 1
++        item["enqueue_fail_count"] = _ef
++        item["enqueue_fail_last"] = str(_eqe)[:200]
++        if _ef >= MAX_ENQUEUE_FAILS:
++            return _fail_upload_permanent(
++                item, f"privateq 入队连续异常 {_ef} 次: {_eqe}")
++        pipeline_log("publish", "error",
++                     f"补入 privateq 第 {_ef}/{MAX_ENQUEUE_FAILS} 次失败，"
++                     f"保留 video_id 下轮再试 {item.get('topic')}: {_eqe}", 0)
++        return False
++    if entry.get("status") == "throttle_deferred":
++        _td = int(item.get("throttle_defer_count", 0) or 0) + 1
++        item["throttle_defer_count"] = _td
++        item["throttle_deferred_at"] = now_iso()
++        if _td >= MAX_THROTTLE_DEFERS:
++            return _fail_upload_permanent(
++                item, f"节流连续拦截 {_td} 次: {entry.get('throttle_reason', '')}")
++        pipeline_log("publish", "error",
++                     f"B' 节流拦截补入队，第 {_td}/{MAX_THROTTLE_DEFERS} 次，"
++                     f"保留待下轮重试 {item.get('topic')}: "
++                     f"{entry.get('throttle_reason', '')}", 0)
++        return False
++    item["status"] = "uploaded_private"
++    item.pop("throttle_deferred_at", None)
++    item.pop("throttle_defer_count", None)
++    item.pop("enqueue_fail_count", None)
++    item.pop("enqueue_fail_last", None)
++    pipeline_log("publish", "ok",
++                 f"补入 privateq 成功: {item.get('topic')} → "
++                 f"{item['video_id']}，排期 {entry.get('slot', '?')}", 1)
++    return True
++
++
+ def _upload_gate_ok(item):
+     """方案 1 收尾·staging 上传关卡：兜底后端产物须人工目视放行后才可上传。
+ 
+@@ -2845,6 +2916,10 @@
+         return False
+     if item.get("requires_fallback_approval") and not item.get("fallback_approved"):
+         return False
++    # F3（2026-10-31）：间隔门禁连续拦截达上限 → 停止自动重试，转人工放行。
++    # 复用既有 upload_gate_held / Q9 24h 升级链路，不新增状态。
++    if item.get("upload_spacing_exhausted"):
++        return False
+     return True
+ 
+ 
+@@ -2899,6 +2974,10 @@
+         item.pop("upload_retries", None)  # 2026-10-16 P2-6：成功后清重试计数
+         item.pop("upload_failed_retries", None)  # 2026-10-28 P0-3：成功后清上传失败重试计数
+         item.pop("upload_failed_at", None)
++        item.pop("upload_spacing_retries", None)  # F3 2026-10-31：成功后清间隔重试计数
++        item.pop("upload_spacing_first_at", None)
++        item.pop("upload_spacing_exhausted", None)
++        item.pop("upload_spacing_exhausted_at", None)
+         try:
+             # 2026-10-09 起：档位动态取自 publish_slots.json（Ask Studio 协商）
+             entry = _enqueue_private_flip(video_id, item["title"],
+@@ -2995,8 +3074,48 @@
+         pipeline_log("publish", "error",
+                      f"自动上传临时错误重试 2 次仍失败，转终态: {item['topic']}", 0)
+     if retryable:
+-        pipeline_log("publish", "ok",
+-                     f"自动上传被间隔门禁拦下，下一轮重试: {item['topic']}", 0)
++        # F3（2026-10-31）：原代码此处只打日志、不计数 → 间隔门禁持续命中
++        # 即每 20 分钟无限重试（C4 兜底 7 天后只告警不改状态）。
++        # 判定用"等了多久"而不是"试了几次"：spacing 是 4h 发布间隔门，
++        # 按次数判会把正常等待误杀。
++        _now = now_iso()
++        if not item.get("upload_spacing_first_at"):
++            item["upload_spacing_first_at"] = _now
++        _sr = int(item.get("upload_spacing_retries", 0) or 0) + 1
++        item["upload_spacing_retries"] = _sr
++        _t0 = _parse_iso_ts(item.get("upload_spacing_first_at"))
++        _t1 = _parse_iso_ts(_now)
++        _age_h = ((_t1 - _t0).total_seconds() / 3600.0) if (_t0 and _t1) else None
++        _give_up = ((_age_h is not None and _age_h >= MAX_UPLOAD_SPACING_HOURS)
++                    or _sr > MAX_UPLOAD_SPACING_RETRIES)
++        if _give_up:
++            item["upload_spacing_exhausted"] = True
++            item["upload_spacing_exhausted_at"] = _now
++            _age_txt = f"{_age_h:.1f}h" if _age_h is not None else "时长不可算"
++            pipeline_log("publish", "error",
++                         f"间隔门禁持续拦截 {_age_txt}（第 {_sr} 次），"
++                         f"超过 {MAX_UPLOAD_SPACING_HOURS}h 窗口，"
++                         f"停止自动重试转人工放行: {item['topic']}: {res[:120]}", 0)
++            try:
++                notify_inbox(
++                    "auto_upload_failed",
++                    f"【上传被间隔门禁持续拦截·需人工放行】\n"
++                    f"标题：{item.get('title', '')}\n"
++                    f"已等待：{_age_txt}（第 {_sr} 次尝试）\n"
++                    f"最后一次：{res[:160]}\n"
++                    f"处理：确认网关排期/错峰窗口后，清除条目的 "
++                    f"upload_spacing_exhausted 与 upload_spacing_first_at 再跑 collect",
++                    {"topic": item.get("topic"),
++                     "retries": _sr,
++                     "waited_hours": _age_h,
++                     "last": res[:160]})
++            except Exception:
++                pass
++        else:
++            _age_txt = f"{_age_h:.1f}h" if _age_h is not None else "?"
++            pipeline_log("publish", "ok",
++                         f"自动上传被间隔门禁拦下，第 {_sr} 次，已等 {_age_txt}"
++                         f"/{MAX_UPLOAD_SPACING_HOURS}h，下一轮重试: {item['topic']}", 0)
+     else:
+         item["status"] = "upload_failed"
+         item["upload_result"] = res[:500]
