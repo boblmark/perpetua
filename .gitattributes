@@ -1,0 +1,2 @@
+# 补丁文件必须保持原始换行，任何 EOL 转换都会让 git apply 失败
+*.patch -text
