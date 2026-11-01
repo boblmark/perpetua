@@ -13,7 +13,7 @@ Environment=NO_PROXY=localhost,127.0.0.1,::1,[::1],198.19.0.1,198.19.0.2
 Type=simple
 User=root
 WorkingDirectory=/home/hatch/data/nanomuse-migration/perception/web
-ExecStart=/bin/bash -c 'exec python3 -m http.server 18737 --bind 127.0.0.1 >> /tmp/nano-webui-18737.log 2>&1'
+ExecStart=/bin/bash -c 'exec python3 -m http.server 18737 --bind 127.0.0.1 >> /home/hatch/data/perpetua/vps_console/nano-webui-18737-systemd.log 2>&1'
 Restart=always
 RestartSec=5
 

@@ -10,13 +10,13 @@
   python3 benchmark_importer.py --ingest <xlsx>
   python3 benchmark_importer.py --dry-run <xlsx>
 """
+import sys
 sys.path.insert(0, "/home/hatch/data/perpetua")
 from json_safe import atomic_write_json
 import json
 import os
 import re
 import shutil
-import sys
 from datetime import datetime, timezone
 
 DATA = "/home/hatch/data"

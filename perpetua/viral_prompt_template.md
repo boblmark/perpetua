@@ -256,3 +256,15 @@ Do NOT delete and reupload — it resets the testing pool.
 示例：`⛽ Karen Yanked The Gas Nozzle Demanding A Dis…`
 用法：每日 6 个选题中约 2 个采用此结构，其余保持多样性（红队 KILL：全量复用=同质化互食+品牌风险）。
 注意：2026-10-15 的"2 RED" headline 已被证伪（一条系翻转脏数据误判），此前基于该结论的进化条目冻结，不再追加同类。
+
+## 进化附录 2026-10-31
+
+每日复盘发现（自动写入）：
+- 疑似分发问题（非内容问题）：「🎫 Karen Scanned A Fake Coupon 」完播 91% 但仅 23 播放——内容达标，检查信息流分发/发布时间，不要改标题创意
+- 当日最佳「🍕 Karen Argued With The Smart …」AVD 104% / 99 播放——复用其标题结构
+
+## 进化附录 2026-10-31
+
+每日复盘发现（自动写入）：
+- 疑似分发问题（非内容问题）：「🎫 Karen Scanned A Fake Coupon 」完播 91% 但仅 24 播放——内容达标，检查信息流分发/发布时间，不要改标题创意
+- 当日最佳「🍕 Karen Argued With The Smart …」AVD 104% / 99 播放——复用其标题结构
