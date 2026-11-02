@@ -49,7 +49,7 @@ rsync -a \
   --exclude='arena_agent/jury_prompts/' --exclude='arena_agent/jury_results/' \
   --exclude='radar/reports/' --exclude='takeover/current/' \
   --exclude='heartbeats/' --exclude='dynamic_constraints.json' --exclude='platform_health.json' \
-  --exclude='publish_health_runlog.txt' \
+  --exclude='gen_capacity.json' --exclude='publish_health_runlog.txt' \
   --exclude='*.log' --exclude='*.tmp' --exclude='*.bak*' --exclude='*~' \
   --exclude='*.mp4' --exclude='*.webm' --exclude='*.mov' --exclude='*.avi' \
   --exclude='.github_push_pending' \

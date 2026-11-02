@@ -68,6 +68,7 @@ STATE_JSON_NAMES = {
     "formula_dedup_daily.json",  # 2026-10-17: 每日去重统计，cron 每天重写，运行时产物
     "dynamic_constraints.json",  # 2026-10-19: feature_extractor/daily_topic_feedback 周期 merge 重写，进化数据非手写源码
     "platform_health.json",  # 2026-10-19: 雷达 snapshot 脚本 cron 周期重写，运行时健康状态
+    "gen_capacity.json",  # 2026-11-02: auto_pipeline 能力快照，周期重写且含 ts 时间戳，运行时状态（曾致迁移包误报漂移重建）
 }
 
 INCLUDE_EXTS = {

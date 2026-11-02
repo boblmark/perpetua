@@ -170,16 +170,20 @@ def main():
                 {"content": body, "encoding": enc})
         blob_sha[p] = b["sha"]
 
+    # 2026-11-02 改口径：全量 entries（保留 129 + 全量 managed）一次 POST 常报
+    # 422 "input too large" 超时。改用 base_tree：只发本次变更的增量条目
+    # （新增/更新带新 blob sha，删除 sha=None），其余沿用远端树，语义等价。
     mirror_root = os.path.join(repo_dir, "perpetua")
-    entries = [{"path": p, "mode": t.get("mode", "100644"),
-                "type": "blob", "sha": t["sha"]}
-               for p, t in sorted(preserved.items())]
-    for p in sorted(managed):
+    entries = []
+    for p in sorted(added) + sorted(updated):
         full = os.path.join(mirror_root, os.path.relpath(p, MANAGED_PREFIX))
         entries.append({"path": p,
                         "mode": "100755" if os.access(full, os.X_OK) else "100644",
                         "type": "blob", "sha": blob_sha[p]})
-    new_tree = api("POST", f"/repos/{OWNER}/{REPO}/git/trees", {"tree": entries})
+    for p in sorted(deleted):
+        entries.append({"path": p, "mode": "100644", "type": "blob", "sha": None})
+    new_tree = api("POST", f"/repos/{OWNER}/{REPO}/git/trees",
+                   {"base_tree": rtree["sha"], "tree": entries})
     commit = api("POST", f"/repos/{OWNER}/{REPO}/git/commits",
                  {"message": message, "tree": new_tree["sha"],
                   "parents": [remote_sha],
