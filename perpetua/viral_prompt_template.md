@@ -1,9 +1,37 @@
-# Viral Shorts Prompt Template — @karenvsai ("Karen vs AI") — v5 (four-brain council 2026-10-08)
+# Viral Shorts Prompt Template — @karenvsai ("Karen vs AI") — v6 (monthly AI Studio rewrite 2026-11-01)
 
 Data-driven. Derived from 490 channel videos (criteria.json v3) + YouTube
 Analytics signals + Ask Studio audits + LMArena jury + Google AI Studio
 spec authoring + NotebookLM gap review (2026-10-08).
 All prompts MUST be in English (channel is EN).
+
+## v6 changes (2026-11-01 monthly AI Studio rewrite; change source: October 2026 telemetry + AI Studio free-tier gemini-3.8-flash, archived at /home/hatch/data/ask_studio/council_2026-11_lmarena.json)
+Only ONE data-supported title change, landed narrowly:
+- Titles MUST contain exactly ZERO hashtags. NEVER append a hashtag suffix
+  to a title. October telemetry (81 videos, winners = avg_view_pct >10%):
+  hashtags in the title averaged 0.107 for winners vs 1.415 for losers
+  (27 of 28 winners had zero title hashtags). §3 pattern and all 5 examples
+  had their " #Shorts #instantkarma" / "#Shorts #Comedy #Viral" title
+  suffixes stripped; hashtags stay in the description (§4) only.
+- Title-proper 50–70 chars and front-load conflict in first 40–50 chars
+  are UNCHANGED (winners averaged 65.1 chars — already inside that band).
+- Deliberately NOT landed from the AI Studio reply: its generic pattern and
+  5 generic examples, which drop the channel formula ([emoji] Karen +
+  PHYSICAL karma verb + [emoji], everyday-device context) without any data
+  supporting that removal — adopting them verbatim would contradict the
+  channel formula. Its directives (zero title hashtags, 50–70, front-load)
+  are consistent with the data and are the only parts landed.
+- Deliberately NOT landed: any review_score threshold. The raw
+  winners-vs-losers review_score gap (26.786 vs 1.66) is a missing-data
+  artifact (missing scores coded 0; only 9/28 winners and 1/53 losers have
+  a recorded score; recorded means 83.3 vs 88.0, essentially equal).
+- Jury input: NONE usable. The only October jury file
+  (council_2026-10-12_lmarena.json) was BLOCKED with no verdict
+  (arena.ai login wall); no November jury file existed at run time.
+- Previous version backed up as viral_prompt_template.md.bak-20261101.
+  This rewrite touches the prompt template only, NOT criteria.json
+  (criteria stays v35 pending the 2026-11-02 22:37 CST 48h review per
+  D20261101-001).
 
 ## v5 changes (2026-10-08 four-brain council: "publish = viral" roadmap)
 LMArena adjudicated a direct conflict: v4's "peak volume at 0.00s" vs
@@ -172,14 +200,15 @@ Rules, all mandatory (v5, AI Studio spec from four-brain council):
 
 ## 3. Title template (viral formula, data-backed)
 
-Pattern: `[Action emoji] [Everyday tech context] Karen + [PHYSICAL karma verb]! + [Reaction emoji] #Shorts #Comedy #Viral`
+Pattern: `[Action emoji] [Everyday tech context] Karen + [PHYSICAL karma verb]! + [Reaction emoji]`
 - Statement, never a question (data: questions underperform 6% vs 13%).
 - Front-load the tension: the exact comedy scenario must be clear in the
   first 40–50 characters (feed viewers decide on the title too).
 - 50–70 characters for the title proper. CAPS on the karma verb.
-- 3–5 hashtags at the end, MUST include #Shorts (feed categorization signal,
-  D2/D3 2026-10-08: jury mandates explicit Shorts-feed hooks). Suggested set:
-  #Shorts #Comedy #Viral + 1–2 topical (e.g. #instantkarma #TechHumor).
+- MUST contain exactly ZERO hashtags in the title. NEVER append a hashtag
+  suffix (e.g. #Shorts #instantkarma) to the title — October 2026 telemetry
+  (81 videos): winners averaged 0.107 hashtags in the title vs losers 1.415.
+  Hashtags live in the description (§4) only, NOT in the title.
 
 Physical karma verb bank — tiered by Ask Studio (2026-10-06):
 concrete slapstick verbs BEAT abstract hyperbole. Verb intensity must match
@@ -198,11 +227,11 @@ Everyday tech contexts: smart pump, automated gate, self-checkout,
 drive-thru speaker, HOA camera, parking kiosk, elevator panel.
 
 ### 5 examples
-1. ⛽ Smart Pump LOCKED Karen's Tank After 3 Taps! 😱💦 #Shorts #instantkarma
-2. 🛑 Automated Gate TRAPPED Karen's Car Bumper! 🤣🚗 #Shorts #instantkarma
-3. 🛒 Self-Checkout SOAKED Karen's Coupon Scam! 🤖💸 #Shorts #instantkarma
-4. 🔊 Drive-Thru Speaker MUTED Karen Mid-Rant! 😂🎙️ #Shorts #instantkarma
-5. 🚗 HOA Camera TOWED Karen's Car While She Yelled! 🤣🚨 #Shorts #instantkarma
+1. ⛽ Smart Pump LOCKED Karen's Tank After 3 Taps! 😱💦
+2. 🛑 Automated Gate TRAPPED Karen's Car Bumper! 🤣🚗
+3. 🛒 Self-Checkout SOAKED Karen's Coupon Scam! 🤖💸
+4. 🔊 Drive-Thru Speaker MUTED Karen Mid-Rant! 😂🎙️
+5. 🚗 HOA Camera TOWED Karen's Car While She Yelled! 🤣🚨
 
 ## 4. Description template
 
@@ -224,7 +253,7 @@ specific niche hashtags (Ask Studio: #Shorts #AICustomerService #Comedy
 
 - [ ] privacyStatus = public (NOT private — caused the 2026-10-06 zero-view incident)
 - [ ] Duration 9–11s (Ask Studio: 15s is too long for this channel)
-- [ ] Title matches formula: [emoji] tech context + Karen + PHYSICAL karma verb! + [emoji], ≤70 chars, front-loads conflict in first 40–50 chars
+- [ ] Title matches formula: [emoji] tech context + Karen + PHYSICAL karma verb! + [emoji], ≤70 chars, front-loads conflict in first 40–50 chars, zero hashtags in title
 - [ ] Description: 1–2 sentence recap + #Shorts #AICustomerService #Comedy #TechHumor
 - [ ] Assigned to a series playlist ("Karen vs AI")
 - [ ] First frame = conflict (spot-check the upload preview)
