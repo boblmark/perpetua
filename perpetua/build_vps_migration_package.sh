@@ -50,6 +50,7 @@ rsync -a \
   --exclude='radar/reports/' --exclude='takeover/current/' \
   --exclude='heartbeats/' --exclude='dynamic_constraints.json' --exclude='platform_health.json' \
   --exclude='gen_capacity.json' --exclude='publish_health_runlog.txt' \
+  --exclude='suspect_first_at.json' --exclude='shorts_throttle.json' --exclude='transition_index.json' \
   --exclude='*.log' --exclude='*.tmp' --exclude='*.bak*' --exclude='*~' \
   --exclude='*.mp4' --exclude='*.webm' --exclude='*.mov' --exclude='*.avi' \
   --exclude='.github_push_pending' \

@@ -69,6 +69,9 @@ STATE_JSON_NAMES = {
     "dynamic_constraints.json",  # 2026-10-19: feature_extractor/daily_topic_feedback 周期 merge 重写，进化数据非手写源码
     "platform_health.json",  # 2026-10-19: 雷达 snapshot 脚本 cron 周期重写，运行时健康状态
     "gen_capacity.json",  # 2026-11-02: auto_pipeline 能力快照，周期重写且含 ts 时间戳，运行时状态（曾致迁移包误报漂移重建）
+    "suspect_first_at.json",  # 2026-11-03: graded_assertions 首见时间戳，周期追加，运行时状态（致 00:00 轮漂移重建）
+    "shorts_throttle.json",  # 2026-11-03: bprime_throttle 节流状态，周期重写，运行时状态（致 23:45 轮漂移重建）
+    "transition_index.json",  # 2026-11-03: pipeline_state 流转索引，周期重写，运行时状态（致 23:45 轮漂移重建）
 }
 
 INCLUDE_EXTS = {
