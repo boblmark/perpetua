@@ -41,9 +41,10 @@ def _queue_verb_expansion(reason):
         q = _json.load(open(qpath, encoding="utf-8"))
     except Exception:
         return False
-    # 避免重复排队：已有 pending 的 verb 扩充问题就跳过
+    # 避免重复排队：已有真正 pending 的 verb 扩充问题才跳过；
+    # 状态已 superseded/answered 的旧条目不挡路（2026-11-03 门禁修：q_verbauto_20261028003944 曾以 superseded 态滞留 pending 表致扩充永久被挡）
     for x in q.get("pending", []):
-        if x.get("batch_key") in ("verb_pool_expansion", "verb_pool_dedup"):
+        if x.get("batch_key") in ("verb_pool_expansion", "verb_pool_dedup") and str(x.get("status", "pending")).strip() == "pending":
             return False
     qid = f"q_verbauto_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     question = (
