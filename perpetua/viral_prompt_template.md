@@ -297,3 +297,13 @@ Do NOT delete and reupload — it resets the testing pool.
 每日复盘发现（自动写入）：
 - 疑似分发问题（非内容问题）：「🎫 Karen Scanned A Fake Coupon 」完播 91% 但仅 24 播放——内容达标，检查信息流分发/发布时间，不要改标题创意
 - 当日最佳「🍕 Karen Argued With The Smart …」AVD 104% / 99 播放——复用其标题结构
+
+## 进化附录 2026-11-03
+
+每日复盘发现（自动写入）：
+- 当日最佳「🤖 Karen Poked One Tiny Robot… …」AVD 183% / 1192 播放——复用其标题结构
+
+## 进化附录 2026-11-03
+
+每日复盘发现（自动写入）：
+- 当日最佳「🤖 Karen Poked One Tiny Robot… …」AVD 183% / 1192 播放——复用其标题结构
