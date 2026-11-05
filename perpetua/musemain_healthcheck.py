@@ -51,8 +51,30 @@ def ssh_run(cmd: str, timeout: int = 30) -> tuple[str, int]:
     return r.stdout.strip(), r.returncode
 
 
+def ssh_run_script(script: str, timeout: int = 30) -> tuple[str, int]:
+    """Run a Python script on the VPS via stdin (python3 -).
+
+    2026-11-05 新增：一次 SSH 往返批量取回全部 job 元数据，避免
+    每文件一次 SSH 握手。失败时 rc != 0，调用方按查询失败处理。"""
+    r = subprocess.run(
+        SSH_BASE + ["python3", "-"],
+        input=script,
+        capture_output=True, text=True, errors="replace", timeout=timeout,
+    )
+    return r.stdout.strip(), r.returncode
+
+
 def get_pending_jobs() -> list[dict]:
-    """Get list of pending jobs with metadata."""
+    """Get list of pending jobs with metadata.
+
+    2026-11-05 批处理补丁：原实现每个 job 文件单独跑一次 SSH
+    （探针 + 列表 + 每文件 stat+cat），pending 目录 32 个文件时
+    33+ 次 SSH 握手约 100-130s，超过 fallback_daemon 的 90s 子进程
+    限时，当日已 8 次误报 UNKNOWN（06:00/09:31/09:37/09:41/10:01/
+    10:07/10:10/10:18 UTC），muse-main 本身健康、只是检查超时。
+    改为 VPS 侧一次 python 扫描全部文件、只回传每行一个 JSON，
+    本地按原口径解析：计龄/claimed 判定/负年龄 suspect 语义全不变。
+    查询失败仍抛异常 → UNKNOWN，绝不静默当健康。"""
     # 2026-10-14 补洞（降级链覆盖缺口铁律：查询失败≠0 stale，必须进 UNKNOWN）：
     # 旧代码在 SSH 传输失败或目录不存在时 rc != 0 也直接 return []，
     # 上游 daemon 会把这误读为"0 pending 健康"，真故障时降级链被静默跳过。
@@ -67,50 +89,58 @@ def get_pending_jobs() -> list[dict]:
             "SSH 传输失败或 pending 目录不存在，队列查询结果不可信"
         )
 
-    # List job files
-    out, rc = ssh_run(f"ls -1 {JOBS_DIR}/*.json 2>/dev/null")
-    if rc != 0 or not out:
+    # 一次 SSH 往返：VPS 侧扫描全部 job 文件，每行回传一个 JSON
+    scan_script = (
+        "import json, glob, os\n"
+        f"for f in sorted(glob.glob('{JOBS_DIR}/*.json')):\n"
+        "    try:\n"
+        "        mtime = os.path.getmtime(f)\n"
+        "        d = json.load(open(f))\n"
+        "    except Exception:\n"
+        "        continue\n"
+        "    print(json.dumps({\n"
+        "        'file': os.path.basename(f),\n"
+        "        'mtime': mtime,\n"
+        "        'job_id': d.get('job_id', os.path.basename(f)[:-5]),\n"
+        "        'consumer': d.get('consumer', ''),\n"
+        "        'job_type': d.get('job_type', ''),\n"
+        "        'claimed_at': d.get('claimed_at') or '',\n"
+        "        'claimed_by': bool(d.get('_claimed_by')),\n"
+        "    }))\n"
+    )
+    out, rc = ssh_run_script(scan_script)
+    if rc != 0:
+        raise RuntimeError(
+            f"VPS 队列批量扫描失败 (rc={rc})：SSH 传输失败，队列查询结果不可信"
+        )
+    if not out:
         return []
 
     jobs = []
-    for filepath in out.split("\n"):
-        if not filepath.strip():
+    for line in out.split("\n"):
+        line = line.strip()
+        if not line:
             continue
-        # Get file mtime and content
-        cmd = (
-            f"stat -c %Y '{filepath}' 2>/dev/null; "
-            f"echo '---'; "
-            f"cat '{filepath}' 2>/dev/null | head -c 2000"
-        )
-        out2, rc2 = ssh_run(cmd)
-        if rc2 != 0:
-            continue
-
-        parts = out2.split("---", 1)
-        if len(parts) != 2:
-            continue
-
         try:
-            mtime = int(parts[0].strip())
-        except ValueError:
-            continue
-
-        try:
-            data = json.loads(parts[1].strip())
+            row = json.loads(line)
         except json.JSONDecodeError:
-            data = {}
+            continue
+        mtime = row.get("mtime")
+        if not isinstance(mtime, (int, float)):
+            continue
+        filename = row.get("file", "")
+        _claimed_at = row.get("claimed_at") or ""
 
         # A3（2026-10-28）：claimed 文件早已被 *.json 通配列出（23:09
         # 实测已报 stale），审计“从未被解读”已过时；真缺口是计龄口径：
         # 认领文件以 claimed_at 计龄（mtime 会被任何重写刷新，不可靠），
         # 无 claimed_at 回落 mtime。负年龄（时钟 skew）不钳制为 0，
         # 交 check_health 列为 suspect 可疑项，不静默当健康。
-        _claimed = (".claimed-" in filepath.split("/")[-1]
-                    or bool(data.get("claimed_at"))
-                    or bool(data.get("_claimed_by")))
+        _claimed = (".claimed-" in filename
+                    or bool(_claimed_at)
+                    or bool(row.get("claimed_by")))
         _clock = "mtime"
         _epoch = mtime
-        _claimed_at = data.get("claimed_at") or ""
         if _claimed_at:
             try:
                 _dt = datetime.fromisoformat(
@@ -123,10 +153,10 @@ def get_pending_jobs() -> list[dict]:
                 pass
 
         jobs.append({
-            "file": filepath.split("/")[-1],
-            "job_id": data.get("job_id", filepath.split("/")[-1].replace(".json", "")),
-            "consumer": data.get("consumer", ""),
-            "job_type": data.get("job_type", ""),
+            "file": filename,
+            "job_id": row.get("job_id", filename.replace(".json", "")),
+            "consumer": row.get("consumer", ""),
+            "job_type": row.get("job_type", ""),
             "created_at": mtime,
             "claimed": _claimed,
             "claimed_at": _claimed_at,
