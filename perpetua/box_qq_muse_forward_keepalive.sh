@@ -28,6 +28,8 @@ sleep 2
 ssh -i "$KEY" -f -N \
   -L 127.0.0.1:8748:127.0.0.1:8747 \
   root@192.166.82.123 \
+  -o BatchMode=yes \
+  -o ConnectTimeout=15 \
   -o StrictHostKeyChecking=no \
   -o "ProxyCommand=nc -X connect -x 198.19.0.1:3128 %h %p" \
   -o ServerAliveInterval=30 \

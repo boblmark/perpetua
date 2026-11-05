@@ -307,3 +307,15 @@ Do NOT delete and reupload — it resets the testing pool.
 
 每日复盘发现（自动写入）：
 - 当日最佳「🤖 Karen Poked One Tiny Robot… …」AVD 183% / 1192 播放——复用其标题结构
+
+## 进化附录 2026-11-04
+
+每日复盘发现（自动写入）：
+- GREEN 50% 标题含物理报应词（soak/lock/trap/tow）——具象化报应继续加码
+- 当日最佳「🏊 Karen Tried to Block the Poo…」AVD 91% / 742 播放——复用其标题结构
+
+## 进化附录 2026-11-04
+
+每日复盘发现（自动写入）：
+- GREEN 50% 标题含物理报应词（soak/lock/trap/tow）——具象化报应继续加码
+- 当日最佳「🏊 Karen Tried to Block the Poo…」AVD 91% / 742 播放——复用其标题结构
