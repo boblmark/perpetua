@@ -7,7 +7,7 @@ KEY=/home/hatch/.ssh/id_ed25519
 CHECK='(^|/)ssh .*-L 127\.0\.0\.1:8744:127\.0\.0\.1:8743'
 
 if pgrep -f "$CHECK" > /dev/null; then
-    if curl -s -m 10 http://127.0.0.1:8744/healthz | grep -q ok; then
+    if curl --noproxy '*' -s -m 10 http://127.0.0.1:8744/healthz | grep -q ok; then
         exit 0
     fi
 fi
@@ -32,7 +32,7 @@ ssh -i "$KEY" -f -N \
   >> "$LOG" 2>&1
 
 sleep 3
-if curl -s -m 10 http://127.0.0.1:8744/healthz | grep -q ok; then
+if curl --noproxy '*' -s -m 10 http://127.0.0.1:8744/healthz | grep -q ok; then
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) 8744 forward started OK" >> "$LOG"
     exit 0
 else
