@@ -532,3 +532,19 @@ ok=False exit=1 publishes_last_24h=1 public=1 preuploads=0 hours_since_last_publ
 2026-11-08T00:32:01.572804+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:0 hours_since_last_publish:56.9 max_schedule_deviation_min_48h:- schedule_unmeasured:0
 2026-11-08T01:01:50.961052+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:0 hours_since_last_publish:57.4 max_schedule_deviation_min_48h:- schedule_unmeasured:0
 2026-11-08T01:31:53.574180+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:0 hours_since_last_publish:57.9 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T02:01:52.454962+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:58.4 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T02:33:03.306584+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:58.9 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T03:01:57.087620+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:59.4 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T03:31:58.382245+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:59.9 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T04:01:53.542215+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:60.4 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T04:34:38.392802+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:60.9 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08 12:31 CST publish-health-watch: exit=1 CRITICAL+WARNING
+  metrics: publishes_last_24h=0 (public 0), preuploads_last_24h=1, hours_since_last_publish=60.9, last_video=RzEW0kTG3-k published 2026-11-05T15:37:54Z, schedule_matched=0, schedule_unmeasured=0, max_deviation=None (unmeasured: 0 部 48h 内公开视频无 privateq 排期)
+  [CRITICAL] inter_publish_latency: 距上次公开 60.9h，超过 18h 空转线
+  [WARNING] daily_publish_count: 过去 24h 仅公开 0 条（预传 1 条不计），低于 2 条线
+  healer: bottleneck=flowing actions=['none:有排期在途，非真空转'] escalated=False
+2026-11-08T05:35:08.465416+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:62.0 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T06:01:50.340758+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:62.4 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T06:02:15.260640+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:62.4 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T06:31:54.442135+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:62.9 max_schedule_deviation_min_48h:- schedule_unmeasured:0
+2026-11-08T07:33:01.302911+00:00 publish_health status=alert publishes_last_24h:0 preuploads_last_24h:1 hours_since_last_publish:63.9 max_schedule_deviation_min_48h:- schedule_unmeasured:0
