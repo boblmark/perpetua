@@ -11,6 +11,8 @@
 
 发布门（D20261015-008 用户拍板）："CONFIRMED 通过才发布"。
 """
+import fcntl
+import functools
 import hashlib
 import json
 import os
@@ -247,6 +249,42 @@ def ledger_resolve(entry_id):
 
 # ---------------- 升级契约（R4） ----------------
 
+def _with_escalation_lock(fn):
+    """Serialize escalate()/escalate_ack() across processes with flock.
+
+    2026-11-09: escalation_inbox.json lost ~200 unacked records
+    (07:31-07:50 CST, verified on disk: 200 -> 38, then refiling).
+    Root cause class: concurrent load-modify-save without a lock; the
+    mkstemp fix in _save only stops crashes, not lost-update
+    (see _save comment). Hold an exclusive flock on the existing
+    escalation_inbox.json.lock file for the whole read-modify-write.
+    The OS releases the lock if the holder dies; a 30s timeout fails
+    loudly instead of silently overwriting.
+    """
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        lock_path = ESCALATION_PATH + ".lock"
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            deadline = time.time() + 30
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.time() > deadline:
+                        raise TimeoutError("escalation lock timeout 30s: " + lock_path)
+                    time.sleep(0.05)
+            try:
+                return fn(*a, **kw)
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+    return wrapper
+
+
+@_with_escalation_lock
 def escalate(checker, subject, condition, severity="P2", detail="",
              evidence_ts=None, ttl_key=None, checker_health=None,
              new_episode=False):
@@ -337,6 +375,7 @@ def escalate(checker, subject, condition, severity="P2", detail="",
     return rec
 
 
+@_with_escalation_lock
 def escalate_ack(escalation_id, by="dash_main"):
     """N8：只有主 agent ack 能停 SLA 计时器。"""
     inbox = _load(ESCALATION_PATH, [])
