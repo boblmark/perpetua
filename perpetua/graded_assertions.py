@@ -98,10 +98,28 @@ def _load(path, default):
 
 
 def _save(path, obj):
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, path)
+    # 2026-11-09 修：唯一临时文件名。旧实现用固定 path+".tmp"，dispatch_health
+    # （每 10 分钟）与 anomaly_watchdog（每 30 分钟）并发 _save 时，一方的
+    # os.replace 会消费掉另一方刚写好的 tmp，导致对方 replace 报
+    # FileNotFoundError，watchdog 整轮崩溃（本轮实测）。mkstemp 保证各进程
+    # tmp 互不干扰；异常时清掉本进程 tmp。注意：本修只解决"崩溃"，不解决
+    # load-modify-save 的 lost-update（两进程同读同改，后保存者覆盖前者
+    # 的追加），后者需在 escalate() 层加文件锁，另案处理。
+    import tempfile
+    d = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(prefix=".save-", suffix=".tmp", dir=d)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False, indent=1)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        raise
 
 
 def dedup_key(checker, subject, condition):
