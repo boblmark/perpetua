@@ -138,6 +138,19 @@ def concentrate_from_item(item: dict) -> str | None:
 
 def concentrate_from_instruction(instruction: str) -> str | None:
     """dispatcher 任务 instruction（11k 模板）→ 浓缩故事 prompt。"""
+    # 白模/自由场景分支（2026-11-10）：instruction 经 gen_video_musemain.py
+    # 包装为“场景描述如下：”+ 自由英文场景描述时，11k 场景句模式匹配不上。
+    # 描述含 white clay/clay-model 时直接用原描述做 QQ box prompt，
+    # 不套 11k 故事模板（CCTV 风格 + Karen 升级弧线会冲掉白模风格）。
+    m = re.search(r"场景描述如下：\s*(.+)", instruction or "", re.S)
+    if m:
+        desc = " ".join(m.group(1).split())
+        if "white clay" in desc.lower() or "clay-model" in desc.lower():
+            if len(desc) >= 20:
+                return (
+                    "Vertical short video, 9:16, about 8 seconds, with sound. "
+                    + desc
+                )
     scene = _scene_sentence_from_prompt(instruction or "")
     if not scene:
         return None
