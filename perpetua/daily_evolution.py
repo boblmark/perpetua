@@ -28,6 +28,7 @@ sys.path.insert(0, "/home/hatch/data")
 DATA = Path("/home/hatch/data")
 PERPETUA = DATA / "perpetua"
 JEV_CRITERIA = DATA / "jev" / "criteria.json"
+FREEZE_FILE = DATA / "jev" / "criteria_freeze"
 TEMPLATE_MD = PERPETUA / "viral_prompt_template.md"
 REPORT_DIR = PERPETUA / "evolution_reports"
 HISTORY = DATA / "youtube" / "all_videos.json"
@@ -363,6 +364,11 @@ def evolve_criteria(findings, date_str):
     """criteria.json 版本+1（备份旧版），写入新发现。"""
     if not findings or findings == ["样本不足（48h 窗口无发布），维持现有策略"]:
         return None
+    if FREEZE_FILE.exists():
+        print(f"[冻结] criteria 冻结中，{len(findings)} 条新发现仅记日志，不改 criteria.json")
+        cur = json.load(open(JEV_CRITERIA))
+        return {"version": cur.get("version"), "added": 0, "backup": "",
+                "frozen": True, "pending": len(findings)}
     backup = JEV_CRITERIA.with_suffix(f".json.bak.{date_str}")
     shutil.copy2(JEV_CRITERIA, backup)
     c = json.load(open(JEV_CRITERIA))
@@ -383,6 +389,9 @@ def evolve_criteria(findings, date_str):
 
 def maybe_update_template(findings, date_str):
     """如发现涉及 prompt 结构的新规律，追加到模板附录。"""
+    if FREEZE_FILE.exists():
+        print("[冻结] prompt 模板冻结中，附录不追加")
+        return None
     triggers = ["物理报应", "标题", "时长", "钩子", "CCTV", "循环"]
     hit = [f for f in findings if any(t in f for t in triggers)]
     if not hit:
@@ -439,7 +448,9 @@ def build_report(date_str, videos, green, red, watching, missing, baseline,
     for i, f in enumerate(findings, 1):
         lines.append(f"{i}. {f}")
     lines.append("\n## 进化动作")
-    if evo_result:
+    if evo_result and evo_result.get("frozen"):
+        lines.append(f"- criteria.json 冻结中未变更（{evo_result['pending']} 条新发现已记入报告与待议清单）")
+    elif evo_result:
         lines.append(f"- criteria.json → v{evo_result['version']}（新增 {evo_result['added']} 条发现，旧版备份 {evo_result['backup']}）")
     else:
         lines.append("- criteria.json 未变更（无新发现）")
