@@ -1,0 +1,17 @@
+[Unit]
+Description=TianShu console server (127.0.0.1:18901)
+After=network.target
+
+[Service]
+Environment=HOME=/home/hatch
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/platform
+ExecStart=/usr/bin/python3 console/server.py 18901
+StandardOutput=append:/home/hatch/data/tianshu_console.log
+StandardError=append:/home/hatch/data/tianshu_console.log
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
