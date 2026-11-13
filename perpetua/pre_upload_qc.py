@@ -798,17 +798,20 @@ def _check_audio_first_100ms(video):
     try:
         # 抽前 0.15s 音频，用 astats 取峰值（比 volumedetect 更稳）
         # 注意：不能用 -v error，否则会屏蔽要解析的日志行
+        # 2026-11-13 fix: reset=1 measured only the first AAC frame (~23ms,
+        # priming frame, -30.3 dBFS on the rice-cooker loopfix) instead of the
+        # 0.15s window. Window peak = max over all Peak lines; threshold -18 unchanged.
         r = subprocess.run(
             ["ffmpeg", "-i", video, "-t", "0.15",
-             "-af", "astats=metadata=1:reset=1", "-vn", "-sn", "-dn",
+             "-af", "astats=metadata=1", "-vn", "-sn", "-dn",
              "-f", "null", "-"],
             capture_output=True, text=True, timeout=30)
         peak = None
         for line in r.stderr.splitlines():
             if "Peak level dB" in line:
                 try:
-                    peak = float(line.split(":")[-1].strip())
-                    break
+                    _p = float(line.split(":")[-1].strip())
+                    peak = _p if peak is None else max(peak, _p)
                 except ValueError:
                     pass
         if peak is None:
