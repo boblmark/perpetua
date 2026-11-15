@@ -1,0 +1,12 @@
+=== check at Sun Nov 15 12:11:52 CST 2026 ===
+2026-11-15 08:11:40 18737 Web UI 已拉起并健康
+2026-11-15 12:11:05 18737 Web UI 不健康，重启
+2026-11-15 12:11:05 18737 诊断: ss=none pids=1721  no_proxy=localhost,127.0.0.1,::1,[::1],198.19.0.1,198.19.0.2,fd8b:4f84:7d32:99::1,[fd8b:4f84:7d32:99::1],fd8b:4f84:7d32:99::2,[fd8b:4f84:7d32:99::2] http_proxy_set=yes
+2026-11-15 12:11:05 18737 curl: * connect to 127.0.0.1 port 18737 from 127.0.0.1 port 41768 failed: Connection refused
+2026-11-15 12:11:05 18737 curl: * Failed to connect to 127.0.0.1 port 18737 after 0 ms: Couldn't connect to server
+2026-11-15 12:11:05 18737 Web UI 已拉起并健康
+--- script stdout ---
+--- independent check ---
+18737 HTTP 200
+LISTEN 0      0          127.0.0.1:18737      0.0.0.0:*    users:(("python3",pid=1770,fd=3))
+root        1770  0.2  0.2 101400 20672 ?        Ss   12:11   0:00 python3 -m http.server 18737 --bind 127.0.0.1
