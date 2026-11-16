@@ -11,3 +11,11 @@ Actions 页面手动触发 `Build Perpetua Windows`，填版本号，构建成�
 ```bash
 bash deploy/build_binary.sh
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+## Infrastructure
+
+[Hosted on CubePath](https://cubepath.com/?utm_source=open-source&utm_medium=referral&utm_campaign=hosted-on-cubepath)
