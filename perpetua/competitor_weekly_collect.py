@@ -72,12 +72,13 @@ def _collect_urls(obj, out):
 
 def known_urls():
     urls = set()
+    today_name = f"weekly_{datetime.now().strftime('%Y-%m-%d')}.json"
     for path in BASE_DIR.glob("*.json"):
-        if path.name in ("weekly_collect_state.json",) or path.name.startswith("weekly_202"):
-            # 当日 weekly 文件单独处理（幂等），不计入“历史已知”以免首跑即判重复；
-            # 历史文件（10-15  harvest 等）全部计入。
-            if path.name.startswith("weekly_202"):
-                continue
+        if path.name in ("weekly_collect_state.json", today_name):
+            # state 不含条目 URL；当日 weekly 文件由 today_out 单独处理（幂等合并）。
+            # 往期 weekly 文件全部计入已知：2026-11-16 实测，跳过 weekly 文件致
+            # 11-02 的 60 条被重算为本周新增（URL 100% 重合）。
+            continue
         try:
             with open(path) as f:
                 _collect_urls(json.load(f), urls)
