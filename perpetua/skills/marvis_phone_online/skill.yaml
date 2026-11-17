@@ -1,0 +1,5 @@
+name: marvis_phone_online
+title: Marvis 手机 App 在线
+description: 让沙箱里的 Marvis 在手机 App 里显示在线，诊断 relay 与 beacon，部署 LD_PRELOAD 垫片，干净重启，并保证换机后自动恢复。
+category: Work and knowledge
+include_in_prompt: true
