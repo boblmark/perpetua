@@ -6,6 +6,12 @@ LOG=/home/hatch/data/perpetua/box_rea_forward_keepalive.log
 KEY=/home/hatch/.ssh/id_ed25519
 CHECK='(^|/)ssh .*-L 127\.0\.0\.1:8744:127\.0\.0\.1:8743'
 
+# 端点实测为准：无论转发由直连 ssh 还是 mux master 持有，/healthz 通即健康
+# （mux 持有时监听属主为 master 进程，其命令行不含 -L 8744，旧的 pgrep 判活会误判）
+if curl --noproxy '*' -s -m 10 http://127.0.0.1:8744/healthz | grep -q ok; then
+    exit 0
+fi
+
 if pgrep -f "$CHECK" > /dev/null; then
     if curl --noproxy '*' -s -m 10 http://127.0.0.1:8744/healthz | grep -q ok; then
         exit 0
