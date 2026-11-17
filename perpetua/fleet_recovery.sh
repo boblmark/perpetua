@@ -46,7 +46,9 @@ listener_pid() {
 }
 unit_active() { systemctl is-active "$1" 2>/dev/null || echo unknown; }
 unit_mainpid() { systemctl show "$1" -p MainPID --value 2>/dev/null || echo 0; }
-http_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$1" 2>/dev/null || echo 000; }
+# NOTE (2026-11-17): curl -w prints 000 itself on failure; an `|| echo 000`
+# suffix yields "000000", which != "000" and reads as healthy. Never add it.
+http_code() { local c; c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$1" 2>/dev/null); [ -n "$c" ] && echo "$c" || echo 000; }
 
 # 3129 CONNECT probe (same method as browser_proxy_fwd_keepalive.sh).
 # Returns 0 ok, 1 relay dead, 2 unknown (upstream also down).
