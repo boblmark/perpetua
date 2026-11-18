@@ -25,11 +25,27 @@ if [ $fail_count -eq 2 ]; then
         echo "=== END FORENSICS ==="
     } >> "$LOG"
     echo "$(date '+%Y-%m-%d %H:%M:%S') perception server 连续两次探测失败，重启" >> "$LOG"
-    pkill -f "perception_server.py" 2>/dev/null
-    sleep 3
-    cd /home/hatch/data/nanomuse-migration/perception/server
-    env NO_PROXY="localhost,127.0.0.1,::1" no_proxy="localhost,127.0.0.1,::1" \
-        /home/hatch/data/nanomuse-migration/nanomuse-venv/bin/python perception_server.py \
-        >> /tmp/perception.log 2>&1 &
-    echo "$(date '+%Y-%m-%d %H:%M:%S') 已拉起，pid $!" >> "$LOG"
+    # P0-3 (2026-11-18): systemd owns this service. Unit file present ->
+    # systemctl restart. Bare launch ONLY when the unit file is missing
+    # (post-swap window). Never pkill the unit's MainPID.
+    if [ -f /etc/systemd/system/dash-perception.service ]; then
+      systemctl restart dash-perception.service 2>/dev/null
+      sleep 5
+      if ss -tln 2>/dev/null | grep -q "127.0.0.1:${PORT}"; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') perception 已由 systemctl 重启并监听" >> "$LOG"
+      else
+        echo "$(date '+%Y-%m-%d %H:%M:%S') perception systemctl 重启后仍未监听，需人工排查" >> "$LOG"
+      fi
+    else
+      for pid in $(pgrep -f "perception_server\.py" 2>/dev/null); do
+        [ "$pid" = "$$" ] && continue
+        kill "$pid" 2>/dev/null
+      done
+      sleep 3
+      cd /home/hatch/data/nanomuse-migration/perception/server
+      env NO_PROXY="localhost,127.0.0.1,::1" no_proxy="localhost,127.0.0.1,::1" \
+          /home/hatch/data/nanomuse-migration/nanomuse-venv/bin/python perception_server.py \
+          >> /tmp/perception.log 2>&1 &
+      echo "$(date '+%Y-%m-%d %H:%M:%S') 已拉起（裸拉回退），pid $!" >> "$LOG"
+    fi
 fi

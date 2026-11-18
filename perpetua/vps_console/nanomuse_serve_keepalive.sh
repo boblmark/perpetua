@@ -17,10 +17,25 @@ done
 
 if [ $fail_count -eq 2 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') nanomuse serve 连续两次探测失败，重启" >> "$LOG"
-    # 杀掉旧进程（精确匹配，避免误杀）
-    pkill -f "nanomuse serve" 2>/dev/null
-    sleep 3
-    bash /home/hatch/data/perpetua/vps_console/nanomuse_serve_start.sh \
-        >> /tmp/nanomuse_serve.log 2>&1 &
-    echo "$(date '+%Y-%m-%d %H:%M:%S') 已拉起，pid $!" >> "$LOG"
+    # P0-3 (2026-11-18): systemd owns this service. Unit file present ->
+    # systemctl restart. Bare launch ONLY when the unit file is missing
+    # (post-swap window). Never pkill the unit's MainPID.
+    if [ -f /etc/systemd/system/dash-nanomuse-serve.service ]; then
+      systemctl restart dash-nanomuse-serve.service 2>/dev/null
+      sleep 8
+      if curl -s -m 10 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/" 2>/dev/null | grep -q "200"; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') nanomuse serve 已由 systemctl 重启并健康" >> "$LOG"
+      else
+        echo "$(date '+%Y-%m-%d %H:%M:%S') nanomuse serve systemctl 重启后仍不健康，需人工排查" >> "$LOG"
+      fi
+    else
+      for pid in $(pgrep -f "nanomuse serve" 2>/dev/null); do
+        [ "$pid" = "$$" ] && continue
+        kill "$pid" 2>/dev/null
+      done
+      sleep 3
+      bash /home/hatch/data/perpetua/vps_console/nanomuse_serve_start.sh \
+          >> /tmp/nanomuse_serve.log 2>&1 &
+      echo "$(date '+%Y-%m-%d %H:%M:%S') 已拉起（裸拉回退），pid $!" >> "$LOG"
+    fi
 fi

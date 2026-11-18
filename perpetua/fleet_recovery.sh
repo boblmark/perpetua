@@ -128,26 +128,52 @@ safe_kill_pid() {
 }
 
 # --- per-unit ensure: three-way verify (active + MainPID==listener + health) -
-ensure_unit() {
+# P0-2 (2026-11-18): verify-with-retry. Slow-starting units used to fail the
+# single immediate post-restart check (listener not yet bound) and record a
+# false FAIL, which made every swap's first recovery round report "failed"
+# (units_ok=0 on #99 while every unit was fine seconds later). The check now
+# retries with backoff, and an "activating" unit gets a settle window before
+# any restart is attempted.
+verify_unit() {
   local unit="$1" port="$2" spec="$3"
-  local active mainpid listener healthy=0
+  local active mainpid listener
   active=$(unit_active "$unit"); mainpid=$(unit_mainpid "$unit")
   if [ "$port" = "socket" ]; then
-    listener=""
-    if [ "$active" = "active" ] && spec_healthy "$port" "$spec"; then healthy=1; fi
+    if [ "$active" = "active" ] && spec_healthy "$port" "$spec"; then return 0; fi
   else
     listener=$(listener_pid "$port")
     if [ "$active" = "active" ] && [ -n "$mainpid" ] && [ "$mainpid" != "0" ] \
-       && [ "$listener" = "$mainpid" ] && spec_healthy "$port" "$spec"; then healthy=1; fi
+       && [ "$listener" = "$mainpid" ] && spec_healthy "$port" "$spec"; then return 0; fi
   fi
-  if [ $healthy -eq 1 ]; then
-    log "PASS $unit active MainPID=$mainpid listener=$listener"
+  return 1
+}
+
+ensure_unit() {
+  local unit="$1" port="$2" spec="$3"
+  if verify_unit "$unit" "$port" "$spec"; then
+    log "PASS $unit active MainPID=$(unit_mainpid "$unit") listener=$(listener_pid "$port")"
     return 0
   fi
+  local active mainpid listener
+  active=$(unit_active "$unit"); mainpid=$(unit_mainpid "$unit"); listener=$(listener_pid "$port")
   log "BROKEN $unit active=$active MainPID=$mainpid listener=$listener spec=$spec"
   if [ "$MODE" != "recover" ]; then
     log "DRYRUN would: clear holder + reset-failed + restart $unit"
     return 1
+  fi
+  # Settle window: an activating unit may just be slow. Re-check for up to
+  # 30s before restarting; a unit that becomes healthy needs no restart.
+  if [ "$active" = "activating" ]; then
+    local i
+    for i in 1 2 3 4 5 6; do
+      sleep 5
+      if verify_unit "$unit" "$port" "$spec"; then
+        log "PASS $unit settled active MainPID=$(unit_mainpid "$unit")"
+        return 0
+      fi
+    done
+    active=$(unit_active "$unit"); mainpid=$(unit_mainpid "$unit"); listener=$(listener_pid "$port")
+    log "STILL_BROKEN $unit after settle window active=$active MainPID=$mainpid listener=$listener"
   fi
   if [ "$port" != "socket" ] && [ -n "$listener" ] && [ "$listener" != "$mainpid" ]; then
     safe_kill_pid "$listener" "$unit" "$port" || { log "FAIL $unit: holder kill refused"; return 1; }
@@ -156,23 +182,19 @@ ensure_unit() {
   if ! systemctl restart "$unit" >/dev/null 2>&1; then
     log "FAIL $unit: systemctl restart failed"; return 1
   fi
-  local i
-  for i in $(seq 1 20); do
-    [ "$(unit_active "$unit")" = "active" ] && break
-    sleep 1
+  # Post-restart verify with backoff: 5+10+15+20+30 = 80s of patience for
+  # slow binders (nano-webui, phone-mcp-tunnel, nanomuse-serve). FAIL only
+  # after every attempt is exhausted. Exits early on first success.
+  local delay
+  for delay in 5 10 15 20 30; do
+    sleep "$delay"
+    if verify_unit "$unit" "$port" "$spec"; then
+      log "RECOVERED $unit MainPID=$(unit_mainpid "$unit") listener=$(listener_pid "$port")"
+      return 0
+    fi
   done
-  active=$(unit_active "$unit"); mainpid=$(unit_mainpid "$unit")
-  if [ "$port" = "socket" ]; then
-    if [ "$active" = "active" ] && spec_healthy "$port" "$spec"; then
-      log "RECOVERED $unit MainPID=$mainpid"; return 0
-    fi
-  else
-    listener=$(listener_pid "$port")
-    if [ "$active" = "active" ] && [ "$listener" = "$mainpid" ] && spec_healthy "$port" "$spec"; then
-      log "RECOVERED $unit MainPID=$mainpid listener=$listener"; return 0
-    fi
-  fi
-  log "FAIL $unit after restart: active=$active MainPID=$mainpid listener=$listener"
+  active=$(unit_active "$unit"); mainpid=$(unit_mainpid "$unit"); listener=$(listener_pid "$port")
+  log "FAIL $unit after restart+retries: active=$active MainPID=$mainpid listener=$listener"
   return 1
 }
 
@@ -327,6 +349,14 @@ ensure_unit dash-credential-proxy.service socket "socket" && UNITS_OK=$((UNITS_O
 MUX_RC=0
 fix_mux || MUX_RC=1
 check_periphery
+
+# P1-3 (2026-11-18): resume registered long tasks (swap-killed builds etc).
+# Fail-open: a resume failure must never fail fleet recovery. Recover mode
+# only; the resume script is a no-op when the registry is empty. fd 9 is
+# closed so detached children never inherit the detector lock (Rule 34).
+if [ "$MODE" = "recover" ] && [ -x /home/hatch/data/perpetua/resume_long_tasks.sh ]; then
+  bash /home/hatch/data/perpetua/resume_long_tasks.sh 9>&- >> "$LOG" 2>&1 || log "WARN resume_long_tasks exited $?"
+fi
 
 log "=== fleet_recovery done mode=$MODE units_ok=$UNITS_OK units_fail=$UNITS_FAIL mux_rc=$MUX_RC ==="
 if [ $UNITS_FAIL -gt 0 ]; then exit 1; fi

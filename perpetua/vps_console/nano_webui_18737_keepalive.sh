@@ -24,16 +24,23 @@ echo "$TS 18737 Web UI 不健康，重启" >> "$LOG"
 echo "$TS 18737 诊断: ss=$(ss -ltn 2>/dev/null | grep 18737 || echo none) pids=$(pgrep -f 'http\.server 18737' 2>/dev/null | tr '\n' ' ') no_proxy=${no_proxy:-unset} http_proxy_set=$([ -n "$http_proxy" ] && echo yes || echo no)"
 curl -sv -m 5 http://127.0.0.1:18737/ 2>&1 | grep -E "Connected|HTTP/|Failed|refused" | head -5 | sed "s/^/$TS 18737 curl: /"
 } >> "$LOG" 2>&1
-for pid in $(pgrep -f "http\.server 18737" 2>/dev/null); do
-    kill "$pid" 2>/dev/null
-done
-sleep 2
-# 双 fork: subshell 里后台启动后立即退出,http.server 被 reparent 到 init,
-# 主脚本 shell 的 job 表里从不出现它,不依赖 disown(2026-10-16 实测 disown 在后台调用时不可靠)
-# 2026-10-18 修正：实测双 fork 仍导致主脚本卡在 do_wait 等子进程永不退出
-# （pid 2608，2026-10-18 15:00 CST 实测），回退到 2026-10-16 实测有效的 disown 方案
-cd "$WEB_DIR" && setsid nohup python3 -m http.server 18737 --bind 127.0.0.1 >> /home/hatch/data/perpetua/vps_console/nano-webui-18737-server.log 2>&1 < /dev/null &
-disown
+# P0-3 (2026-11-18): systemd owns this service. Unit file present ->
+# systemctl restart. Bare launch ONLY when the unit file is missing
+# (post-swap window). Never kill the unit's MainPID.
+if [ -f /etc/systemd/system/dash-nano-webui.service ]; then
+    systemctl restart dash-nano-webui.service 2>/dev/null
+else
+    for pid in $(pgrep -f "http\.server 18737" 2>/dev/null); do
+        kill "$pid" 2>/dev/null
+    done
+    sleep 2
+    # 双 fork: subshell 里后台启动后立即退出,http.server 被 reparent 到 init,
+    # 主脚本 shell 的 job 表里从不出现它,不依赖 disown(2026-10-16 实测 disown 在后台调用时不可靠)
+    # 2026-10-18 修正：实测双 fork 仍导致主脚本卡在 do_wait 等子进程永不退出
+    # （pid 2608，2026-10-18 15:00 CST 实测），回退到 2026-10-16 实测有效的 disown 方案
+    cd "$WEB_DIR" && setsid nohup python3 -m http.server 18737 --bind 127.0.0.1 >> /home/hatch/data/perpetua/vps_console/nano-webui-18737-server.log 2>&1 < /dev/null &
+    disown
+fi
 sleep 3
 if curl -s -m 5 -o /dev/null -w "%{http_code}" http://127.0.0.1:18737/ 2>/dev/null | grep -q "200"; then
     echo "$TS 18737 Web UI 已拉起并健康" >> "$LOG"

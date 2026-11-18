@@ -62,13 +62,26 @@ if [ "$alive" = "1" ]; then
   : # alive
 else
   echo "$(date '+%F %T') forwarder dead ($reason), restarting" >> "$LOG"
-  pkill -f "browser_proxy_fwd[.]py" 2>/dev/null
-  # 等旧进程真正释放 3129 端口再启动，否则新实例 EADDRINUSE 直接崩溃
-  # （fwd 日志累计 478 次 EADDRINUSE 竞态；旧 sleep 1 不足）
-  for i in $(seq 1 20); do
-    pgrep -f "browser_proxy_fwd[.]py" >/dev/null 2>&1 && { sleep 0.5; continue; }
-    (echo > /dev/tcp/127.0.0.1/3129) 2>/dev/null && { sleep 0.5; continue; }
-    break
-  done
-  nohup python3 /home/hatch/data/perpetua/browser_proxy_fwd.py >> "$FWD_LOG" 2>&1 &
+  # P0-3 (2026-11-18): systemd owns this service. Unit file present ->
+  # systemctl restart. Bare launch ONLY when the unit file is missing
+  # (post-swap window). Never pkill the unit's MainPID.
+  if [ -f /etc/systemd/system/dash-browser-proxy-fwd.service ]; then
+    systemctl restart dash-browser-proxy-fwd.service 2>/dev/null
+    sleep 5
+    if functional_probe; then
+      echo "$(date '+%F %T') forwarder restarted via systemctl, functional probe ok" >> "$LOG"
+    else
+      echo "$(date '+%F %T') forwarder systemctl restart done but functional probe still failing" >> "$LOG"
+    fi
+  else
+    pkill -f "browser_proxy_fwd[.]py" 2>/dev/null
+    # 等旧进程真正释放 3129 端口再启动，否则新实例 EADDRINUSE 直接崩溃
+    # （fwd 日志累计 478 次 EADDRINUSE 竞态；旧 sleep 1 不足）
+    for i in $(seq 1 20); do
+      pgrep -f "browser_proxy_fwd[.]py" >/dev/null 2>&1 && { sleep 0.5; continue; }
+      (echo > /dev/tcp/127.0.0.1/3129) 2>/dev/null && { sleep 0.5; continue; }
+      break
+    done
+    nohup python3 /home/hatch/data/perpetua/browser_proxy_fwd.py >> "$FWD_LOG" 2>&1 &
+  fi
 fi
