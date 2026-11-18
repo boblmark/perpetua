@@ -1,6 +1,7 @@
 #!/bin/bash
 # swap_detector.sh -- dedicated sandbox machine-swap detector.
-# Runs from a 5-minute cron. Compares the current boot_id with the persistent
+# Runs from a 1-minute cron (P0-1, 2026-11-18: was 5-minute; detection
+# latency is now <=1 min). Compares the current boot_id with the persistent
 # state file; on change it runs fleet_recovery.sh (Rule 11) automatically.
 # State/history live under /home/hatch/data (survives swaps); /etc and /root
 # do not, which is exactly why the detector must be cron-driven, not a timer.
