@@ -2,6 +2,9 @@
 # 保活：确保 tunnel_18738.sh 在运行
 # Rule 9 (2026-10-17)：禁止在含目标字样的同一命令行里宽泛 pkill -f；
 # 改为 pgrep 取 PID、排除自身($$)/父进程($PPID) 后再按 PID 精确杀。
+# 防锁继承 (2026-11-18)：关掉调用方传进来的 flock fd 9，拉起的长寿隧道
+# 绝不能继承锁（否则检测器永久 DETECTOR_BUSY）。
+exec 9>&- 2>/dev/null || true
 WRAPPER="/home/hatch/data/perpetua/vps_console/tunnel_18738.sh"
 LOG="/home/hatch/data/perpetua/vps_console/tunnel_18738_keepalive.log"
 
@@ -13,7 +16,7 @@ for pid in $(pgrep -f 'vps_console/tunnel_18738\.sh$' 2>/dev/null); do
   wrapper_pids="$wrapper_pids $pid"
 done
 if [ -z "$wrapper_pids" ]; then
-  setsid nohup "$WRAPPER" > /dev/null 2>&1 < /dev/null &
+  setsid nohup "$WRAPPER" 9>&- > /dev/null 2>&1 < /dev/null &
   disown 2>/dev/null || true
   echo "$(date) restarted tunnel_18738.sh" >> "$LOG"
 fi

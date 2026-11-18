@@ -62,19 +62,22 @@ write_state() {
 }
 
 run_recovery() {
-  bash "$RECOVERY" 2>&1 | tee -a "$LOG"
+  # Close fd 9 (detector lock) in the child: the detector keeps the lock
+  # while waiting; children must never inherit it (2026-11-18: a detached
+  # tunnel inherited fd 9 and wedged the detector forever).
+  bash "$RECOVERY" 9>&- 2>&1 | tee -a "$LOG"
   return "${PIPESTATUS[0]}"
 }
 
 # --- modes that never touch state ---------------------------------------------
 if [ "$MODE" = "checkonly" ]; then
   echo "CHECK_ONLY boot_id=$BOOT_ID uptime_s=$UPTIME_S"
-  bash "$RECOVERY" --verify-only 2>&1 | tail -n 30
+  bash "$RECOVERY" --verify-only 9>&- 2>&1 | tail -n 30
   exit "${PIPESTATUS[0]}"
 fi
 if [ "$MODE" = "dryrun" ]; then
   echo "DRYRUN simulating swap: stored=<old> current=$BOOT_ID (no state written, no changes)"
-  bash "$RECOVERY" --dry-run 2>&1 | tail -n 40
+  bash "$RECOVERY" --dry-run 9>&- 2>&1 | tail -n 40
   exit 0
 fi
 
@@ -96,7 +99,7 @@ fi
 if [ ! -f "$STATE_FILE" ]; then
   log "INIT no state file; seeding boot_id=$BOOT_ID"
   write_state "$BOOT_ID" "initialized" "0" "0"
-  if bash "$RECOVERY" --verify-only >/dev/null 2>&1; then
+  if bash "$RECOVERY" --verify-only 9>&- >/dev/null 2>&1; then
     write_state "$BOOT_ID" "ok" "0" "0"
     echo "INIT_SEEDED boot_id=$BOOT_ID verify=ok"
     exit 0

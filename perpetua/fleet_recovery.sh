@@ -276,7 +276,7 @@ check_periphery() {
   # Semantica trio: explorer + kb-search + tunnel (keepalive script is idempotent).
   if [ "$(http_code http://127.0.0.1:18091/)" = "000" ] || [ "$(http_code http://127.0.0.1:18092/healthz)" = "000" ]; then
     if [ "$MODE" = "recover" ]; then
-      bash /home/hatch/data/perpetua/vps_console/semantica_keepalive.sh >/dev/null 2>&1 || true
+      bash /home/hatch/data/perpetua/vps_console/semantica_keepalive.sh 9>&- >/dev/null 2>&1 || true
       sleep 2
     fi
     notes="$notes semantica=healed-or-down"
@@ -286,7 +286,7 @@ check_periphery() {
   # 18738 tunnel wrapper.
   if ! ss -tln 2>/dev/null | grep -q "127.0.0.1:18738"; then
     if [ "$MODE" = "recover" ]; then
-      bash /home/hatch/data/perpetua/vps_console/tunnel_18738_keepalive.sh >/dev/null 2>&1 || true
+      bash /home/hatch/data/perpetua/vps_console/tunnel_18738_keepalive.sh 9>&- >/dev/null 2>&1 || true
       sleep 2
     fi
     notes="$notes 18738=check"
