@@ -13,7 +13,7 @@ def api(method, path, data=None):
     cmd = ["python3", GH, method, path]
     if data:
         cmd.append(json.dumps(data))
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
     return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else None
 
 def main():

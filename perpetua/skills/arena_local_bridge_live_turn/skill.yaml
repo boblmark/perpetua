@@ -1,0 +1,22 @@
+name: arena_local_bridge_live_turn
+title: Arena Local Bridge Live Turn
+description: Run one live Arena turn through the local bridge and verify the turn request actually left the browser.
+category: Work and knowledge
+include_in_prompt: false
+skill_improvement:
+  managed: true
+  status: active
+  evidence_handles:
+  - 2026-11-19 arena probes headed and headless failed identically with create-chat never sent
+  - 2026-11-19 manual user turn returned while bridge turns stayed silent
+  - 2026-11-19 hand copied export failed signature verification twice and file import verified login
+  - muse.skill_search 2026-11-20 arena bridge no matches
+  measurement:
+    proxy_metric_id: arena_bridge_live_turn_success_rate
+    success_criterion: In the window every live turn attempt uses a fresh file imported token and a prompt at or under 2500 characters and either verifies that create-chat was sent or records the verified failure mode with no blind headed retry and no hand copied token. A window with no live turn is inconclusive not a failure.
+    window_days: 30
+  rationale: 'On 2026-11-19 headed and headless bridge probes failed identically: Send clicked, challenge checks passed, then only heartbeat traffic for about 110 seconds and create-chat never left. A manual turn by the user returned, proving Arena and the account worked and isolating the fault to the bridge. Hand copying a 6KB export failed signature verification twice while file import verified and confirmed login. No skill covers the Arena bridge (skill_search 2026-11-20, no matches), so each attempt repeats the same dead retries. This skill gates on quota and a fresh file-imported token, limits prompts to the verified 2500 character box limit, requires verification that create-chat actually left, and forbids the headed retry and hand-copy steps already proven useless.'
+  needs_review: false
+  review_after: 2026-12-20T04:36:12.187960+00:00
+  reviewed_at: 2026-11-20T04:36:12.187960+00:00
+  run_id: sirun_e49b409697c1444eaa21aa5c58b835f6
