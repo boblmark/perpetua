@@ -41,6 +41,25 @@ def _queue_verb_expansion(reason):
         q = _json.load(open(qpath, encoding="utf-8"))
     except Exception:
         return False
+    # 熔断（用户 2026-11-24 立规矩：同问被 Ask Studio 拒答 3 次后自动追加/派发必须停，
+    # 熔断要写进派发循环本身）。2026-11-28 实测：同文在 queue.json 里已答拒答 13 次
+    # （2026-11-20 起，最新 q_verbauto_20261128031021 今晨 03:10 UTC 又拒），
+    # 只靠人工标 superseded 拦不住（被派发前抢跑的照样发出去）。去重按 id 计，
+    # answered 表里同一 qid 有重复行，不去重会把次数算翻倍。
+    _seen_qids = set()
+    _refusals = 0
+    for _x in q.get("answered", []):
+        _qid = _x.get("id") or _x.get("qid")
+        if _qid in _seen_qids:
+            continue
+        _seen_qids.add(_qid)
+        _ans = str(_x.get("answer") or "").strip()
+        if _x.get("batch_key") in ("verb_pool_expansion", "verb_pool_dedup") and (
+            _ans.startswith("I can't help with that") or _ans.startswith("Ask Studio refused")
+        ):
+            _refusals += 1
+    if _refusals >= 3:
+        return False
     # 避免重复排队：已有真正 pending 的 verb 扩充问题才跳过；
     # 状态已 superseded/answered 的旧条目不挡路（2026-11-03 门禁修：q_verbauto_20261028003944 曾以 superseded 态滞留 pending 表致扩充永久被挡）
     for x in q.get("pending", []):
